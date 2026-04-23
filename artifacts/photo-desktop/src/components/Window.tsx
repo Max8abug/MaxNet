@@ -2,6 +2,9 @@ import React, { useRef, useState, useCallback } from 'react';
 import { useDesktopStore, WindowData } from '../store';
 import { useLocation } from 'wouter';
 import { X, Square, Minus } from 'lucide-react';
+import { DrawingPad } from './DrawingPad';
+import { ChatBox } from './ChatBox';
+import { VisitCounter } from './VisitCounter';
 
 function getYouTubeEmbedUrl(url: string): string | null {
   if (!url) return null;
@@ -348,6 +351,10 @@ export function Window({
             <div className="mt-4 text-xs text-gray-500 truncate pointer-events-none">Target: {w.linkTarget}</div>
           </div>
         )}
+
+        {w.type === 'drawing' && !isEditing && <DrawingPad />}
+        {w.type === 'chat' && !isEditing && <ChatBox />}
+        {w.type === 'visits' && !isEditing && <VisitCounter />}
 
         {/* Resize Handle */}
         <div

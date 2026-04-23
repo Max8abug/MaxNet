@@ -39,6 +39,33 @@ export function Taskbar({ page }: { page: string }) {
     setStartOpen(false);
   };
 
+  const handleAddDrawing = () => {
+    addWindow(page, {
+      type: 'drawing',
+      title: 'Visitor Drawings',
+      width: 460, height: 420,
+    });
+    setStartOpen(false);
+  };
+
+  const handleAddChat = () => {
+    addWindow(page, {
+      type: 'chat',
+      title: 'Chatbox',
+      width: 360, height: 380,
+    });
+    setStartOpen(false);
+  };
+
+  const handleAddVisits = () => {
+    addWindow(page, {
+      type: 'visits',
+      title: 'Visitor Counter',
+      width: 260, height: 180,
+    });
+    setStartOpen(false);
+  };
+
   const handleAddLink = () => {
     addWindow(page, {
       type: 'link',
@@ -82,6 +109,15 @@ export function Taskbar({ page }: { page: string }) {
                 </button>
                 <button className="text-left px-4 py-2 hover:bg-[#000080] hover:text-white" onClick={handleAddLink}>
                   Add Link Shortcut
+                </button>
+                <button className="text-left px-4 py-2 hover:bg-[#000080] hover:text-white" onClick={handleAddDrawing}>
+                  Add Drawing Pad
+                </button>
+                <button className="text-left px-4 py-2 hover:bg-[#000080] hover:text-white" onClick={handleAddChat}>
+                  Add Chatbox
+                </button>
+                <button className="text-left px-4 py-2 hover:bg-[#000080] hover:text-white" onClick={handleAddVisits}>
+                  Add Visitor Counter
                 </button>
                 <div className="h-[2px] w-full border-t border-t-[#808080] border-b border-b-white my-1" />
                 <button className="text-left px-4 py-2 hover:bg-[#000080] hover:text-white" onClick={() => { setLocation('/'); setStartOpen(false); }}>

@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 
-export type WindowType = 'photo' | 'gallery' | 'text' | 'link' | 'youtube';
+export type WindowType = 'photo' | 'gallery' | 'text' | 'link' | 'youtube' | 'drawing' | 'chat' | 'visits';
 
 export interface WindowData {
   id: string;
