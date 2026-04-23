@@ -6,9 +6,26 @@ import {
   visitCounterTable,
   guestbookTable,
   photosTable,
+  bannedUsersTable,
+  chatAuditTable,
 } from "@workspace/db";
-import { desc, sql } from "drizzle-orm";
-import { requireAuth, requireAdmin } from "../lib/auth";
+import { desc, sql, eq } from "drizzle-orm";
+import { requireAuth, requireAdmin, isAdminUsername } from "../lib/auth";
+
+async function isBanned(username: string): Promise<boolean> {
+  const [row] = await db
+    .select()
+    .from(bannedUsersTable)
+    .where(eq(bannedUsersTable.username, username))
+    .limit(1);
+  return !!row;
+}
+
+async function audit(action: string, actor: string, target = "", body = "") {
+  try {
+    await db.insert(chatAuditTable).values({ action, actor, target, body });
+  } catch { /* ignore */ }
+}
 
 const router: IRouter = Router();
 
@@ -61,15 +78,109 @@ router.post("/chat", requireAuth, async (req, res) => {
     return;
   }
   const author = req.session.username || "anon";
+  if (await isBanned(author)) {
+    await audit("blocked", author, author, body.trim().slice(0, 500));
+    res.status(403).json({ error: "You are banned from chat." });
+    return;
+  }
+  const trimmed = body.trim();
   const [row] = await db
     .insert(chatMessagesTable)
-    .values({ body: body.trim(), author })
+    .values({ body: trimmed, author })
     .returning();
+  await audit("post", author, "", trimmed);
   res.json(row);
 });
 
-router.delete("/chat", requireAdmin, async (_req, res) => {
+router.delete("/chat", requireAdmin, async (req, res) => {
+  const all = await db.select().from(chatMessagesTable);
   await db.delete(chatMessagesTable);
+  await audit(
+    "clear",
+    req.session.username || "admin",
+    "",
+    `Cleared ${all.length} messages`,
+  );
+  res.json({ ok: true, count: all.length });
+});
+
+router.delete("/chat/:id", requireAdmin, async (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isFinite(id)) {
+    res.status(400).json({ error: "bad id" });
+    return;
+  }
+  const [existing] = await db
+    .select()
+    .from(chatMessagesTable)
+    .where(eq(chatMessagesTable.id, id))
+    .limit(1);
+  if (!existing) {
+    res.status(404).json({ error: "not found" });
+    return;
+  }
+  await db.delete(chatMessagesTable).where(eq(chatMessagesTable.id, id));
+  await audit(
+    "delete",
+    req.session.username || "admin",
+    existing.author,
+    existing.body,
+  );
+  res.json({ ok: true });
+});
+
+// ---------- Chat audit log (admin) ----------
+router.get("/chat/audit", requireAdmin, async (_req, res) => {
+  const rows = await db
+    .select()
+    .from(chatAuditTable)
+    .orderBy(desc(chatAuditTable.createdAt))
+    .limit(500);
+  res.json(rows);
+});
+
+// ---------- Bans (admin) ----------
+router.get("/bans", requireAdmin, async (_req, res) => {
+  const rows = await db
+    .select()
+    .from(bannedUsersTable)
+    .orderBy(desc(bannedUsersTable.createdAt));
+  res.json(rows);
+});
+
+router.post("/bans", requireAdmin, async (req, res) => {
+  const { username, reason } = req.body ?? {};
+  if (typeof username !== "string" || !username.trim()) {
+    res.status(400).json({ error: "username required" });
+    return;
+  }
+  const u = username.trim().slice(0, 32);
+  if (isAdminUsername(u)) {
+    res.status(400).json({ error: "Cannot ban the admin account" });
+    return;
+  }
+  const safeReason = typeof reason === "string" ? reason.slice(0, 200) : "";
+  const actor = req.session.username || "admin";
+  try {
+    const [row] = await db
+      .insert(bannedUsersTable)
+      .values({ username: u, bannedBy: actor, reason: safeReason })
+      .returning();
+    await audit("ban", actor, u, safeReason);
+    res.json(row);
+  } catch {
+    res.status(409).json({ error: "User already banned" });
+  }
+});
+
+router.delete("/bans/:username", requireAdmin, async (req, res) => {
+  const u = String(req.params.username || "").trim();
+  if (!u) {
+    res.status(400).json({ error: "username required" });
+    return;
+  }
+  await db.delete(bannedUsersTable).where(eq(bannedUsersTable.username, u));
+  await audit("unban", req.session.username || "admin", u, "");
   res.json({ ok: true });
 });
 

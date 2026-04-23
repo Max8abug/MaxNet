@@ -41,6 +41,23 @@ export const photosTable = pgTable("photos", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
+export const bannedUsersTable = pgTable("banned_users", {
+  id: serial("id").primaryKey(),
+  username: text("username").notNull().unique(),
+  bannedBy: text("banned_by").notNull(),
+  reason: text("reason").notNull().default(""),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const chatAuditTable = pgTable("chat_audit_log", {
+  id: serial("id").primaryKey(),
+  action: text("action").notNull(), // 'post' | 'delete' | 'clear' | 'ban' | 'unban' | 'blocked'
+  actor: text("actor").notNull(),
+  target: text("target").notNull().default(""),
+  body: text("body").notNull().default(""),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
 export const sessionsTable = pgTable(
   "session",
   {

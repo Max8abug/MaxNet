@@ -100,6 +100,45 @@ export async function clearChat(): Promise<void> {
   await jsonOrThrow(await fetch(`${BASE}/chat`, { ...opts, method: "DELETE" }));
 }
 
+export async function deleteChatMessage(id: number): Promise<void> {
+  await jsonOrThrow(await fetch(`${BASE}/chat/${id}`, { ...opts, method: "DELETE" }));
+}
+
+export interface ChatAuditEntry {
+  id: number;
+  action: string;
+  actor: string;
+  target: string;
+  body: string;
+  createdAt: string;
+}
+export async function fetchChatAudit(): Promise<ChatAuditEntry[]> {
+  return jsonOrThrow(await fetch(`${BASE}/chat/audit`, opts));
+}
+
+export interface BannedUser {
+  id: number;
+  username: string;
+  bannedBy: string;
+  reason: string;
+  createdAt: string;
+}
+export async function fetchBans(): Promise<BannedUser[]> {
+  return jsonOrThrow(await fetch(`${BASE}/bans`, opts));
+}
+export async function addBan(username: string, reason: string): Promise<BannedUser> {
+  return jsonOrThrow(await fetch(`${BASE}/bans`, {
+    ...opts, method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ username, reason }),
+  }));
+}
+export async function removeBan(username: string): Promise<void> {
+  await jsonOrThrow(await fetch(`${BASE}/bans/${encodeURIComponent(username)}`, {
+    ...opts, method: "DELETE",
+  }));
+}
+
 // ----- Guestbook -----
 export async function fetchGuestbook(): Promise<GuestbookEntry[]> {
   return jsonOrThrow(await fetch(`${BASE}/guestbook`, opts));
