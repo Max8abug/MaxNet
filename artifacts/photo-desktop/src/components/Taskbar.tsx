@@ -3,11 +3,13 @@ import { useDesktopStore } from '../store';
 import { useLocation } from 'wouter';
 import { useAuth } from '../lib/auth-store';
 import { LoginDialog } from './LoginDialog';
+import { ProfileDialog } from './ProfileDialog';
 
 export function Taskbar({ page }: { page: string }) {
   const { addWindow, isStringMode, setStringMode, resetState } = useDesktopStore();
   const [startOpen, setStartOpen] = useState(false);
   const [loginOpen, setLoginOpen] = useState(false);
+  const [profileOpen, setProfileOpen] = useState(false);
   const [, setLocation] = useLocation();
   const { user, refresh, logout } = useAuth();
 
@@ -65,6 +67,19 @@ export function Taskbar({ page }: { page: string }) {
     setStartOpen(false);
   };
 
+  const handleAddForum = () => {
+    addWindow(page, { type: 'forum', title: 'Forum', width: 460, height: 420 });
+    setStartOpen(false);
+  };
+  const handleAddBlackjack = () => {
+    addWindow(page, { type: 'blackjack', title: 'Blackjack', width: 520, height: 480 });
+    setStartOpen(false);
+  };
+  const handleAddFlappy = () => {
+    addWindow(page, { type: 'flappy', title: 'Flappy Bird', width: 560, height: 540 });
+    setStartOpen(false);
+  };
+
   const handleAddLink = () => {
     addWindow(page, {
       type: 'link', title: 'Shortcut',
@@ -102,7 +117,16 @@ export function Taskbar({ page }: { page: string }) {
                   Add Photo Window (URL)
                 </button>
                 <button className="text-left px-4 py-2 hover:bg-[#000080] hover:text-white" onClick={handleAddYouTube}>
-                  Add YouTube Window
+                  Add Synced YouTube
+                </button>
+                <button className="text-left px-4 py-2 hover:bg-[#000080] hover:text-white" onClick={handleAddForum}>
+                  Open Forum
+                </button>
+                <button className="text-left px-4 py-2 hover:bg-[#000080] hover:text-white" onClick={handleAddBlackjack}>
+                  Play Blackjack
+                </button>
+                <button className="text-left px-4 py-2 hover:bg-[#000080] hover:text-white" onClick={handleAddFlappy}>
+                  Play Flappy Bird
                 </button>
                 <button className="text-left px-4 py-2 hover:bg-[#000080] hover:text-white" onClick={handleAddText}>
                   Add Text Note
@@ -156,6 +180,11 @@ export function Taskbar({ page }: { page: string }) {
 
       {user ? (
         <div className="flex items-center gap-1 mr-2">
+          {user.avatarUrl ? (
+            <img src={user.avatarUrl} alt="" className="w-6 h-6 win98-inset object-cover cursor-pointer" onClick={() => setProfileOpen(true)} />
+          ) : (
+            <button className="win98-button h-8 px-2 text-xs" onClick={() => setProfileOpen(true)}>Profile</button>
+          )}
           <span className={`text-xs px-2 ${user.isAdmin ? 'text-red-700 font-bold' : ''}`}>
             {user.isAdmin ? 'admin: ' : ''}{user.username}
           </span>
@@ -172,6 +201,7 @@ export function Taskbar({ page }: { page: string }) {
       </div>
 
       {loginOpen && <LoginDialog onClose={() => setLoginOpen(false)} />}
+      {profileOpen && <ProfileDialog onClose={() => setProfileOpen(false)} />}
     </div>
   );
 }

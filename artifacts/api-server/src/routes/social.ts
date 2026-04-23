@@ -12,7 +12,7 @@ import {
 import { desc, sql, eq } from "drizzle-orm";
 import { requireAuth, requireAdmin, isAdminUsername } from "../lib/auth";
 
-async function isBanned(username: string): Promise<boolean> {
+export async function isBanned(username: string): Promise<boolean> {
   const [row] = await db
     .select()
     .from(bannedUsersTable)
@@ -21,13 +21,17 @@ async function isBanned(username: string): Promise<boolean> {
   return !!row;
 }
 
-async function audit(action: string, actor: string, target = "", body = "") {
+export async function audit(area: string, action: string, actor: string, target = "", body = "") {
   try {
-    await db.insert(chatAuditTable).values({ action, actor, target, body });
+    await db.insert(chatAuditTable).values({ area, action, actor, target, body });
   } catch { /* ignore */ }
 }
 
 const router: IRouter = Router();
+
+function validImageData(s: unknown, max = 2_000_000): s is string {
+  return typeof s === "string" && s.startsWith("data:image/") && s.length <= max;
+}
 
 // ---------- Drawings ----------
 router.get("/drawings", async (_req, res) => {
@@ -39,8 +43,8 @@ router.get("/drawings", async (_req, res) => {
   res.json(rows);
 });
 
-router.post("/drawings", async (req, res) => {
-  const { dataUrl, author } = req.body ?? {};
+router.post("/drawings", requireAuth, async (req, res) => {
+  const { dataUrl } = req.body ?? {};
   if (typeof dataUrl !== "string" || !dataUrl.startsWith("data:image/")) {
     res.status(400).json({ error: "dataUrl must be a data:image/* string" });
     return;
@@ -49,15 +53,31 @@ router.post("/drawings", async (req, res) => {
     res.status(413).json({ error: "Drawing too large" });
     return;
   }
-  const safeAuthor = typeof author === "string" && author.trim() ? author.trim().slice(0, 32) : "anon";
+  const author = req.session.username || "anon";
+  if (await isBanned(author)) {
+    await audit("drawing", "blocked", author, author, "submit attempt");
+    res.status(403).json({ error: "You are banned." });
+    return;
+  }
   const [row] = await db
     .insert(drawingsTable)
-    .values({ dataUrl, author: safeAuthor })
+    .values({ dataUrl, author })
     .returning();
+  await audit("drawing", "post", author, "", `id=${row.id}`);
   res.json(row);
 });
 
-// ---------- Chat (login required to post; admin can clear) ----------
+router.delete("/drawings/:id", requireAdmin, async (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isFinite(id)) { res.status(400).json({ error: "bad id" }); return; }
+  const [existing] = await db.select().from(drawingsTable).where(eq(drawingsTable.id, id)).limit(1);
+  if (!existing) { res.status(404).json({ error: "not found" }); return; }
+  await db.delete(drawingsTable).where(eq(drawingsTable.id, id));
+  await audit("drawing", "delete", req.session.username || "admin", existing.author, `id=${id}`);
+  res.json({ ok: true });
+});
+
+// ---------- Chat ----------
 router.get("/chat", async (_req, res) => {
   const rows = await db
     .select()
@@ -68,72 +88,68 @@ router.get("/chat", async (_req, res) => {
 });
 
 router.post("/chat", requireAuth, async (req, res) => {
-  const { body } = req.body ?? {};
-  if (typeof body !== "string" || !body.trim()) {
-    res.status(400).json({ error: "body required" });
+  const { body, imageUrl } = req.body ?? {};
+  const trimmedBody = typeof body === "string" ? body.trim() : "";
+  if (!trimmedBody && !imageUrl) {
+    res.status(400).json({ error: "body or image required" });
     return;
   }
-  if (body.length > 500) {
+  if (trimmedBody.length > 500) {
     res.status(413).json({ error: "Message too long" });
+    return;
+  }
+  if (imageUrl !== undefined && imageUrl !== null && !validImageData(imageUrl, 3_000_000)) {
+    res.status(400).json({ error: "bad imageUrl" });
     return;
   }
   const author = req.session.username || "anon";
   if (await isBanned(author)) {
-    await audit("blocked", author, author, body.trim().slice(0, 500));
+    await audit("chat", "blocked", author, author, trimmedBody.slice(0, 500));
     res.status(403).json({ error: "You are banned from chat." });
     return;
   }
-  const trimmed = body.trim();
   const [row] = await db
     .insert(chatMessagesTable)
-    .values({ body: trimmed, author })
+    .values({ body: trimmedBody, author, imageUrl: imageUrl || null })
     .returning();
-  await audit("post", author, "", trimmed);
+  await audit("chat", "post", author, "", trimmedBody + (imageUrl ? " [image]" : ""));
   res.json(row);
 });
 
 router.delete("/chat", requireAdmin, async (req, res) => {
   const all = await db.select().from(chatMessagesTable);
   await db.delete(chatMessagesTable);
-  await audit(
-    "clear",
-    req.session.username || "admin",
-    "",
-    `Cleared ${all.length} messages`,
-  );
+  await audit("chat", "clear", req.session.username || "admin", "", `Cleared ${all.length} messages`);
   res.json({ ok: true, count: all.length });
 });
 
 router.delete("/chat/:id", requireAdmin, async (req, res) => {
   const id = Number(req.params.id);
-  if (!Number.isFinite(id)) {
-    res.status(400).json({ error: "bad id" });
-    return;
-  }
-  const [existing] = await db
-    .select()
-    .from(chatMessagesTable)
-    .where(eq(chatMessagesTable.id, id))
-    .limit(1);
-  if (!existing) {
-    res.status(404).json({ error: "not found" });
-    return;
-  }
+  if (!Number.isFinite(id)) { res.status(400).json({ error: "bad id" }); return; }
+  const [existing] = await db.select().from(chatMessagesTable).where(eq(chatMessagesTable.id, id)).limit(1);
+  if (!existing) { res.status(404).json({ error: "not found" }); return; }
   await db.delete(chatMessagesTable).where(eq(chatMessagesTable.id, id));
-  await audit(
-    "delete",
-    req.session.username || "admin",
-    existing.author,
-    existing.body,
-  );
+  await audit("chat", "delete", req.session.username || "admin", existing.author, existing.body);
   res.json({ ok: true });
 });
 
-// ---------- Chat audit log (admin) ----------
+// ---------- Audit log (admin) — supports area filter ----------
+router.get("/audit", requireAdmin, async (req, res) => {
+  const area = typeof req.query.area === "string" ? req.query.area : null;
+  const rows = await db
+    .select()
+    .from(chatAuditTable)
+    .where(area ? eq(chatAuditTable.area, area) : undefined as any)
+    .orderBy(desc(chatAuditTable.createdAt))
+    .limit(500);
+  res.json(rows);
+});
+// Back-compat alias
 router.get("/chat/audit", requireAdmin, async (_req, res) => {
   const rows = await db
     .select()
     .from(chatAuditTable)
+    .where(eq(chatAuditTable.area, "chat"))
     .orderBy(desc(chatAuditTable.createdAt))
     .limit(500);
   res.json(rows);
@@ -150,114 +166,87 @@ router.get("/bans", requireAdmin, async (_req, res) => {
 
 router.post("/bans", requireAdmin, async (req, res) => {
   const { username, reason } = req.body ?? {};
-  if (typeof username !== "string" || !username.trim()) {
-    res.status(400).json({ error: "username required" });
-    return;
-  }
+  if (typeof username !== "string" || !username.trim()) { res.status(400).json({ error: "username required" }); return; }
   const u = username.trim().slice(0, 32);
-  if (isAdminUsername(u)) {
-    res.status(400).json({ error: "Cannot ban the admin account" });
-    return;
-  }
+  if (isAdminUsername(u)) { res.status(400).json({ error: "Cannot ban the admin account" }); return; }
   const safeReason = typeof reason === "string" ? reason.slice(0, 200) : "";
   const actor = req.session.username || "admin";
   try {
-    const [row] = await db
-      .insert(bannedUsersTable)
-      .values({ username: u, bannedBy: actor, reason: safeReason })
-      .returning();
-    await audit("ban", actor, u, safeReason);
+    const [row] = await db.insert(bannedUsersTable).values({ username: u, bannedBy: actor, reason: safeReason }).returning();
+    await audit("global", "ban", actor, u, safeReason);
     res.json(row);
-  } catch {
-    res.status(409).json({ error: "User already banned" });
-  }
+  } catch { res.status(409).json({ error: "User already banned" }); }
 });
 
 router.delete("/bans/:username", requireAdmin, async (req, res) => {
   const u = String(req.params.username || "").trim();
-  if (!u) {
-    res.status(400).json({ error: "username required" });
-    return;
-  }
+  if (!u) { res.status(400).json({ error: "username required" }); return; }
   await db.delete(bannedUsersTable).where(eq(bannedUsersTable.username, u));
-  await audit("unban", req.session.username || "admin", u, "");
+  await audit("global", "unban", req.session.username || "admin", u, "");
   res.json({ ok: true });
 });
 
 // ---------- Guestbook ----------
 router.get("/guestbook", async (_req, res) => {
-  const rows = await db
-    .select()
-    .from(guestbookTable)
-    .orderBy(desc(guestbookTable.createdAt))
-    .limit(200);
+  const rows = await db.select().from(guestbookTable).orderBy(desc(guestbookTable.createdAt)).limit(200);
   res.json(rows);
 });
 
 router.post("/guestbook", async (req, res) => {
   const { body, author } = req.body ?? {};
-  if (typeof body !== "string" || !body.trim()) {
-    res.status(400).json({ error: "body required" });
+  if (typeof body !== "string" || !body.trim()) { res.status(400).json({ error: "body required" }); return; }
+  if (body.length > 280) { res.status(413).json({ error: "Note too long" }); return; }
+  // If logged in, use session name (and check ban). Otherwise, anonymous.
+  const sessionName = req.session.username;
+  const safeAuthor = sessionName
+    ? sessionName
+    : (typeof author === "string" && author.trim() ? author.trim().slice(0, 32) : "anon");
+  if (sessionName && await isBanned(sessionName)) {
+    await audit("guestbook", "blocked", sessionName, sessionName, body.trim().slice(0, 280));
+    res.status(403).json({ error: "You are banned." });
     return;
   }
-  if (body.length > 280) {
-    res.status(413).json({ error: "Note too long" });
-    return;
-  }
-  const safeAuthor =
-    typeof author === "string" && author.trim() ? author.trim().slice(0, 32) : "anon";
-  const [row] = await db
-    .insert(guestbookTable)
-    .values({ body: body.trim(), author: safeAuthor })
-    .returning();
+  const [row] = await db.insert(guestbookTable).values({ body: body.trim(), author: safeAuthor }).returning();
+  await audit("guestbook", "post", safeAuthor, "", body.trim());
   res.json(row);
 });
 
 router.delete("/guestbook/:id", requireAdmin, async (req, res) => {
   const id = Number(req.params.id);
-  if (!Number.isFinite(id)) {
-    res.status(400).json({ error: "bad id" });
-    return;
-  }
-  await db.delete(guestbookTable).where(sql`${guestbookTable.id} = ${id}`);
+  if (!Number.isFinite(id)) { res.status(400).json({ error: "bad id" }); return; }
+  const [existing] = await db.select().from(guestbookTable).where(eq(guestbookTable.id, id)).limit(1);
+  if (!existing) { res.status(404).json({ error: "not found" }); return; }
+  await db.delete(guestbookTable).where(eq(guestbookTable.id, id));
+  await audit("guestbook", "delete", req.session.username || "admin", existing.author, existing.body);
   res.json({ ok: true });
 });
 
-// ---------- Photos (admin uploads, everyone views) ----------
+router.delete("/guestbook", requireAdmin, async (req, res) => {
+  const all = await db.select().from(guestbookTable);
+  await db.delete(guestbookTable);
+  await audit("guestbook", "clear", req.session.username || "admin", "", `Cleared ${all.length} entries`);
+  res.json({ ok: true, count: all.length });
+});
+
+// ---------- Photos ----------
 router.get("/photos", async (_req, res) => {
-  const rows = await db
-    .select()
-    .from(photosTable)
-    .orderBy(desc(photosTable.createdAt))
-    .limit(500);
+  const rows = await db.select().from(photosTable).orderBy(desc(photosTable.createdAt)).limit(500);
   res.json(rows);
 });
 
 router.post("/photos", requireAdmin, async (req, res) => {
   const { dataUrl, caption } = req.body ?? {};
-  if (typeof dataUrl !== "string" || !dataUrl.startsWith("data:image/")) {
-    res.status(400).json({ error: "dataUrl must be a data:image/* string" });
-    return;
-  }
-  if (dataUrl.length > 8_000_000) {
-    res.status(413).json({ error: "Photo too large (max ~6MB)" });
-    return;
-  }
+  if (typeof dataUrl !== "string" || !dataUrl.startsWith("data:image/")) { res.status(400).json({ error: "dataUrl must be a data:image/* string" }); return; }
+  if (dataUrl.length > 8_000_000) { res.status(413).json({ error: "Photo too large (max ~6MB)" }); return; }
   const safeCaption = typeof caption === "string" ? caption.slice(0, 200) : "";
-  const [row] = await db
-    .insert(photosTable)
-    .values({ dataUrl, caption: safeCaption })
-    .returning();
+  const [row] = await db.insert(photosTable).values({ dataUrl, caption: safeCaption }).returning();
   res.json(row);
 });
 
 router.delete("/photos/:id", requireAdmin, async (req, res) => {
   const id = Number(req.params.id);
-  if (!Number.isFinite(id)) {
-    res.status(400).json({ error: "bad id" });
-    return;
-  }
-  await db.delete(photosTable).where(sql`${photosTable.id} = ${id}`);
+  if (!Number.isFinite(id)) { res.status(400).json({ error: "bad id" }); return; }
+  await db.delete(photosTable).where(eq(photosTable.id, id));
   res.json({ ok: true });
 });
 
@@ -274,10 +263,7 @@ router.post("/visits", async (_req, res) => {
     res.json({ count: row.count });
     return;
   }
-  const [row] = await db
-    .update(visitCounterTable)
-    .set({ count: sql`${visitCounterTable.count} + 1` })
-    .returning();
+  const [row] = await db.update(visitCounterTable).set({ count: sql`${visitCounterTable.count} + 1` }).returning();
   res.json({ count: row.count });
 });
 

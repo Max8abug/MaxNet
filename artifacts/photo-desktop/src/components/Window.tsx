@@ -8,6 +8,10 @@ import { VisitCounter } from './VisitCounter';
 import { Guestbook } from './Guestbook';
 import { SharedPhotos } from './SharedPhotos';
 import { LoginDialog } from './LoginDialog';
+import { Forum } from './Forum';
+import { Blackjack } from './Blackjack';
+import { Flappy } from './Flappy';
+import { SyncedYouTube } from './SyncedYouTube';
 
 function getYouTubeEmbedUrl(url: string): string | null {
   if (!url) return null;
@@ -318,27 +322,7 @@ export function Window({
           </div>
         )}
 
-        {w.type === 'youtube' && !isEditing && (() => {
-          const embed = getYouTubeEmbedUrl(w.youtubeUrl || '');
-          return (
-            <div className="w-full h-full bg-black flex items-center justify-center">
-              {embed ? (
-                <iframe
-                  src={embed}
-                  title={w.title}
-                  className="w-full h-full"
-                  frameBorder={0}
-                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-                  allowFullScreen
-                />
-              ) : (
-                <div className="text-white/60 text-xs text-center px-3">
-                  Double-click to paste a YouTube URL
-                </div>
-              )}
-            </div>
-          );
-        })()}
+        {w.type === 'youtube' && !isEditing && <SyncedYouTube />}
 
         {w.type === 'link' && !isEditing && (
           <div className="w-full h-full flex flex-col items-center justify-center p-4">
@@ -356,11 +340,14 @@ export function Window({
           </div>
         )}
 
-        {w.type === 'drawing' && !isEditing && <DrawingPad />}
+        {w.type === 'drawing' && !isEditing && <DrawingPad onRequestLogin={() => setShowLogin(true)} />}
         {w.type === 'chat' && !isEditing && <ChatBox onRequestLogin={() => setShowLogin(true)} />}
         {w.type === 'visits' && !isEditing && <VisitCounter />}
         {w.type === 'guestbook' && !isEditing && <Guestbook />}
         {w.type === 'sharedphotos' && !isEditing && <SharedPhotos />}
+        {w.type === 'forum' && !isEditing && <Forum onRequestLogin={() => setShowLogin(true)} />}
+        {w.type === 'blackjack' && !isEditing && <Blackjack onRequestLogin={() => setShowLogin(true)} />}
+        {w.type === 'flappy' && !isEditing && <Flappy onRequestLogin={() => setShowLogin(true)} />}
         {showLogin && <LoginDialog onClose={() => setShowLogin(false)} />}
 
         {/* Resize Handle */}

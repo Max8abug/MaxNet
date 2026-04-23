@@ -78,6 +78,64 @@ router.post("/auth/login", async (req, res) => {
   res.json({ user: { id: user.id, username: user.username, isAdmin: user.isAdmin } });
 });
 
+router.patch("/auth/profile", async (req, res) => {
+  if (!req.session.userId) {
+    res.status(401).json({ error: "Login required" });
+    return;
+  }
+  const { avatarUrl, backgroundUrl, backgroundColor } = req.body ?? {};
+  const update: Record<string, string | null> = {};
+  if (avatarUrl !== undefined) {
+    if (avatarUrl !== null && (typeof avatarUrl !== "string" || (avatarUrl && !avatarUrl.startsWith("data:image/")))) {
+      res.status(400).json({ error: "avatarUrl must be a data:image/* string or null" });
+      return;
+    }
+    if (typeof avatarUrl === "string" && avatarUrl.length > 400_000) {
+      res.status(413).json({ error: "Avatar too large" });
+      return;
+    }
+    update.avatarUrl = avatarUrl;
+  }
+  if (backgroundUrl !== undefined) {
+    if (backgroundUrl !== null && (typeof backgroundUrl !== "string" || (backgroundUrl && !backgroundUrl.startsWith("data:image/")))) {
+      res.status(400).json({ error: "backgroundUrl must be a data:image/* string or null" });
+      return;
+    }
+    if (typeof backgroundUrl === "string" && backgroundUrl.length > 4_000_000) {
+      res.status(413).json({ error: "Background too large" });
+      return;
+    }
+    update.backgroundUrl = backgroundUrl;
+  }
+  if (backgroundColor !== undefined) {
+    if (backgroundColor !== null && (typeof backgroundColor !== "string" || backgroundColor.length > 32)) {
+      res.status(400).json({ error: "Bad backgroundColor" });
+      return;
+    }
+    update.backgroundColor = backgroundColor;
+  }
+  if (Object.keys(update).length === 0) {
+    res.json({ ok: true });
+    return;
+  }
+  await db.update(usersTable).set(update).where(eq(usersTable.id, req.session.userId));
+  res.json({ ok: true });
+});
+
+router.get("/users/:username", async (req, res) => {
+  const u = String(req.params.username || "").trim();
+  if (!u) { res.status(400).json({ error: "username required" }); return; }
+  const user = await findUserByUsername(u);
+  if (!user) { res.json({ user: null }); return; }
+  res.json({
+    user: {
+      username: user.username,
+      isAdmin: user.isAdmin,
+      avatarUrl: user.avatarUrl,
+    },
+  });
+});
+
 router.post("/auth/logout", (req, res) => {
   req.session.destroy(() => {
     res.clearCookie("connect.sid");
