@@ -1,9 +1,11 @@
 import { useDesktopStore } from '../store';
-import { useEffect, useState, useRef } from 'react';
+
+const EMPTY_STRINGS: never[] = [];
+const EMPTY_WINDOWS: never[] = [];
 
 export function RedStrings({ page }: { page: string }) {
-  const strings = useDesktopStore(state => state.strings[page] || []);
-  const windows = useDesktopStore(state => state.windows[page] || []);
+  const strings = useDesktopStore(state => state.strings[page] ?? EMPTY_STRINGS);
+  const windows = useDesktopStore(state => state.windows[page] ?? EMPTY_WINDOWS);
   const removeString = useDesktopStore(state => state.removeString);
   
   // Need to force re-render when windows move
