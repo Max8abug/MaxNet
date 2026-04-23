@@ -3,6 +3,29 @@ import { useDesktopStore, WindowData } from '../store';
 import { useLocation } from 'wouter';
 import { X, Square, Minus } from 'lucide-react';
 
+function getYouTubeEmbedUrl(url: string): string | null {
+  if (!url) return null;
+  try {
+    const trimmed = url.trim();
+    // Already an embed URL
+    if (/youtube\.com\/embed\//.test(trimmed)) return trimmed;
+    // youtu.be/<id>
+    let m = trimmed.match(/youtu\.be\/([A-Za-z0-9_-]{6,})/);
+    if (m) return `https://www.youtube.com/embed/${m[1]}`;
+    // youtube.com/watch?v=<id>
+    m = trimmed.match(/[?&]v=([A-Za-z0-9_-]{6,})/);
+    if (m) return `https://www.youtube.com/embed/${m[1]}`;
+    // youtube.com/shorts/<id>
+    m = trimmed.match(/youtube\.com\/shorts\/([A-Za-z0-9_-]{6,})/);
+    if (m) return `https://www.youtube.com/embed/${m[1]}`;
+    // Assume the user pasted a bare ID
+    if (/^[A-Za-z0-9_-]{6,}$/.test(trimmed)) return `https://www.youtube.com/embed/${trimmed}`;
+    return null;
+  } catch {
+    return null;
+  }
+}
+
 export function Window({
   window: w,
   page,
@@ -228,6 +251,18 @@ export function Window({
                 <textarea className="win98-inset px-1 flex-1 resize-none" value={w.content || ''} onChange={e => updateWindow(page, w.id, { content: e.target.value })} />
               </label>
             )}
+            {w.type === 'youtube' && (
+              <label className="flex flex-col">
+                YouTube URL or video ID
+                <input
+                  type="text"
+                  className="win98-inset px-1"
+                  placeholder="https://youtube.com/watch?v=..."
+                  value={w.youtubeUrl || ''}
+                  onChange={e => updateWindow(page, w.id, { youtubeUrl: e.target.value })}
+                />
+              </label>
+            )}
             <button className="win98-button mt-auto" onClick={(e) => { e.stopPropagation(); setIsEditing(false); }}>Done</button>
           </div>
         )}
@@ -275,6 +310,28 @@ export function Window({
             ))}
           </div>
         )}
+
+        {w.type === 'youtube' && !isEditing && (() => {
+          const embed = getYouTubeEmbedUrl(w.youtubeUrl || '');
+          return (
+            <div className="w-full h-full bg-black flex items-center justify-center">
+              {embed ? (
+                <iframe
+                  src={embed}
+                  title={w.title}
+                  className="w-full h-full"
+                  frameBorder={0}
+                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                  allowFullScreen
+                />
+              ) : (
+                <div className="text-white/60 text-xs text-center px-3">
+                  Double-click to paste a YouTube URL
+                </div>
+              )}
+            </div>
+          );
+        })()}
 
         {w.type === 'link' && !isEditing && (
           <div className="w-full h-full flex flex-col items-center justify-center p-4">

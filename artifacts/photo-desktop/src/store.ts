@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 
-export type WindowType = 'photo' | 'gallery' | 'text' | 'link';
+export type WindowType = 'photo' | 'gallery' | 'text' | 'link' | 'youtube';
 
 export interface WindowData {
   id: string;
@@ -17,6 +17,7 @@ export interface WindowData {
   images?: string[]; // For gallery
   linkTarget?: string; // For link
   linkLabel?: string; // For link
+  youtubeUrl?: string; // For youtube
 }
 
 export interface StringConnection {

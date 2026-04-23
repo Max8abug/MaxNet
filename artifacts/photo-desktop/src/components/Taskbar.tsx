@@ -8,11 +8,23 @@ export function Taskbar({ page }: { page: string }) {
   const [, setLocation] = useLocation();
 
   const handleAddPhoto = () => {
-    addWindow(page, { 
-      type: 'photo', 
+    const url = window.prompt('Paste a photo URL (leave empty to set later by double-clicking):', '');
+    addWindow(page, {
+      type: 'photo',
       title: 'New Photo',
-      imageUrl: '/src/assets/nature-1.png',
+      imageUrl: url ? url.trim() : '/src/assets/nature-1.png',
       width: 400, height: 450
+    });
+    setStartOpen(false);
+  };
+
+  const handleAddYouTube = () => {
+    const url = window.prompt('Paste a YouTube URL or video ID:', '');
+    addWindow(page, {
+      type: 'youtube',
+      title: 'YouTube',
+      youtubeUrl: url ? url.trim() : '',
+      width: 480, height: 320,
     });
     setStartOpen(false);
   };
@@ -61,6 +73,9 @@ export function Taskbar({ page }: { page: string }) {
               <div className="flex-1 flex flex-col p-1 gap-1">
                 <button className="text-left px-4 py-2 hover:bg-[#000080] hover:text-white" onClick={handleAddPhoto}>
                   Add Photo Window
+                </button>
+                <button className="text-left px-4 py-2 hover:bg-[#000080] hover:text-white" onClick={handleAddYouTube}>
+                  Add YouTube Window
                 </button>
                 <button className="text-left px-4 py-2 hover:bg-[#000080] hover:text-white" onClick={handleAddText}>
                   Add Text Note
