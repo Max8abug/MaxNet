@@ -1,11 +1,17 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useDesktopStore } from '../store';
 import { useLocation } from 'wouter';
+import { useAuth } from '../lib/auth-store';
+import { LoginDialog } from './LoginDialog';
 
 export function Taskbar({ page }: { page: string }) {
   const { addWindow, isStringMode, setStringMode, resetState } = useDesktopStore();
   const [startOpen, setStartOpen] = useState(false);
+  const [loginOpen, setLoginOpen] = useState(false);
   const [, setLocation] = useLocation();
+  const { user, refresh, logout } = useAuth();
+
+  useEffect(() => { void refresh(); }, [refresh]);
 
   const handleAddPhoto = () => {
     const url = window.prompt('Paste a photo URL (leave empty to set later by double-clicking):', '');
@@ -30,48 +36,39 @@ export function Taskbar({ page }: { page: string }) {
   };
 
   const handleAddText = () => {
-    addWindow(page, {
-      type: 'text',
-      title: 'Notes',
-      content: 'Write something here...',
-      width: 300, height: 200
-    });
+    addWindow(page, { type: 'text', title: 'Notes', content: 'Write something here...', width: 300, height: 200 });
     setStartOpen(false);
   };
 
   const handleAddDrawing = () => {
-    addWindow(page, {
-      type: 'drawing',
-      title: 'Visitor Drawings',
-      width: 460, height: 420,
-    });
+    addWindow(page, { type: 'drawing', title: 'Visitor Drawings', width: 460, height: 420 });
     setStartOpen(false);
   };
 
   const handleAddChat = () => {
-    addWindow(page, {
-      type: 'chat',
-      title: 'Chatbox',
-      width: 360, height: 380,
-    });
+    addWindow(page, { type: 'chat', title: 'Chatbox', width: 360, height: 380 });
     setStartOpen(false);
   };
 
   const handleAddVisits = () => {
-    addWindow(page, {
-      type: 'visits',
-      title: 'Visitor Counter',
-      width: 260, height: 180,
-    });
+    addWindow(page, { type: 'visits', title: 'Visitor Counter', width: 260, height: 180 });
+    setStartOpen(false);
+  };
+
+  const handleAddGuestbook = () => {
+    addWindow(page, { type: 'guestbook', title: 'Guestbook', width: 320, height: 380 });
+    setStartOpen(false);
+  };
+
+  const handleAddSharedPhotos = () => {
+    addWindow(page, { type: 'sharedphotos', title: 'Photo Gallery', width: 460, height: 460 });
     setStartOpen(false);
   };
 
   const handleAddLink = () => {
     addWindow(page, {
-      type: 'link',
-      title: 'Shortcut',
-      linkLabel: 'Go to About',
-      linkTarget: '/about',
+      type: 'link', title: 'Shortcut',
+      linkLabel: 'Go to About', linkTarget: '/about',
       width: 200, height: 150
     });
     setStartOpen(false);
@@ -79,13 +76,13 @@ export function Taskbar({ page }: { page: string }) {
 
   return (
     <div className="absolute bottom-0 left-0 right-0 h-10 bg-[#c0c0c0] border-t-2 border-t-white flex items-center px-1 z-[9999] shadow-[inset_0_1px_0_#dfdfdf]">
-      
+
       <div className="relative">
-        <button 
+        <button
           className={`win98-button h-8 px-2 mr-2 flex items-center gap-2 font-bold ${startOpen ? 'border-t-black border-l-black border-r-white border-b-white shadow-[inset_1px_1px_#808080]' : ''}`}
           onClick={() => setStartOpen(!startOpen)}
         >
-          <div className="w-5 h-5 bg-gradient-to-br from-blue-600 to-green-500 shadow-inner" /> {/* Fake windows logo */}
+          <div className="w-5 h-5 bg-gradient-to-br from-blue-600 to-green-500 shadow-inner" />
           Start
         </button>
 
@@ -98,8 +95,11 @@ export function Taskbar({ page }: { page: string }) {
                 </span>
               </div>
               <div className="flex-1 flex flex-col p-1 gap-1">
+                <button className="text-left px-4 py-2 hover:bg-[#000080] hover:text-white" onClick={handleAddSharedPhotos}>
+                  Open Photo Gallery
+                </button>
                 <button className="text-left px-4 py-2 hover:bg-[#000080] hover:text-white" onClick={handleAddPhoto}>
-                  Add Photo Window
+                  Add Photo Window (URL)
                 </button>
                 <button className="text-left px-4 py-2 hover:bg-[#000080] hover:text-white" onClick={handleAddYouTube}>
                   Add YouTube Window
@@ -115,6 +115,9 @@ export function Taskbar({ page }: { page: string }) {
                 </button>
                 <button className="text-left px-4 py-2 hover:bg-[#000080] hover:text-white" onClick={handleAddChat}>
                   Add Chatbox
+                </button>
+                <button className="text-left px-4 py-2 hover:bg-[#000080] hover:text-white" onClick={handleAddGuestbook}>
+                  Add Guestbook
                 </button>
                 <button className="text-left px-4 py-2 hover:bg-[#000080] hover:text-white" onClick={handleAddVisits}>
                   Add Visitor Counter
@@ -141,7 +144,7 @@ export function Taskbar({ page }: { page: string }) {
 
       <div className="h-[80%] w-[2px] border-l border-l-[#808080] border-r border-r-white mx-2" />
 
-      <button 
+      <button
         className={`win98-button h-8 px-4 flex items-center gap-2 ${isStringMode ? 'border-t-black border-l-black border-r-white border-b-white shadow-[inset_1px_1px_#808080] bg-gray-300' : ''}`}
         onClick={() => setStringMode(!isStringMode)}
       >
@@ -151,9 +154,24 @@ export function Taskbar({ page }: { page: string }) {
 
       <div className="flex-1" />
 
+      {user ? (
+        <div className="flex items-center gap-1 mr-2">
+          <span className={`text-xs px-2 ${user.isAdmin ? 'text-red-700 font-bold' : ''}`}>
+            {user.isAdmin ? 'admin: ' : ''}{user.username}
+          </span>
+          <button className="win98-button h-8 px-3" onClick={() => void logout()}>Log Out</button>
+        </div>
+      ) : (
+        <button className="win98-button h-8 px-3 mr-2" onClick={() => setLoginOpen(true)}>
+          Log In
+        </button>
+      )}
+
       <div className="win98-inset h-8 px-3 flex items-center text-xs">
         {new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
       </div>
+
+      {loginOpen && <LoginDialog onClose={() => setLoginOpen(false)} />}
     </div>
   );
 }

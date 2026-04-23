@@ -5,6 +5,9 @@ import { X, Square, Minus } from 'lucide-react';
 import { DrawingPad } from './DrawingPad';
 import { ChatBox } from './ChatBox';
 import { VisitCounter } from './VisitCounter';
+import { Guestbook } from './Guestbook';
+import { SharedPhotos } from './SharedPhotos';
+import { LoginDialog } from './LoginDialog';
 
 function getYouTubeEmbedUrl(url: string): string | null {
   if (!url) return null;
@@ -41,6 +44,7 @@ export function Window({
   const { updateWindow, removeWindow, bringToFront, isStringMode, stringStartId, setStringStart, addString } = useDesktopStore();
   const [, setLocation] = useLocation();
   const [isEditing, setIsEditing] = useState(false);
+  const [showLogin, setShowLogin] = useState(false);
   const elRef = useRef<HTMLDivElement>(null);
   const rafRef = useRef<number | null>(null);
   const pendingPos = useRef<{ x: number; y: number } | null>(null);
@@ -353,8 +357,11 @@ export function Window({
         )}
 
         {w.type === 'drawing' && !isEditing && <DrawingPad />}
-        {w.type === 'chat' && !isEditing && <ChatBox />}
+        {w.type === 'chat' && !isEditing && <ChatBox onRequestLogin={() => setShowLogin(true)} />}
         {w.type === 'visits' && !isEditing && <VisitCounter />}
+        {w.type === 'guestbook' && !isEditing && <Guestbook />}
+        {w.type === 'sharedphotos' && !isEditing && <SharedPhotos />}
+        {showLogin && <LoginDialog onClose={() => setShowLogin(false)} />}
 
         {/* Resize Handle */}
         <div

@@ -1,18 +1,19 @@
 import { useEffect, useRef, useState } from "react";
-import { fetchChat, postChat, type ChatMessage } from "../lib/api";
+import { fetchChat, postChat, clearChat, type ChatMessage } from "../lib/api";
+import { useAuth } from "../lib/auth-store";
 
-export function ChatBox() {
+interface Props { onRequestLogin?: () => void; }
+
+export function ChatBox({ onRequestLogin }: Props) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [text, setText] = useState("");
-  const [author, setAuthor] = useState(() => localStorage.getItem("pd-chat-name") || "anon");
   const [sending, setSending] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const user = useAuth((s) => s.user);
 
   async function refresh() {
-    try {
-      const m = await fetchChat();
-      setMessages(m);
-    } catch { /* ignore */ }
+    try { setMessages(await fetchChat()); } catch {}
   }
 
   useEffect(() => {
@@ -25,20 +26,23 @@ export function ChatBox() {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight });
   }, [messages.length]);
 
-  useEffect(() => {
-    localStorage.setItem("pd-chat-name", author);
-  }, [author]);
-
   async function send() {
     const body = text.trim();
     if (!body || sending) return;
-    setSending(true);
+    if (!user) { onRequestLogin?.(); return; }
+    setSending(true); setErr(null);
     try {
-      await postChat(body, author);
+      await postChat(body);
       setText("");
       await refresh();
-    } catch { /* ignore */ }
-    finally { setSending(false); }
+    } catch (e: any) {
+      setErr(e?.message || "Failed");
+    } finally { setSending(false); }
+  }
+
+  async function clearAll() {
+    if (!confirm("Clear ALL chat messages? This cannot be undone.")) return;
+    try { await clearChat(); await refresh(); } catch {}
   }
 
   return (
@@ -49,31 +53,38 @@ export function ChatBox() {
         ) : (
           messages.map((m) => (
             <div key={m.id} className="mb-0.5 break-words">
-              <span className="font-bold">{m.author}:</span> {m.body}
+              <span className={`font-bold ${m.author === "Max8abug" ? "text-red-700" : ""}`}>{m.author}:</span> {m.body}
             </div>
           ))
         )}
       </div>
-      <input
-        type="text"
-        className="win98-inset px-1 mt-1 shrink-0"
-        placeholder="your name"
-        value={author}
-        onChange={(e) => setAuthor(e.target.value)}
-      />
-      <div className="flex gap-1 mt-1 shrink-0">
-        <input
-          type="text"
-          className="win98-inset px-1 flex-1"
-          placeholder="Type a message..."
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-          onKeyDown={(e) => { if (e.key === "Enter") void send(); }}
-        />
-        <button className="win98-button px-3" disabled={sending} onClick={send}>
-          Send
+      {err && <div className="text-red-700 text-[11px] mt-0.5">{err}</div>}
+      {user ? (
+        <>
+          <div className="flex gap-1 mt-1 shrink-0">
+            <input
+              type="text"
+              className="win98-inset px-1 flex-1"
+              placeholder={`Message as ${user.username}...`}
+              value={text}
+              onChange={(e) => setText(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter") void send(); }}
+            />
+            <button className="win98-button px-3" disabled={sending} onClick={send}>
+              Send
+            </button>
+          </div>
+          {user.isAdmin && (
+            <button className="win98-button px-2 mt-1 self-start text-red-700" onClick={clearAll}>
+              Clear All Messages (admin)
+            </button>
+          )}
+        </>
+      ) : (
+        <button className="win98-button px-2 py-1 mt-1 shrink-0" onClick={onRequestLogin}>
+          Log in to chat
         </button>
-      </div>
+      )}
     </div>
   );
 }
