@@ -1,25 +1,23 @@
-import React, { useRef, useState } from 'react';
+import React, { useRef, useState, useCallback } from 'react';
 import { useDesktopStore, WindowData } from '../store';
-import { motion } from 'framer-motion';
 import { useLocation } from 'wouter';
 import { X, Square, Minus } from 'lucide-react';
 
-export function Window({ 
-  window: w, 
-  page, 
-  boundsRef 
-}: { 
-  window: WindowData; 
-  page: string; 
+export function Window({
+  window: w,
+  page,
+  boundsRef,
+}: {
+  window: WindowData;
+  page: string;
   boundsRef: React.RefObject<HTMLDivElement>;
 }) {
   const { updateWindow, removeWindow, bringToFront, isStringMode, stringStartId, setStringStart, addString } = useDesktopStore();
   const [, setLocation] = useLocation();
   const [isEditing, setIsEditing] = useState(false);
-
-  const handlePointerDown = () => {
-    bringToFront(page, w.id);
-  };
+  const elRef = useRef<HTMLDivElement>(null);
+  const rafRef = useRef<number | null>(null);
+  const pendingPos = useRef<{ x: number; y: number } | null>(null);
 
   const handleWindowClick = () => {
     if (isStringMode) {
@@ -31,64 +29,145 @@ export function Window({
     }
   };
 
-  const handleDragEnd = (e: any, info: any) => {
-    updateWindow(page, w.id, { x: w.x + info.offset.x, y: w.y + info.offset.y });
+  const flushPos = useCallback(() => {
+    rafRef.current = null;
+    if (pendingPos.current) {
+      updateWindow(page, w.id, pendingPos.current);
+      pendingPos.current = null;
+    }
+  }, [updateWindow, page, w.id]);
+
+  const handleTitleBarPointerDown = (e: React.PointerEvent) => {
+    if (isStringMode || isEditing) return;
+    if ((e.target as HTMLElement).closest('button')) return;
+    e.preventDefault();
+    bringToFront(page, w.id);
+
+    const startPointerX = e.clientX;
+    const startPointerY = e.clientY;
+    const startX = w.x;
+    const startY = w.y;
+    const bounds = boundsRef.current?.getBoundingClientRect();
+
+    const target = e.currentTarget as HTMLElement;
+    target.setPointerCapture(e.pointerId);
+
+    const onMove = (moveEvent: PointerEvent) => {
+      let nx = startX + (moveEvent.clientX - startPointerX);
+      let ny = startY + (moveEvent.clientY - startPointerY);
+      if (bounds) {
+        nx = Math.max(0, Math.min(nx, bounds.width - w.width));
+        ny = Math.max(0, Math.min(ny, bounds.height - w.height));
+      } else {
+        nx = Math.max(0, nx);
+        ny = Math.max(0, ny);
+      }
+
+      // Apply transform immediately for buttery feel
+      if (elRef.current) {
+        elRef.current.style.transform = `translate3d(${nx}px, ${ny}px, 0)`;
+      }
+
+      // Throttle store updates so red strings track without React thrash
+      pendingPos.current = { x: nx, y: ny };
+      if (rafRef.current === null) {
+        rafRef.current = requestAnimationFrame(flushPos);
+      }
+    };
+
+    const onUp = (upEvent: PointerEvent) => {
+      target.removeEventListener('pointermove', onMove);
+      target.removeEventListener('pointerup', onUp);
+      target.removeEventListener('pointercancel', onUp);
+      try { target.releasePointerCapture(upEvent.pointerId); } catch {}
+      if (rafRef.current !== null) {
+        cancelAnimationFrame(rafRef.current);
+        rafRef.current = null;
+      }
+      if (pendingPos.current) {
+        updateWindow(page, w.id, pendingPos.current);
+        pendingPos.current = null;
+      }
+    };
+
+    target.addEventListener('pointermove', onMove);
+    target.addEventListener('pointerup', onUp);
+    target.addEventListener('pointercancel', onUp);
   };
 
   const handleResize = (e: React.PointerEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    
     bringToFront(page, w.id);
 
     const startX = e.clientX;
     const startY = e.clientY;
     const startW = w.width;
     const startH = w.height;
+    const target = e.currentTarget as HTMLElement;
+    target.setPointerCapture(e.pointerId);
+
+    let pendingSize: { width: number; height: number } | null = null;
+    let raf: number | null = null;
+    const flush = () => {
+      raf = null;
+      if (pendingSize && elRef.current) {
+        elRef.current.style.width = `${pendingSize.width}px`;
+        elRef.current.style.height = `${pendingSize.height}px`;
+      }
+    };
 
     const onPointerMove = (moveEvent: PointerEvent) => {
       const newW = Math.max(200, startW + (moveEvent.clientX - startX));
       const newH = Math.max(150, startH + (moveEvent.clientY - startY));
-      updateWindow(page, w.id, { width: newW, height: newH });
+      pendingSize = { width: newW, height: newH };
+      if (raf === null) raf = requestAnimationFrame(flush);
     };
 
-    const onPointerUp = () => {
-      document.removeEventListener('pointermove', onPointerMove);
-      document.removeEventListener('pointerup', onPointerUp);
+    const onPointerUp = (upEvent: PointerEvent) => {
+      target.removeEventListener('pointermove', onPointerMove);
+      target.removeEventListener('pointerup', onPointerUp);
+      target.removeEventListener('pointercancel', onPointerUp);
+      try { target.releasePointerCapture(upEvent.pointerId); } catch {}
+      if (raf !== null) { cancelAnimationFrame(raf); raf = null; }
+      if (pendingSize) {
+        updateWindow(page, w.id, pendingSize);
+        pendingSize = null;
+      }
     };
 
-    document.addEventListener('pointermove', onPointerMove);
-    document.addEventListener('pointerup', onPointerUp);
+    target.addEventListener('pointermove', onPointerMove);
+    target.addEventListener('pointerup', onPointerUp);
+    target.addEventListener('pointercancel', onPointerUp);
   };
 
   const isActive = useDesktopStore(state => state.maxZIndex === w.zIndex);
 
   return (
-    <motion.div
-      drag={!isStringMode && !isEditing}
-      dragConstraints={boundsRef}
-      dragMomentum={false}
-      dragElastic={0}
-      onDragEnd={handleDragEnd}
-      onPointerDown={handlePointerDown}
+    <div
+      ref={elRef}
+      onPointerDown={() => bringToFront(page, w.id)}
       onClick={handleWindowClick}
-      initial={false}
-      animate={{ x: w.x, y: w.y }}
-      transition={{ type: "tween", duration: 0 }}
       className={`absolute win98-window flex flex-col ${isStringMode ? 'cursor-crosshair' : ''} ${isStringMode && stringStartId === w.id ? 'ring-4 ring-red-500' : ''}`}
       style={{
         width: w.width,
         height: w.height,
         zIndex: w.zIndex,
+        top: 0,
+        left: 0,
+        transform: `translate3d(${w.x}px, ${w.y}px, 0)`,
+        willChange: 'transform',
+        touchAction: 'none',
       }}
     >
       {/* Title bar */}
-      <div 
+      <div
         className={`win98-titlebar ${isActive ? '' : 'inactive'} shrink-0 cursor-move select-none`}
-        onDoubleClick={() => { /* maybe maximize */ }}
+        onPointerDown={handleTitleBarPointerDown}
+        style={{ touchAction: 'none' }}
       >
         <div className="flex items-center gap-2 overflow-hidden px-1">
-          <div className="w-4 h-4 bg-white/20" /> {/* fake icon */}
+          <div className="w-4 h-4 bg-white/20" />
           <span className="truncate text-sm tracking-wide">{w.title}</span>
         </div>
         <div className="flex items-center gap-1 shrink-0 px-1">
@@ -98,8 +177,8 @@ export function Window({
           <button className="win98-button w-5 h-5 flex items-center justify-center pointer-events-auto" onPointerDown={e => e.stopPropagation()}>
             <Square className="w-3 h-3" strokeWidth={3} />
           </button>
-          <button 
-            className="win98-button w-5 h-5 flex items-center justify-center pointer-events-auto" 
+          <button
+            className="win98-button w-5 h-5 flex items-center justify-center pointer-events-auto"
             onPointerDown={e => { e.stopPropagation(); removeWindow(page, w.id); }}
           >
             <X className="w-3 h-3" strokeWidth={3} />
@@ -108,7 +187,7 @@ export function Window({
       </div>
 
       {/* Content Area */}
-      <div 
+      <div
         className="flex-1 overflow-auto win98-inset bg-white p-2 text-black pointer-events-auto flex flex-col relative group"
         onDoubleClick={() => setIsEditing(true)}
       >
@@ -175,19 +254,19 @@ export function Window({
         {w.type === 'gallery' && !isEditing && (
           <div className="grid grid-cols-3 gap-2 overflow-auto auto-rows-max h-full">
             {(w.images || []).map((img, i) => (
-              <div 
-                key={i} 
+              <div
+                key={i}
                 className="aspect-square bg-gray-200 border border-gray-400 cursor-pointer hover:border-blue-500 overflow-hidden"
                 onClick={() => {
                   const store = useDesktopStore.getState();
                   store.addWindow(page, {
                     type: 'photo',
-                    title: `Photo ${i+1}`,
+                    title: `Photo ${i + 1}`,
                     imageUrl: img,
                     x: w.x + 50 + (i * 20),
                     y: w.y + 50 + (i * 20),
                     width: 400,
-                    height: 450
+                    height: 450,
                   });
                 }}
               >
@@ -199,7 +278,7 @@ export function Window({
 
         {w.type === 'link' && !isEditing && (
           <div className="w-full h-full flex flex-col items-center justify-center p-4">
-            <button 
+            <button
               className="win98-button text-lg px-8 py-4 bg-gray-300 w-full"
               onClick={() => {
                 if (w.linkTarget) {
@@ -214,9 +293,10 @@ export function Window({
         )}
 
         {/* Resize Handle */}
-        <div 
+        <div
           className="absolute bottom-0 right-0 w-4 h-4 cursor-se-resize flex items-end justify-end p-0.5 opacity-50 group-hover:opacity-100"
           onPointerDown={handleResize}
+          style={{ touchAction: 'none' }}
         >
           <svg width="10" height="10" viewBox="0 0 10 10">
             <path d="M 10 0 L 10 10 L 0 10 Z" fill="transparent" />
@@ -224,6 +304,6 @@ export function Window({
           </svg>
         </div>
       </div>
-    </motion.div>
+    </div>
   );
 }
