@@ -1,0 +1,62 @@
+uploads = []
+outputs = []
+
+[[generated]]
+id = "TQvennNPqJdbqNWTa02i5"
+uri = "file://artifacts/photo-desktop/src/assets/street-1.png"
+type = "image"
+title = "rainy neon street"
+
+[[generated]]
+id = "iFBcTNzWnCAKCn5JrAWIc"
+uri = "file://artifacts/photo-desktop/src/assets/street-2.png"
+type = "image"
+title = "BW bustling crosswalk"
+
+[[generated]]
+id = "kboi-4IodnJDkM4MA4nKi"
+uri = "file://artifacts/photo-desktop/src/assets/portrait-1.png"
+type = "image"
+title = "dramatic portrait older man"
+
+[[generated]]
+id = "FcT6Gf9NyrgeYHTpYgFFp"
+uri = "file://artifacts/photo-desktop/src/assets/portrait-2.png"
+type = "image"
+title = "ethereal portrait forest"
+
+[[generated]]
+id = "pPFhA7IyMec6nBhv1r6S9"
+uri = "file://artifacts/photo-desktop/src/assets/arch-1.png"
+type = "image"
+title = "brutalist architecture"
+
+[[generated]]
+id = "u1PkVliQWzwmzXwhtJrFI"
+uri = "file://artifacts/photo-desktop/src/assets/abstract-1.png"
+type = "image"
+title = "abstract peeling paint"
+
+[[generated]]
+id = "Vyp5WePK7v4qBWjVpFmQg"
+uri = "file://artifacts/photo-desktop/src/assets/nature-1.png"
+type = "image"
+title = "foggy pine forest"
+
+[[generated]]
+id = "z-bgMQh8q7fHCMs5RyhjC"
+uri = "file://artifacts/photo-desktop/src/assets/nature-2.png"
+type = "image"
+title = "desert dunes lone figure"
+
+[[generated]]
+id = "zvdOySeDruWqBJuA-2XoF"
+uri = "file://artifacts/photo-desktop/src/assets/street-3.png"
+type = "image"
+title = "night market vendor"
+
+[[generated]]
+id = "2gZTXsbWY-OIW7lvSf8FR"
+uri = "file://artifacts/photo-desktop/src/assets/nature-3.png"
+type = "image"
+title = "macro dew drops"
