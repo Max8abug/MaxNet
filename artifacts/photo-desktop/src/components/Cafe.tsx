@@ -130,36 +130,45 @@ function Background({ theme }: { theme: string }) {
   return null;
 }
 
-// In-game character cell is 32×50. The editor scales it up by EDITOR_SCALE for
-// drawing, then saves the canvas at native size (CELL_W*SCALE × CELL_H*SCALE).
-// In-game we render the saved image at exactly width:CELL_W, height:CELL_H,
-// left:0, top:0 — so the pixel the user drew on lands exactly where they drew.
+// In-game character cell is 32×50 for the BODY silhouette, plus a 20px
+// HEAD_PAD area above the head where the user can draw hats / horns / antennae
+// / hair tufts. The whole accessory drawing area is therefore 32×70.
+//
+// CharacterCell renders into a 32×70 box: the body silhouette is anchored at
+// the BOTTOM (so the feet still sit at the bottom of the wrapper, which is
+// what the cafe positions against). The 20px above is reserved for headwear.
+//
+// Editor saves the PNG at ACCESSORY_W*SCALE × ACCESSORY_H*SCALE; in-game we
+// render it back at native ACCESSORY_W × ACCESSORY_H — so a pixel drawn in the
+// editor lands at the exact same spot on the avatar.
 const CELL_W = 32;
 const CELL_H = 50;
+const HEAD_PAD = 20;
+const ACCESSORY_W = CELL_W;
+const ACCESSORY_H = CELL_H + HEAD_PAD; // 70
 const EDITOR_SCALE = 9;
-const EDITOR_CANVAS_W = CELL_W * EDITOR_SCALE; // 288
-const EDITOR_CANVAS_H = CELL_H * EDITOR_SCALE; // 450
+const EDITOR_CANVAS_W = ACCESSORY_W * EDITOR_SCALE; // 288
+const EDITOR_CANVAS_H = ACCESSORY_H * EDITOR_SCALE; // 630
 
 function CharacterCell({ color, hat, accessoryUrl }: { color: string; hat: string; accessoryUrl: string | null }) {
   // The single source of truth for what a character looks like. Used by the
   // in-game cafe (scale 1) and by the editor preview (wrapped in a CSS
-  // transform: scale(EDITOR_SCALE)). Because the editor draws a transparent
-  // overlay at the same scaled-up dimensions, the saved PNG can be applied
-  // back here as `accessoryUrl` with the same width/height — no offset math.
+  // transform: scale(EDITOR_SCALE)). The body silhouette lives in the bottom
+  // CELL_H of the box; the top HEAD_PAD is reserved for headwear drawings.
   return (
     <>
-      <div className="absolute" style={{ left: 4, top: 0, width: 24, height: 28, background: color || "#ffd699", borderRadius: "50% 50% 30% 30%" }} />
-      <div className="absolute" style={{ left: 4, top: 28, width: 24, height: 14, background: "#3060a0" }} />
-      {hat === "cap" && <div className="absolute -top-2 left-0 right-0 text-center leading-none">🧢</div>}
-      {hat === "top" && <div className="absolute -top-3 left-0 right-0 text-center leading-none">🎩</div>}
-      {hat === "party" && <div className="absolute -top-3 left-0 right-0 text-center leading-none">🎉</div>}
-      {hat === "crown" && <div className="absolute -top-3 left-0 right-0 text-center leading-none">👑</div>}
+      <div className="absolute" style={{ left: 4, top: HEAD_PAD + 0,  width: 24, height: 28, background: color || "#ffd699", borderRadius: "50% 50% 30% 30%" }} />
+      <div className="absolute" style={{ left: 4, top: HEAD_PAD + 28, width: 24, height: 14, background: "#3060a0" }} />
+      {hat === "cap"   && <div className="absolute left-0 right-0 text-center leading-none" style={{ top: HEAD_PAD - 8 }}>🧢</div>}
+      {hat === "top"   && <div className="absolute left-0 right-0 text-center leading-none" style={{ top: HEAD_PAD - 12 }}>🎩</div>}
+      {hat === "party" && <div className="absolute left-0 right-0 text-center leading-none" style={{ top: HEAD_PAD - 12 }}>🎉</div>}
+      {hat === "crown" && <div className="absolute left-0 right-0 text-center leading-none" style={{ top: HEAD_PAD - 12 }}>👑</div>}
       {accessoryUrl && (
         <img
           src={accessoryUrl}
           alt=""
           className="absolute pointer-events-none select-none"
-          style={{ left: 0, top: 0, width: CELL_W, height: CELL_H }}
+          style={{ left: 0, top: 0, width: ACCESSORY_W, height: ACCESSORY_H }}
           draggable={false}
         />
       )}
@@ -244,7 +253,7 @@ function CharacterEditor({ initialColor, initialHat, initialAccessory, onSave, o
               <option value="none">none</option><option value="cap">🧢</option><option value="top">🎩</option><option value="party">🎉</option><option value="crown">👑</option>
             </select>
           </div>
-          <div className="text-[10px] text-gray-700">Draw on top of your character — clothes, hair, face. The drawing maps 1:1 onto the in-game character.</div>
+          <div className="text-[10px] text-gray-700">Draw on top of your character — the area <b>above</b> the head is for hats / hair / antennae, the body area is for clothes & face. Maps 1:1 onto the in-game character.</div>
           <div className="flex gap-1 items-center">
             <button className={`win98-button px-2 ${tool === "pen" ? "shadow-[inset_1px_1px_#808080] border-t-black border-l-black border-r-white border-b-white" : ""}`} onClick={() => setTool("pen")}>Pen</button>
             <button className={`win98-button px-2 ${tool === "erase" ? "shadow-[inset_1px_1px_#808080] border-t-black border-l-black border-r-white border-b-white" : ""}`} onClick={() => setTool("erase")}>Eraser</button>
@@ -266,16 +275,22 @@ function CharacterEditor({ initialColor, initialHat, initialAccessory, onSave, o
               <div
                 className="absolute top-0 left-0 pointer-events-none"
                 style={{
-                  width: CELL_W,
-                  height: CELL_H,
+                  width: ACCESSORY_W,
+                  height: ACCESSORY_H,
                   transform: `scale(${EDITOR_SCALE})`,
                   transformOrigin: "top left",
                 }}
               >
-                <div className="relative" style={{ width: CELL_W, height: CELL_H }}>
+                <div className="relative" style={{ width: ACCESSORY_W, height: ACCESSORY_H }}>
                   <CharacterCell color={color} hat={hat} accessoryUrl={null} />
                 </div>
               </div>
+              {/* Faint horizontal guide marking the top of the head — anything
+                  drawn above this line shows up above the in-game character. */}
+              <div
+                className="absolute left-0 right-0 pointer-events-none"
+                style={{ top: HEAD_PAD * EDITOR_SCALE, height: 1, background: "rgba(0,0,0,0.15)" }}
+              />
               <canvas
                 ref={canvasRef}
                 width={EDITOR_CANVAS_W}
@@ -606,7 +621,7 @@ export function Cafe() {
                 <div className="bg-white border border-black px-1 mb-1 max-w-[120px] text-[10px] rounded">{speech.body}</div>
               )}
               <div className="text-white text-[10px] font-bold" style={{ textShadow: "1px 1px 2px black" }}>{p.username}</div>
-              <div className={`relative ${isWalking ? "cafe-walk" : ""}`} style={{ width: CELL_W, height: CELL_H }}>
+              <div className={`relative ${isWalking ? "cafe-walk" : ""}`} style={{ width: ACCESSORY_W, height: ACCESSORY_H }}>
                 <CharacterCell color={av.color} hat={av.hat || "none"} accessoryUrl={av.accessory || null} />
               </div>
             </div>
