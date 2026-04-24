@@ -2,6 +2,7 @@ import { Router, type IRouter } from "express";
 import { db, usersTable, bannedUsersTable, userPagesTable, chatAuditTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { hashPassword, verifyPassword, isAdminUsername, findUserByUsername, requireAdmin } from "../lib/auth";
+import { getClientIp, isIpBanned, recordUserIp } from "../lib/ip-tracking";
 
 const router: IRouter = Router();
 
@@ -37,6 +38,11 @@ router.post("/auth/signup", async (req, res) => {
     res.status(400).json({ error: "Password must be 4-128 chars" });
     return;
   }
+  const ip = getClientIp(req);
+  if (await isIpBanned(ip)) {
+    res.status(403).json({ error: "Your network is banned from creating accounts on this site." });
+    return;
+  }
   const existing = await findUserByUsername(u);
   if (existing) {
     res.status(409).json({ error: "Username taken" });
@@ -51,6 +57,7 @@ router.post("/auth/signup", async (req, res) => {
   req.session.userId = created.id;
   req.session.username = created.username;
   req.session.isAdmin = created.isAdmin;
+  void recordUserIp(created.username, ip);
   res.json({ user: { id: created.id, username: created.username, isAdmin: created.isAdmin } });
 });
 
@@ -60,9 +67,15 @@ router.post("/auth/login", async (req, res) => {
     res.status(400).json({ error: "username and password required" });
     return;
   }
+  const ip = getClientIp(req);
   const user = await findUserByUsername(username.trim());
   if (!user) {
     res.status(401).json({ error: "Invalid credentials" });
+    return;
+  }
+  // The site owner can always log in even if their network was banned by mistake.
+  if (!isAdminUsername(user.username) && await isIpBanned(ip)) {
+    res.status(403).json({ error: "Your network is banned from this site." });
     return;
   }
   const ok = await verifyPassword(password, user.passwordHash);
@@ -78,6 +91,7 @@ router.post("/auth/login", async (req, res) => {
   req.session.userId = user.id;
   req.session.username = user.username;
   req.session.isAdmin = user.isAdmin;
+  void recordUserIp(user.username, ip);
   res.json({ user: { id: user.id, username: user.username, isAdmin: user.isAdmin } });
 });
 

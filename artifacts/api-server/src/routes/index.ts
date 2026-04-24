@@ -14,6 +14,7 @@ import userpagesRouter from "./userpages";
 import cafeRouter from "./cafe";
 import chessRouter from "./chess";
 import siteSettingsRouter from "./site-settings";
+import ipAdminRouter from "./ip-admin";
 
 const router: IRouter = Router();
 
@@ -32,5 +33,6 @@ router.use(userpagesRouter);
 router.use(cafeRouter);
 router.use(chessRouter);
 router.use(siteSettingsRouter);
+router.use(ipAdminRouter);
 
 export default router;

@@ -125,6 +125,33 @@ export async function updateSiteSettings(data: Partial<SiteSettings>): Promise<S
   }));
 }
 
+export interface IpRecord {
+  ip: string;
+  firstSeen: string;
+  lastSeen: string;
+  hits: number;
+  banned: boolean;
+  alts: { username: string; firstSeen: string; lastSeen: string; hits: number }[];
+}
+export interface UserIpReport { username: string; ips: IpRecord[]; }
+export async function fetchUserIps(username: string): Promise<UserIpReport> {
+  return jsonOrThrow(await fetch(`${BASE}/users/${encodeURIComponent(username)}/ips`, opts));
+}
+export interface IpBan { id: number; ip: string; bannedBy: string; reason: string; createdAt: string; }
+export async function fetchIpBans(): Promise<IpBan[]> {
+  return jsonOrThrow(await fetch(`${BASE}/ip-bans`, opts));
+}
+export async function addIpBan(ip: string, reason?: string): Promise<void> {
+  await jsonOrThrow(await fetch(`${BASE}/ip-bans`, {
+    ...opts, method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ ip, reason: reason || "" }),
+  }));
+}
+export async function removeIpBan(ip: string): Promise<void> {
+  await jsonOrThrow(await fetch(`${BASE}/ip-bans/${encodeURIComponent(ip)}`, { ...opts, method: "DELETE" }));
+}
+
 export async function adminDeleteUser(username: string, reason?: string): Promise<void> {
   await jsonOrThrow(await fetch(`${BASE}/users/${encodeURIComponent(username)}`, {
     ...opts, method: "DELETE",

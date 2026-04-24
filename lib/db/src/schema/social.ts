@@ -135,6 +135,32 @@ export const bannedUsersTable = pgTable("banned_users", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
+// Track which IPs each registered username has logged in from. Used by the admin
+// "scan IPs" tool to detect alts (multiple usernames coming from the same address).
+export const userIpsTable = pgTable("user_ips", {
+  id: serial("id").primaryKey(),
+  username: text("username").notNull(),
+  ip: text("ip").notNull(),
+  firstSeen: timestamp("first_seen").defaultNow().notNull(),
+  lastSeen: timestamp("last_seen").defaultNow().notNull(),
+  hits: integer("hits").notNull().default(1),
+}, (t) => ({
+  byUser: index("user_ips_username_idx").on(t.username),
+  byIp: index("user_ips_ip_idx").on(t.ip),
+}));
+
+// IP-level bans. Any request coming from one of these IPs is blocked from
+// signing up or logging in (existing sessions on those IPs still work until
+// they log out — a soft restriction so we don't accidentally lock everyone out
+// behind a shared NAT mid-session).
+export const ipBansTable = pgTable("ip_bans", {
+  id: serial("id").primaryKey(),
+  ip: text("ip").notNull().unique(),
+  bannedBy: text("banned_by").notNull().default("admin"),
+  reason: text("reason").notNull().default(""),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
 // Site-wide settings (singleton row, id=1) — owner-configurable branding such as the start-menu logo.
 export const siteSettingsTable = pgTable("site_settings", {
   id: serial("id").primaryKey(),

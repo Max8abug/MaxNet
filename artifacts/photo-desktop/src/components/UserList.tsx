@@ -21,6 +21,9 @@ export function UserList({ page }: { page: string }) {
   function openPage(u: string) {
     addWindow(page, { type: "userpage", title: `${u}'s page`, username: u, width: 480, height: 400 });
   }
+  function openIpLookup(u: string) {
+    addWindow(page, { type: "iplookup", title: `IP scan: ${u}`, username: u, width: 520, height: 440 });
+  }
 
   async function onBan(username: string) {
     const reason = prompt(`Ban ${username}? Optional reason:`, "");
@@ -73,6 +76,12 @@ export function UserList({ page }: { page: string }) {
             </button>
             {isAdmin && !isOwner && me?.username !== u.username && (
               <span className="flex gap-0.5 shrink-0 opacity-60 group-hover:opacity-100">
+                <button
+                  className="win98-button px-1 text-[10px]"
+                  disabled={isBusy}
+                  onClick={() => openIpLookup(u.username)}
+                  title="See this user's IP history and any alt accounts"
+                >scan ips</button>
                 <button
                   className="win98-button px-1 text-[10px]"
                   disabled={isBusy}
