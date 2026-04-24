@@ -129,6 +129,43 @@ function Background({ theme }: { theme: string }) {
   return null;
 }
 
+// In-game character cell is 32×50. The editor scales it up by EDITOR_SCALE for
+// drawing, then saves the canvas at native size (CELL_W*SCALE × CELL_H*SCALE).
+// In-game we render the saved image at exactly width:CELL_W, height:CELL_H,
+// left:0, top:0 — so the pixel the user drew on lands exactly where they drew.
+const CELL_W = 32;
+const CELL_H = 50;
+const EDITOR_SCALE = 9;
+const EDITOR_CANVAS_W = CELL_W * EDITOR_SCALE; // 288
+const EDITOR_CANVAS_H = CELL_H * EDITOR_SCALE; // 450
+
+function CharacterCell({ color, hat, accessoryUrl }: { color: string; hat: string; accessoryUrl: string | null }) {
+  // The single source of truth for what a character looks like. Used by the
+  // in-game cafe (scale 1) and by the editor preview (wrapped in a CSS
+  // transform: scale(EDITOR_SCALE)). Because the editor draws a transparent
+  // overlay at the same scaled-up dimensions, the saved PNG can be applied
+  // back here as `accessoryUrl` with the same width/height — no offset math.
+  return (
+    <>
+      <div className="absolute" style={{ left: 4, top: 0, width: 24, height: 28, background: color || "#ffd699", borderRadius: "50% 50% 30% 30%" }} />
+      <div className="absolute" style={{ left: 4, top: 28, width: 24, height: 14, background: "#3060a0" }} />
+      {hat === "cap" && <div className="absolute -top-2 left-0 right-0 text-center leading-none">🧢</div>}
+      {hat === "top" && <div className="absolute -top-3 left-0 right-0 text-center leading-none">🎩</div>}
+      {hat === "party" && <div className="absolute -top-3 left-0 right-0 text-center leading-none">🎉</div>}
+      {hat === "crown" && <div className="absolute -top-3 left-0 right-0 text-center leading-none">👑</div>}
+      {accessoryUrl && (
+        <img
+          src={accessoryUrl}
+          alt=""
+          className="absolute pointer-events-none select-none"
+          style={{ left: 0, top: 0, width: CELL_W, height: CELL_H }}
+          draggable={false}
+        />
+      )}
+    </>
+  );
+}
+
 function CharacterEditor({ initialColor, initialHat, initialAccessory, onSave, onCancel }: {
   initialColor: string;
   initialHat: string;
@@ -141,7 +178,7 @@ function CharacterEditor({ initialColor, initialHat, initialAccessory, onSave, o
   const [hat, setHat] = useState(initialHat);
   const [tool, setTool] = useState<"pen" | "erase">("pen");
   const [strokeColor, setStrokeColor] = useState("#ff3030");
-  const [strokeWidth, setStrokeWidth] = useState(3);
+  const [strokeWidth, setStrokeWidth] = useState(8);
   const drawing = useRef(false);
   const last = useRef<{ x: number; y: number } | null>(null);
 
@@ -183,7 +220,6 @@ function CharacterEditor({ initialColor, initialHat, initialAccessory, onSave, o
 
   function save() {
     const c = canvasRef.current!;
-    // Detect if canvas has any content
     const ctx = c.getContext("2d")!;
     const data = ctx.getImageData(0, 0, c.width, c.height).data;
     let hasInk = false;
@@ -207,50 +243,44 @@ function CharacterEditor({ initialColor, initialHat, initialAccessory, onSave, o
               <option value="none">none</option><option value="cap">🧢</option><option value="top">🎩</option><option value="party">🎉</option><option value="crown">👑</option>
             </select>
           </div>
-          <div className="text-[10px] text-gray-700">Draw clothes, hair, accessories on top of and around your character. Save when done.</div>
+          <div className="text-[10px] text-gray-700">Draw on top of your character — clothes, hair, face. The drawing maps 1:1 onto the in-game character.</div>
           <div className="flex gap-1 items-center">
             <button className={`win98-button px-2 ${tool === "pen" ? "shadow-[inset_1px_1px_#808080] border-t-black border-l-black border-r-white border-b-white" : ""}`} onClick={() => setTool("pen")}>Pen</button>
             <button className={`win98-button px-2 ${tool === "erase" ? "shadow-[inset_1px_1px_#808080] border-t-black border-l-black border-r-white border-b-white" : ""}`} onClick={() => setTool("erase")}>Eraser</button>
             <input type="color" value={strokeColor} onChange={(e) => setStrokeColor(e.target.value)} />
-            <input type="range" min={1} max={20} value={strokeWidth} onChange={(e) => setStrokeWidth(Number(e.target.value))} className="flex-1" />
+            <input type="range" min={1} max={40} value={strokeWidth} onChange={(e) => setStrokeWidth(Number(e.target.value))} className="flex-1" />
             <button className="win98-button px-2" onClick={clearAll}>Clear</button>
           </div>
           {/*
-            Outer wrapper holds the win98 inset border. The inner 320×320 box has
-            no border so the absolute children (preview + drawing canvas) share
-            the exact same coordinate system — otherwise the inset's 2px border
-            shifts the canvas off the body sketch and pen strokes land in the
-            wrong place.
-
-            Character preview is positioned to match how the in-game cafe maps
-            the 64x64 accessory image onto the 32x50 character cell at offset
-            (-16, -16). Scale factor is 320/64 = 5 game→canvas pixels.
-            In-game body: cell (4..28, 0..28)  → canvas (100..220, 80..220)
-            In-game legs: cell (4..28, 28..42) → canvas (100..220, 220..290)
+            The editor preview and drawing canvas BOTH cover exactly the
+            character cell area at EDITOR_SCALE×. The character preview is the
+            same JSX used in-game, wrapped in a CSS scale transform so its body
+            and legs occupy the IDENTICAL pixels in the editor that the saved
+            drawing will occupy in-game (when rendered back at scale 1).
+            Result: where the user draws is exactly where it appears on the
+            in-game avatar — no offsets, no margins, no rounding error.
           */}
           <div className="win98-inset bg-white self-center" style={{ padding: 0 }}>
-            <div className="relative" style={{ width: 320, height: 320, boxSizing: "content-box" }}>
-              <div className="absolute inset-0 pointer-events-none">
-                {/* body */}
-                <div style={{ position: "absolute", left: 100, top: 80, width: 120, height: 140, background: color, borderRadius: "50% 50% 30% 30%" }} />
-                {/* legs */}
-                <div style={{ position: "absolute", left: 100, top: 220, width: 120, height: 70, background: "#3060a0" }} />
-                {/* hat sits just above the body */}
-                {hat !== "none" && (
-                  <div className="absolute text-center text-4xl leading-none" style={{ left: 100, top: 40, width: 120, height: 40 }}>
-                    {hat === "cap" && "🧢"}
-                    {hat === "top" && "🎩"}
-                    {hat === "party" && "🎉"}
-                    {hat === "crown" && "👑"}
-                  </div>
-                )}
+            <div className="relative" style={{ width: EDITOR_CANVAS_W, height: EDITOR_CANVAS_H, boxSizing: "content-box" }}>
+              <div
+                className="absolute top-0 left-0 pointer-events-none"
+                style={{
+                  width: CELL_W,
+                  height: CELL_H,
+                  transform: `scale(${EDITOR_SCALE})`,
+                  transformOrigin: "top left",
+                }}
+              >
+                <div className="relative" style={{ width: CELL_W, height: CELL_H }}>
+                  <CharacterCell color={color} hat={hat} accessoryUrl={null} />
+                </div>
               </div>
               <canvas
                 ref={canvasRef}
-                width={320}
-                height={320}
+                width={EDITOR_CANVAS_W}
+                height={EDITOR_CANVAS_H}
                 className="absolute inset-0 touch-none"
-                style={{ width: 320, height: 320, touchAction: "none", cursor: "crosshair" }}
+                style={{ width: EDITOR_CANVAS_W, height: EDITOR_CANVAS_H, touchAction: "none", cursor: "crosshair" }}
                 onPointerDown={pd}
                 onPointerMove={pm}
                 onPointerUp={pu}
@@ -393,16 +423,8 @@ export function Cafe() {
                 <div className="bg-white border border-black px-1 mb-1 max-w-[120px] text-[10px] rounded">{speech.body}</div>
               )}
               <div className="text-white text-[10px] font-bold" style={{ textShadow: "1px 1px 2px black" }}>{p.username}</div>
-              <div className="relative" style={{ width: 32, height: 50 }}>
-                <div className="absolute" style={{ left: 4, top: 0, width: 24, height: 28, background: av.color || "#ffd699", borderRadius: "50% 50% 30% 30%" }} />
-                <div className="absolute" style={{ left: 4, top: 28, width: 24, height: 14, background: "#3060a0" }} />
-                {av.hat === "cap" && <div className="absolute -top-2 left-0 right-0 text-center">🧢</div>}
-                {av.hat === "top" && <div className="absolute -top-3 left-0 right-0 text-center">🎩</div>}
-                {av.hat === "party" && <div className="absolute -top-3 left-0 right-0 text-center">🎉</div>}
-                {av.hat === "crown" && <div className="absolute -top-3 left-0 right-0 text-center">👑</div>}
-                {av.accessory && (
-                  <img src={av.accessory} alt="" className="absolute" style={{ left: -16, top: -16, width: 64, height: 64, pointerEvents: "none", imageRendering: "pixelated" }} />
-                )}
+              <div className="relative" style={{ width: CELL_W, height: CELL_H }}>
+                <CharacterCell color={av.color} hat={av.hat || "none"} accessoryUrl={av.accessory || null} />
               </div>
             </div>
           );
