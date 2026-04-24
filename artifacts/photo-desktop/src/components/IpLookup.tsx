@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { addIpBan, fetchIpBans, fetchUserIps, removeIpBan, type IpBan, type UserIpReport } from "../lib/api";
+import { addIpBan, banAccountAndAllIps, fetchIpBans, fetchUserIps, removeIpBan, type IpBan, type UserIpReport } from "../lib/api";
 import { useAuth } from "../lib/auth-store";
 
 function fmt(d: string) {
@@ -45,6 +45,23 @@ export function IpLookup({ username }: { username: string }) {
     finally { setBusy(null); }
   }
 
+  async function nukeAccount() {
+    const ipCount = report?.ips.length ?? 0;
+    if (!confirm(
+      `Ban the account "${username}" and ban all ${ipCount} IP(s) we've seen them on?\n\n` +
+      `Anyone signing in from those IPs (including alts) will be blocked.`
+    )) return;
+    const reason = prompt("Optional reason (shown in the audit log):", "") ?? "";
+    setBusy("__nuke__");
+    try {
+      const result = await banAccountAndAllIps(username, reason);
+      await load();
+      alert(`Banned account "${result.username}" and ${result.bannedIps} of ${result.totalIps} IP(s).`);
+    }
+    catch (e: any) { alert(e?.message || "Failed to ban account + IPs"); }
+    finally { setBusy(null); }
+  }
+
   return (
     <div className="w-full h-full flex flex-col text-xs">
       <div className="flex items-center gap-1 p-1 bg-[#c0c0c0] border-b border-[#808080]">
@@ -56,6 +73,14 @@ export function IpLookup({ username }: { username: string }) {
           className={`win98-button px-2 py-0.5 ${view === "all" ? "border-t-black border-l-black border-r-white border-b-white shadow-[inset_1px_1px_#808080]" : ""}`}
           onClick={() => setView("all")}
         >All IP Bans ({bans.length})</button>
+        {view === "user" && (
+          <button
+            className="win98-button px-2 py-0.5 text-red-700 font-bold"
+            disabled={busy === "__nuke__"}
+            title={`Ban ${username} and every IP we've ever seen them on`}
+            onClick={nukeAccount}
+          >{busy === "__nuke__" ? "banning…" : "ban account + all IPs"}</button>
+        )}
         <button className="win98-button px-2 py-0.5 ml-auto" onClick={load}>refresh</button>
       </div>
 

@@ -173,6 +173,14 @@ export async function addIpBan(ip: string, reason?: string): Promise<void> {
 export async function removeIpBan(ip: string): Promise<void> {
   await jsonOrThrow(await fetch(`${BASE}/ip-bans/${encodeURIComponent(ip)}`, { ...opts, method: "DELETE" }));
 }
+export interface BanEverythingResult { ok: true; username: string; bannedIps: number; totalIps: number; }
+export async function banAccountAndAllIps(username: string, reason?: string): Promise<BanEverythingResult> {
+  return jsonOrThrow(await fetch(`${BASE}/users/${encodeURIComponent(username)}/ban-everything`, {
+    ...opts, method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ reason: reason || "" }),
+  }));
+}
 
 export async function adminDeleteUser(username: string, reason?: string): Promise<void> {
   await jsonOrThrow(await fetch(`${BASE}/users/${encodeURIComponent(username)}`, {
