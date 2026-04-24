@@ -361,12 +361,20 @@ export async function deleteTrack(id: number): Promise<void> {
 }
 
 // ----- User pages -----
-export async function fetchUserPage(username: string): Promise<{ dataUrl: string; updatedAt: string } | null> {
+export type UserPageElement =
+  | { type: "text"; x: number; y: number; w: number; h: number; content: string; color: string; size: number }
+  | { type: "image"; x: number; y: number; w: number; h: number; url: string }
+  | { type: "embed"; x: number; y: number; w: number; h: number; url: string };
+export interface UserPage { dataUrl: string; elements?: UserPageElement[]; updatedAt: string; }
+export async function fetchUserPage(username: string): Promise<UserPage | null> {
   const j = await jsonOrThrow(await fetch(`${BASE}/userpages/${encodeURIComponent(username)}`, opts));
   return j.page;
 }
-export async function saveUserPage(dataUrl: string): Promise<void> {
-  await jsonOrThrow(await fetch(`${BASE}/userpages`, { ...opts, method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ dataUrl }) }));
+export async function saveUserPage(dataUrl: string, elements: UserPageElement[] = []): Promise<void> {
+  await jsonOrThrow(await fetch(`${BASE}/userpages`, { ...opts, method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ dataUrl, elements }) }));
+}
+export async function clearUserPage(username: string): Promise<void> {
+  await jsonOrThrow(await fetch(`${BASE}/userpages/${encodeURIComponent(username)}`, { ...opts, method: "DELETE" }));
 }
 
 // ----- Cafe -----
@@ -401,4 +409,8 @@ export async function moveChess(id: number, uci: string): Promise<void> {
 export async function resignChess(id: number): Promise<void> { await jsonOrThrow(await fetch(`${BASE}/chess/lobbies/${id}/resign`, { ...opts, method: "POST" })); }
 export async function chatChess(id: number, body: string): Promise<void> {
   await jsonOrThrow(await fetch(`${BASE}/chess/lobbies/${id}/chat`, { ...opts, method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ body }) }));
+}
+export async function fetchChessMoves(id: number): Promise<string[]> {
+  const j = await jsonOrThrow(await fetch(`${BASE}/chess/lobbies/${id}/moves`, opts));
+  return j.moves || [];
 }

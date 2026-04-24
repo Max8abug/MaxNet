@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { db, chessLobbiesTable } from "@workspace/db";
-import { desc, eq, ne, and } from "drizzle-orm";
+import { desc, eq, ne } from "drizzle-orm";
 import { requireAuth } from "../lib/auth";
 import { isBanned, audit } from "./social";
 
@@ -8,7 +8,6 @@ const router: IRouter = Router();
 
 const START_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 
-// Minimal chess move validator: parses FEN, applies UCI move ("e2e4", "e7e8q"), returns new FEN or null.
 function parseFen(fen: string) {
   const [board, turn, castling, ep, halfmove, fullmove] = fen.split(" ");
   const rows = board.split("/").map(row => {
@@ -19,7 +18,7 @@ function parseFen(fen: string) {
     }
     return cells;
   });
-  return { rows, turn, castling, ep, halfmove: parseInt(halfmove || "0"), fullmove: parseInt(fullmove || "1") };
+  return { rows, turn, castling: castling || "-", ep: ep || "-", halfmove: parseInt(halfmove || "0"), fullmove: parseInt(fullmove || "1") };
 }
 function boardToFen(rows: (string | null)[][], turn: string, castling: string, ep: string, halfmove: number, fullmove: number) {
   const parts = rows.map(row => {
@@ -33,24 +32,66 @@ function boardToFen(rows: (string | null)[][], turn: string, castling: string, e
   });
   return `${parts.join("/")} ${turn} ${castling || "-"} ${ep || "-"} ${halfmove} ${fullmove}`;
 }
-function uciToCoords(m: string): { fr: number; fc: number; tr: number; tc: number; promo: string | null } | null {
+function uciToCoords(m: string) {
   if (m.length < 4 || m.length > 5) return null;
   const fc = m.charCodeAt(0) - 97, fr = 8 - parseInt(m[1]);
   const tc = m.charCodeAt(2) - 97, tr = 8 - parseInt(m[3]);
   if ([fr, fc, tr, tc].some(v => v < 0 || v > 7 || isNaN(v))) return null;
   return { fr, fc, tr, tc, promo: m[4] || null };
 }
-function isWhitePiece(p: string | null) { return !!p && p === p.toUpperCase(); }
-function isOpponent(piece: string | null, turn: string) {
-  if (!piece) return false;
-  return turn === "w" ? !isWhitePiece(piece) : isWhitePiece(piece);
-}
-function clear(p: string | null) { return !p; }
+const isWhitePiece = (p: string | null) => !!p && p === p.toUpperCase();
+const isOpponent = (p: string | null, turn: string) => !!p && (turn === "w" ? !isWhitePiece(p) : isWhitePiece(p));
+const isOwn = (p: string | null, turn: string) => !!p && (turn === "w" ? isWhitePiece(p) : !isWhitePiece(p));
 
-function pseudoMoves(rows: (string | null)[][], turn: string, ep: string): string[] {
+// Squares attacked by `byTurn` side - used to check if a target square is under attack
+function squareAttacked(rows: (string | null)[][], r: number, c: number, byTurn: string): boolean {
+  // Pawn attacks
+  const pawnDir = byTurn === "w" ? 1 : -1; // attacking square at (r,c) means a pawn sits at r+pawnDir
+  const pawn = byTurn === "w" ? "P" : "p";
+  for (const dc of [-1, 1]) {
+    const pr = r + pawnDir, pc = c + dc;
+    if (pr >= 0 && pr < 8 && pc >= 0 && pc < 8 && rows[pr][pc] === pawn) return true;
+  }
+  // Knight
+  const knight = byTurn === "w" ? "N" : "n";
+  for (const [dr, dc] of [[-2,-1],[-2,1],[-1,-2],[-1,2],[1,-2],[1,2],[2,-1],[2,1]]) {
+    const nr = r + dr, nc = c + dc;
+    if (nr >= 0 && nr < 8 && nc >= 0 && nc < 8 && rows[nr][nc] === knight) return true;
+  }
+  // King
+  const king = byTurn === "w" ? "K" : "k";
+  for (let dr = -1; dr <= 1; dr++) for (let dc = -1; dc <= 1; dc++) {
+    if (!dr && !dc) continue;
+    const nr = r + dr, nc = c + dc;
+    if (nr >= 0 && nr < 8 && nc >= 0 && nc < 8 && rows[nr][nc] === king) return true;
+  }
+  // Sliding: bishop/queen diagonals, rook/queen orthogonals
+  const bishopQueen = byTurn === "w" ? ["B", "Q"] : ["b", "q"];
+  const rookQueen = byTurn === "w" ? ["R", "Q"] : ["r", "q"];
+  const slide = (dr: number, dc: number, set: string[]) => {
+    let nr = r + dr, nc = c + dc;
+    while (nr >= 0 && nr < 8 && nc >= 0 && nc < 8) {
+      const p = rows[nr][nc];
+      if (p) { return set.includes(p); }
+      nr += dr; nc += dc;
+    }
+    return false;
+  };
+  for (const [dr, dc] of [[-1,-1],[-1,1],[1,-1],[1,1]]) if (slide(dr, dc, bishopQueen)) return true;
+  for (const [dr, dc] of [[-1,0],[1,0],[0,-1],[0,1]]) if (slide(dr, dc, rookQueen)) return true;
+  return false;
+}
+
+function findKing(rows: (string | null)[][], turn: string): [number, number] | null {
+  const k = turn === "w" ? "K" : "k";
+  for (let r = 0; r < 8; r++) for (let c = 0; c < 8; c++) if (rows[r][c] === k) return [r, c];
+  return null;
+}
+
+function pseudoMoves(rows: (string | null)[][], turn: string, ep: string, castling: string): string[] {
   const moves: string[] = [];
   const opp = (p: string | null) => isOpponent(p, turn);
-  const own = (p: string | null) => p && (turn === "w" ? isWhitePiece(p) : !isWhitePiece(p));
+  const own = (p: string | null) => isOwn(p, turn);
   const ray = (r: number, c: number, dr: number, dc: number) => {
     const out: [number, number][] = [];
     let nr = r + dr, nc = c + dc;
@@ -65,9 +106,7 @@ function pseudoMoves(rows: (string | null)[][], turn: string, ep: string): strin
   const sq = (c: number, r: number) => `${String.fromCharCode(97 + c)}${8 - r}`;
   for (let r = 0; r < 8; r++) for (let c = 0; c < 8; c++) {
     const p = rows[r][c];
-    if (!p) continue;
-    if (turn === "w" && !isWhitePiece(p)) continue;
-    if (turn === "b" && isWhitePiece(p)) continue;
+    if (!p || !own(p)) continue;
     const lo = p.toLowerCase();
     const from = sq(c, r);
     if (lo === "p") {
@@ -75,15 +114,14 @@ function pseudoMoves(rows: (string | null)[][], turn: string, ep: string): strin
       const startR = isWhitePiece(p) ? 6 : 1;
       const promoR = isWhitePiece(p) ? 0 : 7;
       const nr = r + dir;
-      if (nr >= 0 && nr < 8 && clear(rows[nr][c])) {
+      if (nr >= 0 && nr < 8 && !rows[nr][c]) {
         if (nr === promoR) for (const q of "qrbn") moves.push(from + sq(c, nr) + q);
         else moves.push(from + sq(c, nr));
-        if (r === startR && clear(rows[r + 2 * dir][c])) moves.push(from + sq(c, r + 2 * dir));
+        if (r === startR && !rows[r + 2 * dir][c]) moves.push(from + sq(c, r + 2 * dir));
       }
       for (const dc of [-1, 1]) {
         const nc = c + dc;
-        if (nc < 0 || nc > 7) continue;
-        if (nr < 0 || nr > 7) continue;
+        if (nc < 0 || nc > 7 || nr < 0 || nr > 7) continue;
         if (opp(rows[nr][nc])) {
           if (nr === promoR) for (const q of "qrbn") moves.push(from + sq(nc, nr) + q);
           else moves.push(from + sq(nc, nr));
@@ -111,15 +149,88 @@ function pseudoMoves(rows: (string | null)[][], turn: string, ep: string): strin
         if (own(rows[nr][nc])) continue;
         moves.push(from + sq(nc, nr));
       }
+      // Castling
+      const homeR = turn === "w" ? 7 : 0;
+      if (r === homeR && c === 4) {
+        const enemyTurn = turn === "w" ? "b" : "w";
+        const inCheck = squareAttacked(rows, homeR, 4, enemyTurn);
+        // King-side
+        const kSide = turn === "w" ? "K" : "k";
+        if (castling.includes(kSide) && !rows[homeR][5] && !rows[homeR][6] && !inCheck
+          && !squareAttacked(rows, homeR, 5, enemyTurn) && !squareAttacked(rows, homeR, 6, enemyTurn)) {
+          moves.push(from + sq(6, homeR));
+        }
+        // Queen-side
+        const qSide = turn === "w" ? "Q" : "q";
+        if (castling.includes(qSide) && !rows[homeR][1] && !rows[homeR][2] && !rows[homeR][3] && !inCheck
+          && !squareAttacked(rows, homeR, 3, enemyTurn) && !squareAttacked(rows, homeR, 2, enemyTurn)) {
+          moves.push(from + sq(2, homeR));
+        }
+      }
     }
   }
   return moves;
 }
 
+function applyMoveOnBoard(rows: (string | null)[][], c: { fr: number; fc: number; tr: number; tc: number; promo: string | null }, ep: string, castling: string, turn: string): { rows: (string | null)[][]; ep: string; castling: string; capturedPawn: boolean } {
+  const newRows = rows.map(row => [...row]);
+  const piece = newRows[c.fr][c.fc]!;
+  let newEp = "-";
+  let newCastling = castling;
+  // EP capture
+  if (piece.toLowerCase() === "p" && ep && ep !== "-") {
+    const epFile = ep.charCodeAt(0) - 97;
+    const epRank = 8 - parseInt(ep[1]);
+    if (c.tr === epRank && c.tc === epFile && newRows[c.tr][c.tc] === null) {
+      newRows[c.fr][c.tc] = null;
+    }
+  }
+  // Castling: move rook too
+  if (piece.toLowerCase() === "k" && Math.abs(c.tc - c.fc) === 2) {
+    const homeR = turn === "w" ? 7 : 0;
+    if (c.tc === 6) { newRows[homeR][5] = newRows[homeR][7]; newRows[homeR][7] = null; }
+    else if (c.tc === 2) { newRows[homeR][3] = newRows[homeR][0]; newRows[homeR][0] = null; }
+  }
+  newRows[c.fr][c.fc] = null;
+  let newPiece = piece;
+  if (c.promo && piece.toLowerCase() === "p") newPiece = isWhitePiece(piece) ? c.promo.toUpperCase() : c.promo.toLowerCase();
+  newRows[c.tr][c.tc] = newPiece;
+  // Update EP
+  if (piece.toLowerCase() === "p" && Math.abs(c.tr - c.fr) === 2) {
+    const midR = (c.fr + c.tr) / 2;
+    newEp = `${String.fromCharCode(97 + c.fc)}${8 - midR}`;
+  }
+  // Update castling rights
+  if (piece === "K") newCastling = newCastling.replace("K", "").replace("Q", "");
+  if (piece === "k") newCastling = newCastling.replace("k", "").replace("q", "");
+  if (piece === "R" && c.fr === 7 && c.fc === 0) newCastling = newCastling.replace("Q", "");
+  if (piece === "R" && c.fr === 7 && c.fc === 7) newCastling = newCastling.replace("K", "");
+  if (piece === "r" && c.fr === 0 && c.fc === 0) newCastling = newCastling.replace("q", "");
+  if (piece === "r" && c.fr === 0 && c.fc === 7) newCastling = newCastling.replace("k", "");
+  // If a rook is captured on its home square, also revoke that rook's castling right
+  if (c.tr === 0 && c.tc === 0) newCastling = newCastling.replace("q", "");
+  if (c.tr === 0 && c.tc === 7) newCastling = newCastling.replace("k", "");
+  if (c.tr === 7 && c.tc === 0) newCastling = newCastling.replace("Q", "");
+  if (c.tr === 7 && c.tc === 7) newCastling = newCastling.replace("K", "");
+  if (!newCastling) newCastling = "-";
+  return { rows: newRows, ep: newEp, castling: newCastling, capturedPawn: piece.toLowerCase() === "p" };
+}
+
+function legalMoves(rows: (string | null)[][], turn: string, ep: string, castling: string): string[] {
+  const pseudo = pseudoMoves(rows, turn, ep, castling);
+  return pseudo.filter(uci => {
+    const c = uciToCoords(uci)!;
+    const after = applyMoveOnBoard(rows, c, ep, castling, turn);
+    const k = findKing(after.rows, turn);
+    if (!k) return false;
+    const enemyTurn = turn === "w" ? "b" : "w";
+    return !squareAttacked(after.rows, k[0], k[1], enemyTurn);
+  });
+}
+
 function applyMove(fen: string, uci: string): string | null {
   const st = parseFen(fen);
-  const all = pseudoMoves(st.rows, st.turn, st.ep);
-  // Allow the user's UCI if it's in pseudo moves OR matches with a default-queen promo
+  const all = legalMoves(st.rows, st.turn, st.ep, st.castling);
   let chosen = uci;
   if (!all.includes(chosen) && uci.length === 4) {
     chosen = uci + "q";
@@ -129,28 +240,24 @@ function applyMove(fen: string, uci: string): string | null {
   }
   const c = uciToCoords(chosen)!;
   const piece = st.rows[c.fr][c.fc]!;
-  // EP capture
-  if (piece.toLowerCase() === "p" && st.ep && st.ep !== "-") {
-    const epFile = st.ep.charCodeAt(0) - 97;
-    const epRank = 8 - parseInt(st.ep[1]);
-    if (c.tr === epRank && c.tc === epFile && st.rows[c.tr][c.tc] === null) {
-      st.rows[c.fr][c.tc] = null;
-    }
-  }
-  st.rows[c.fr][c.fc] = null;
-  let newPiece = piece;
-  if (c.promo && piece.toLowerCase() === "p") newPiece = isWhitePiece(piece) ? c.promo.toUpperCase() : c.promo.toLowerCase();
-  st.rows[c.tr][c.tc] = newPiece;
-  // Update EP
-  let newEp = "-";
-  if (piece.toLowerCase() === "p" && Math.abs(c.tr - c.fr) === 2) {
-    const midR = (c.fr + c.tr) / 2;
-    newEp = `${String.fromCharCode(97 + c.fc)}${8 - midR}`;
-  }
+  const after = applyMoveOnBoard(st.rows, c, st.ep, st.castling, st.turn);
   const newTurn = st.turn === "w" ? "b" : "w";
-  const newHalfmove = (piece.toLowerCase() === "p") ? 0 : st.halfmove + 1;
+  const wasCapture = !!st.rows[c.tr][c.tc];
+  const newHalfmove = (piece.toLowerCase() === "p" || wasCapture) ? 0 : st.halfmove + 1;
   const newFullmove = st.turn === "b" ? st.fullmove + 1 : st.fullmove;
-  return boardToFen(st.rows, newTurn, st.castling, newEp, newHalfmove, newFullmove);
+  return boardToFen(after.rows, newTurn, after.castling, after.ep, newHalfmove, newFullmove);
+}
+
+function isGameOver(fen: string): { over: boolean; winnerSide: string | null; draw: boolean } {
+  const st = parseFen(fen);
+  const moves = legalMoves(st.rows, st.turn, st.ep, st.castling);
+  if (moves.length > 0) return { over: false, winnerSide: null, draw: false };
+  const k = findKing(st.rows, st.turn);
+  const enemyTurn = st.turn === "w" ? "b" : "w";
+  if (k && squareAttacked(st.rows, k[0], k[1], enemyTurn)) {
+    return { over: true, winnerSide: enemyTurn, draw: false };
+  }
+  return { over: true, winnerSide: null, draw: true };
 }
 
 router.get("/chess/lobbies", async (_req, res) => {
@@ -184,9 +291,8 @@ router.post("/chess/lobbies/:id/join", requireAuth, async (req, res) => {
   if (!row.whiteUser) update.whiteUser = me;
   else if (!row.blackUser && row.whiteUser !== me) update.blackUser = me;
   else if (row.whiteUser !== me && row.blackUser !== me) { res.status(409).json({ error: "Lobby full" }); return; }
-  if (update.blackUser || (row.whiteUser && (row.blackUser || update.blackUser))) {
-    update.status = "playing";
-  }
+  const willHaveBoth = (update.whiteUser || row.whiteUser) && (update.blackUser || row.blackUser);
+  if (willHaveBoth) update.status = "playing";
   if (Object.keys(update).length) {
     await db.update(chessLobbiesTable).set({ ...update, updatedAt: new Date() }).where(eq(chessLobbiesTable.id, id));
   }
@@ -207,15 +313,16 @@ router.post("/chess/lobbies/:id/move", requireAuth, async (req, res) => {
   const newFen = applyMove(row.fen, uci);
   if (!newFen) { res.status(400).json({ error: "Illegal move" }); return; }
   const moves = [...((row.moves as string[]) || []), uci];
-  // Detect end: no king of new turn = checkmate-ish (simplified)
-  const board = newFen.split(" ")[0];
-  const newTurn = newFen.split(" ")[1];
-  const oppKing = newTurn === "w" ? "K" : "k";
-  const winner = !board.includes(oppKing) ? me : null;
+  const end = isGameOver(newFen);
+  let winner: string | null = row.winner;
+  let status = "playing";
+  if (end.over) {
+    status = "done";
+    if (end.draw) winner = "draw";
+    else winner = end.winnerSide === "w" ? row.whiteUser : row.blackUser;
+  }
   await db.update(chessLobbiesTable).set({
-    fen: newFen, moves, updatedAt: new Date(),
-    status: winner ? "done" : "playing",
-    winner: winner || row.winner,
+    fen: newFen, moves, updatedAt: new Date(), status, winner,
   }).where(eq(chessLobbiesTable.id, id));
   res.json({ ok: true });
 });
@@ -241,6 +348,15 @@ router.post("/chess/lobbies/:id/chat", requireAuth, async (req, res) => {
   const chat = [...((row.chat as any[]) || []), { author: me, body: body.trim().slice(0, 200), at: Date.now() }].slice(-50);
   await db.update(chessLobbiesTable).set({ chat, updatedAt: new Date() }).where(eq(chessLobbiesTable.id, id));
   res.json({ ok: true });
+});
+
+// Expose legal moves so the client can highlight & avoid illegal click attempts
+router.get("/chess/lobbies/:id/moves", async (req, res) => {
+  const id = Number(req.params.id);
+  const [row] = await db.select().from(chessLobbiesTable).where(eq(chessLobbiesTable.id, id)).limit(1);
+  if (!row) { res.status(404).json({ error: "not found" }); return; }
+  const st = parseFen(row.fen);
+  res.json({ moves: legalMoves(st.rows, st.turn, st.ep, st.castling) });
 });
 
 export default router;

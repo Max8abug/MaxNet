@@ -4,6 +4,7 @@ import { useLocation } from 'wouter';
 import { useAuth, userColor } from '../lib/auth-store';
 import { LoginDialog } from './LoginDialog';
 import { ProfileDialog } from './ProfileDialog';
+import { fetchDMConversations, fetchChat } from '../lib/api';
 
 export function Taskbar({ page }: { page: string }) {
   const { addWindow, isStringMode, setStringMode, resetState, windows, toggleWindowState, bringToFront } = useDesktopStore();
@@ -13,14 +14,47 @@ export function Taskbar({ page }: { page: string }) {
   const [, setLocation] = useLocation();
   const { user, ranks, refresh, refreshRanks, logout } = useAuth();
   const wins = windows[page] || [];
+  const [dmUnread, setDmUnread] = useState(0);
+  const [chatUnread, setChatUnread] = useState(0);
 
   useEffect(() => { void refresh(); void refreshRanks(); }, [refresh, refreshRanks]);
+
+  // Poll for DM and chat unread counts. Treat the badge as cleared while a window of that type is open and not minimized.
+  const dmsOpen = wins.some(w => w.type === 'dms' && (w.state || 'normal') !== 'min');
+  const chatOpen = wins.some(w => w.type === 'chat' && (w.state || 'normal') !== 'min');
+  useEffect(() => {
+    if (!user) { setDmUnread(0); setChatUnread(0); return; }
+    let alive = true;
+    const tick = async () => {
+      try {
+        const conv = await fetchDMConversations();
+        if (!alive) return;
+        const total = conv.reduce((s, c) => s + (c.unread || 0), 0);
+        setDmUnread(dmsOpen ? 0 : total);
+      } catch {}
+      try {
+        const ch = await fetchChat();
+        if (!alive) return;
+        const lastSeen = Number(localStorage.getItem('chatLastSeenId') || '0');
+        const newest = ch.length > 0 ? Math.max(...ch.map(m => m.id)) : 0;
+        if (chatOpen) {
+          if (newest > lastSeen) localStorage.setItem('chatLastSeenId', String(newest));
+          setChatUnread(0);
+        } else {
+          const unread = ch.filter(m => m.id > lastSeen && m.author !== user.username).length;
+          setChatUnread(unread);
+        }
+      } catch {}
+    };
+    void tick();
+    const t = setInterval(tick, 5000);
+    return () => { alive = false; clearInterval(t); };
+  }, [user, dmsOpen, chatOpen]);
 
   const open = (data: any) => { addWindow(page, data); setStartOpen(false); };
   const items: { label: string; act: () => void }[] = [
     { label: "Open Photo Gallery", act: () => open({ type: 'sharedphotos', title: 'Photo Gallery', width: 460, height: 460 }) },
-    { label: "Add Photo Window (URL)", act: () => { const url = window.prompt('Paste a photo URL:', '') || ''; open({ type: 'photo', title: 'New Photo', imageUrl: url.trim() || '/src/assets/nature-1.png', width: 400, height: 450 }); } },
-    { label: "Add Synced YouTube", act: () => { const url = window.prompt('Paste a YouTube URL or ID:', '') || ''; open({ type: 'youtube', title: 'YouTube', youtubeUrl: url.trim(), width: 480, height: 320 }); } },
+    { label: "Add Synced YouTube", act: () => open({ type: 'youtube', title: 'YouTube', width: 480, height: 320 }) },
     { label: "Open Forum", act: () => open({ type: 'forum', title: 'Forum', width: 460, height: 420 }) },
     { label: "Open Music Player", act: () => open({ type: 'music', title: 'Music Player', width: 360, height: 380 }) },
     { label: "Open Polls", act: () => open({ type: 'polls', title: 'Polls', width: 380, height: 420 }) },
@@ -41,6 +75,35 @@ export function Taskbar({ page }: { page: string }) {
   if (user?.isAdmin) items.push({ label: "★ Manage Ranks", act: () => open({ type: 'ranksadmin', title: 'Ranks Admin', width: 480, height: 500 }) });
 
   const colorStyle = user ? { color: userColor(user, ranks) || undefined } : {};
+  const totalUnread = dmUnread + chatUnread;
+
+  function Badge({ count }: { count: number }) {
+    if (!count) return null;
+    return (
+      <span className="absolute -top-1 -right-1 bg-red-600 text-white text-[9px] font-bold rounded-full min-w-[16px] h-4 px-1 flex items-center justify-center border border-white shadow">
+        {count > 99 ? '99+' : count}
+      </span>
+    );
+  }
+
+  function openDms() {
+    const existing = wins.find(w => w.type === 'dms');
+    if (existing) {
+      if ((existing.state || 'normal') === 'min') toggleWindowState(page, existing.id, 'min');
+      bringToFront(page, existing.id);
+    } else {
+      addWindow(page, { type: 'dms', title: 'Direct Messages', width: 460, height: 380 });
+    }
+  }
+  function openChat() {
+    const existing = wins.find(w => w.type === 'chat');
+    if (existing) {
+      if ((existing.state || 'normal') === 'min') toggleWindowState(page, existing.id, 'min');
+      bringToFront(page, existing.id);
+    } else {
+      addWindow(page, { type: 'chat', title: 'Chatbox', width: 360, height: 420 });
+    }
+  }
 
   return (
     <div className="absolute bottom-0 left-0 right-0 h-10 bg-[#c0c0c0] border-t-2 border-t-white flex items-center px-1 z-[9999] shadow-[inset_0_1px_0_#dfdfdf]">
@@ -51,6 +114,7 @@ export function Taskbar({ page }: { page: string }) {
         >
           <div className="w-5 h-5 bg-gradient-to-br from-blue-600 to-green-500 shadow-inner" />
           Start
+          <Badge count={totalUnread} />
         </button>
         {startOpen && (
           <div className="absolute bottom-full left-0 mb-1 w-72 bg-[#c0c0c0] win98-window flex p-1" style={{ maxHeight: 'calc(100dvh - 4rem)' }}>
@@ -59,7 +123,11 @@ export function Taskbar({ page }: { page: string }) {
             </div>
             <div className="flex-1 flex flex-col p-1 gap-0.5 overflow-y-auto" style={{ maxHeight: 'calc(100dvh - 4.5rem)' }}>
               {items.map((it, i) => (
-                <button key={i} className="text-left px-3 py-1 hover:bg-[#000080] hover:text-white text-sm" onClick={it.act}>{it.label}</button>
+                <button key={i} className="text-left px-3 py-1 hover:bg-[#000080] hover:text-white text-sm relative" onClick={it.act}>
+                  {it.label}
+                  {it.label === 'Open DMs' && <span className="absolute right-2 top-1/2 -translate-y-1/2"><Badge count={dmUnread} /></span>}
+                  {it.label === 'Add Chatbox' && <span className="absolute right-2 top-1/2 -translate-y-1/2"><Badge count={chatUnread} /></span>}
+                </button>
               ))}
               <div className="h-[2px] w-full border-t border-t-[#808080] border-b border-b-white my-1" />
               <button className="text-left px-3 py-1 hover:bg-[#000080] hover:text-white text-sm" onClick={() => { setLocation('/'); setStartOpen(false); }}>Go to Home</button>
@@ -81,6 +149,19 @@ export function Taskbar({ page }: { page: string }) {
         <div className="w-3 h-3 bg-red-600 rounded-full" />
         {isStringMode ? 'Cancel' : 'String'}
       </button>
+
+      {user && (
+        <div className="flex items-center gap-1 ml-1">
+          <button className="win98-button h-8 px-2 text-xs relative" onClick={openDms} title="Direct Messages">
+            ✉ DMs
+            <Badge count={dmUnread} />
+          </button>
+          <button className="win98-button h-8 px-2 text-xs relative" onClick={openChat} title="Chatbox">
+            💬 Chat
+            <Badge count={chatUnread} />
+          </button>
+        </div>
+      )}
 
       <div className="flex items-center gap-1 ml-1 flex-1 overflow-x-auto">
         {wins.filter(w => (w.state || 'normal') === 'min').map(w => (

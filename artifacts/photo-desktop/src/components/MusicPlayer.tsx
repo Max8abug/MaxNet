@@ -8,10 +8,11 @@ function fileToDataUrl(f: File): Promise<string> {
 
 export function MusicPlayer() {
   const [tracks, setTracks] = useState<Track[]>([]);
-  const [current, setCurrent] = useState(0);
+  const [current, setCurrent] = useState<number>(-1);
   const [src, setSrc] = useState<string>("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
   const audioRef = useRef<HTMLAudioElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const user = useAuth((s) => s.user);
@@ -21,9 +22,43 @@ export function MusicPlayer() {
 
   async function play(i: number) {
     const t = tracks[i]; if (!t) return;
+    setErr(null);
     setCurrent(i);
-    try { const url = await fetchTrackAudio(t.id); setSrc(url); setTimeout(() => audioRef.current?.play().catch(() => {}), 50); }
-    catch (e: any) { setErr(e?.message || "Failed"); }
+    setLoading(true);
+    try {
+      const url = await fetchTrackAudio(t.id);
+      setSrc(url);
+      // Wait a tick for the audio element to receive the new src, then play
+      await new Promise(r => setTimeout(r, 80));
+      const a = audioRef.current;
+      if (a) {
+        try { a.load(); } catch {}
+        try { await a.play(); } catch (e: any) { setErr("Tap ▶ once to allow audio"); }
+      }
+    } catch (e: any) { setErr(e?.message || "Failed to load track"); }
+    finally { setLoading(false); }
+  }
+
+  async function togglePlay() {
+    const a = audioRef.current;
+    if (!a) return;
+    if (current < 0 && tracks.length > 0) { await play(0); return; }
+    if (a.paused) {
+      try { await a.play(); } catch (e: any) { setErr(e?.message || "Cannot play"); }
+    } else {
+      a.pause();
+    }
+  }
+
+  async function next() {
+    if (tracks.length === 0) return;
+    const ni = current < 0 ? 0 : (current + 1) % tracks.length;
+    await play(ni);
+  }
+  async function prev() {
+    if (tracks.length === 0) return;
+    const pi = current < 0 ? 0 : (current - 1 + tracks.length) % tracks.length;
+    await play(pi);
   }
 
   async function upload(f: File) {
@@ -44,18 +79,19 @@ export function MusicPlayer() {
     try { await deleteTrack(id); await refresh(); } catch {}
   }
 
+  const cur = current >= 0 ? tracks[current] : null;
+
   return (
     <div className="w-full h-full flex flex-col text-xs gap-1">
       <div className="bg-black text-green-400 font-mono p-2 win98-inset">
-        <div className="truncate">♪ {tracks[current]?.title || "(no track)"}</div>
-        <div className="text-[10px] opacity-70">by {tracks[current]?.uploader || "—"}</div>
+        <div className="truncate">♪ {cur?.title || (tracks.length ? "(click a track to play)" : "(no tracks)")}</div>
+        <div className="text-[10px] opacity-70">by {cur?.uploader || "—"} {loading && "· loading..."}</div>
       </div>
-      <audio ref={audioRef} src={src} controls className="w-full" onEnded={() => play((current + 1) % Math.max(1, tracks.length))} />
+      <audio ref={audioRef} src={src} controls className="w-full" preload="auto" onEnded={next} />
       <div className="flex gap-1">
-        <button className="win98-button px-2" onClick={() => play((current - 1 + tracks.length) % Math.max(1, tracks.length))}>⏮</button>
-        <button className="win98-button px-2" onClick={() => audioRef.current?.play()}>▶</button>
-        <button className="win98-button px-2" onClick={() => audioRef.current?.pause()}>⏸</button>
-        <button className="win98-button px-2" onClick={() => play((current + 1) % Math.max(1, tracks.length))}>⏭</button>
+        <button className="win98-button px-2" onClick={prev} disabled={tracks.length === 0}>⏮</button>
+        <button className="win98-button px-2" onClick={togglePlay} disabled={tracks.length === 0}>▶/⏸</button>
+        <button className="win98-button px-2" onClick={next} disabled={tracks.length === 0}>⏭</button>
         <div className="flex-1" />
         {user && (
           <>

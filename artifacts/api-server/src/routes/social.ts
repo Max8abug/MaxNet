@@ -11,6 +11,23 @@ import {
 } from "@workspace/db";
 import { desc, sql, eq } from "drizzle-orm";
 import { requireAuth, requireAdmin, isAdminUsername } from "../lib/auth";
+import { getUserPermissions } from "./ranks";
+
+import type { RequestHandler } from "express";
+export const requireDeleteMessages: RequestHandler = async (req, res, next) => {
+  if (!req.session.userId) { res.status(401).json({ error: "Login required" }); return; }
+  if (req.session.isAdmin) { next(); return; }
+  const perms = await getUserPermissions(req.session.username!);
+  if (!perms.includes("deleteMessages")) { res.status(403).json({ error: "Need deleteMessages permission" }); return; }
+  next();
+};
+export const requireBan: RequestHandler = async (req, res, next) => {
+  if (!req.session.userId) { res.status(401).json({ error: "Login required" }); return; }
+  if (req.session.isAdmin) { next(); return; }
+  const perms = await getUserPermissions(req.session.username!);
+  if (!perms.includes("ban")) { res.status(403).json({ error: "Need ban permission" }); return; }
+  next();
+};
 
 export async function isBanned(username: string): Promise<boolean> {
   const [row] = await db
@@ -134,14 +151,14 @@ router.get("/chat/typing", (_req, res) => {
   res.json({ typing: list });
 });
 
-router.delete("/chat", requireAdmin, async (req, res) => {
+router.delete("/chat", requireDeleteMessages, async (req, res) => {
   const all = await db.select().from(chatMessagesTable);
   await db.delete(chatMessagesTable);
   await audit("chat", "clear", req.session.username || "admin", "", `Cleared ${all.length} messages`);
   res.json({ ok: true, count: all.length });
 });
 
-router.delete("/chat/:id", requireAdmin, async (req, res) => {
+router.delete("/chat/:id", requireDeleteMessages, async (req, res) => {
   const id = Number(req.params.id);
   if (!Number.isFinite(id)) { res.status(400).json({ error: "bad id" }); return; }
   const [existing] = await db.select().from(chatMessagesTable).where(eq(chatMessagesTable.id, id)).limit(1);
@@ -182,7 +199,7 @@ router.get("/bans", requireAdmin, async (_req, res) => {
   res.json(rows);
 });
 
-router.post("/bans", requireAdmin, async (req, res) => {
+router.post("/bans", requireBan, async (req, res) => {
   const { username, reason } = req.body ?? {};
   if (typeof username !== "string" || !username.trim()) { res.status(400).json({ error: "username required" }); return; }
   const u = username.trim().slice(0, 32);
@@ -196,7 +213,7 @@ router.post("/bans", requireAdmin, async (req, res) => {
   } catch { res.status(409).json({ error: "User already banned" }); }
 });
 
-router.delete("/bans/:username", requireAdmin, async (req, res) => {
+router.delete("/bans/:username", requireBan, async (req, res) => {
   const u = String(req.params.username || "").trim();
   if (!u) { res.status(400).json({ error: "username required" }); return; }
   await db.delete(bannedUsersTable).where(eq(bannedUsersTable.username, u));

@@ -88,6 +88,7 @@ export const chessLobbiesTable = pgTable("chess_lobbies", {
 export const userPagesTable = pgTable("user_pages", {
   username: text("username").primaryKey(),
   dataUrl: text("data_url").notNull(),
+  elements: jsonb("elements").notNull().default([]),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 

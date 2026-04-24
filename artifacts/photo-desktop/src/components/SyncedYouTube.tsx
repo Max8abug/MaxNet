@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { getYouTubeSync, setYouTubeSync } from "../lib/api";
 import { useAuth } from "../lib/auth-store";
 
@@ -27,7 +27,7 @@ export function SyncedYouTube() {
   const [state, setState] = useState<{ videoId: string; startedAt: string; setBy: string } | null>(null);
   const [input, setInput] = useState("");
   const [err, setErr] = useState<string | null>(null);
-  const offsetRef = useRef(0); // serverNow - clientNow
+  const offsetRef = useRef(0);
   const user = useAuth((s) => s.user);
 
   async function refresh() {
@@ -35,10 +35,13 @@ export function SyncedYouTube() {
       const s = await getYouTubeSync();
       const serverMs = new Date(s.serverNow).getTime();
       offsetRef.current = serverMs - Date.now();
-      setState({ videoId: s.videoId, startedAt: s.startedAt, setBy: s.setBy });
+      setState((prev) => {
+        if (prev && prev.videoId === s.videoId && prev.startedAt === s.startedAt && prev.setBy === s.setBy) return prev;
+        return { videoId: s.videoId, startedAt: s.startedAt, setBy: s.setBy };
+      });
     } catch {}
   }
-  useEffect(() => { void refresh(); const t = setInterval(refresh, 10000); return () => clearInterval(t); }, []);
+  useEffect(() => { void refresh(); const t = setInterval(refresh, 15000); return () => clearInterval(t); }, []);
 
   async function applyNew() {
     setErr(null);
@@ -48,15 +51,14 @@ export function SyncedYouTube() {
     catch (e: any) { setErr(e?.message || "Failed"); }
   }
 
-  // Compute current offset in seconds based on server start time
-  const startMs = state?.startedAt ? new Date(state.startedAt).getTime() : 0;
-  const elapsed = state?.videoId
-    ? Math.max(0, Math.floor(((Date.now() + offsetRef.current) - startMs) / 1000))
-    : 0;
-
-  const src = state?.videoId
-    ? `https://www.youtube.com/embed/${state.videoId}?autoplay=1&start=${elapsed}&rel=0`
-    : null;
+  // Compute initial elapsed once when videoId/startedAt changes; src is stable after that.
+  const src = useMemo(() => {
+    if (!state?.videoId) return null;
+    const startMs = new Date(state.startedAt).getTime();
+    const elapsed = Math.max(0, Math.floor(((Date.now() + offsetRef.current) - startMs) / 1000));
+    return `https://www.youtube.com/embed/${state.videoId}?autoplay=1&start=${elapsed}&rel=0`;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state?.videoId, state?.startedAt]);
 
   return (
     <div className="w-full h-full flex flex-col text-sm bg-black">

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { fetchChessLobbies, createChessLobby, fetchChessLobby, joinChessLobby, moveChess, resignChess, chatChess, type ChessLobby } from "../lib/api";
+import { fetchChessLobbies, createChessLobby, fetchChessLobby, joinChessLobby, moveChess, resignChess, chatChess, fetchChessMoves, type ChessLobby } from "../lib/api";
 import { useAuth } from "../lib/auth-store";
 
 const PIECE: Record<string, string> = { K: "♔", Q: "♕", R: "♖", B: "♗", N: "♘", P: "♙", k: "♚", q: "♛", r: "♜", b: "♝", n: "♞", p: "♟" };
@@ -16,21 +16,43 @@ function fenToBoard(fen: string): (string | null)[][] {
   });
 }
 
+function squareName(c: number, r: number) { return `${String.fromCharCode(97 + c)}${8 - r}`; }
+
 export function Chess() {
   const user = useAuth(s => s.user);
   const [lobbies, setLobbies] = useState<ChessLobby[]>([]);
   const [openId, setOpenId] = useState<number | null>(null);
   const [game, setGame] = useState<ChessLobby | null>(null);
-  const [sel, setSel] = useState<{ r: number; c: number } | null>(null);
+  const [legal, setLegal] = useState<string[]>([]);
+  const [sel, setSel] = useState<{ r: number; c: number } | null>(null); // board coords
   const [msg, setMsg] = useState("");
   const [err, setErr] = useState<string | null>(null);
 
   async function refresh() { try { setLobbies(await fetchChessLobbies()); } catch {} }
   useEffect(() => { void refresh(); const t = setInterval(refresh, 4000); return () => clearInterval(t); }, []);
+
   useEffect(() => {
     if (openId === null) return;
-    const tick = async () => { try { setGame(await fetchChessLobby(openId)); } catch {} };
-    void tick(); const t = setInterval(tick, 2000); return () => clearInterval(t);
+    let alive = true;
+    const tick = async () => {
+      try {
+        const g = await fetchChessLobby(openId);
+        if (!alive) return;
+        setGame(prev => {
+          // Reset selection if board changed
+          if (prev && prev.fen !== g.fen) setSel(null);
+          return g;
+        });
+        if (g.status === "playing") {
+          try { const m = await fetchChessMoves(openId); if (alive) setLegal(m); } catch {}
+        } else {
+          setLegal([]);
+        }
+      } catch {}
+    };
+    void tick();
+    const t = setInterval(tick, 2000);
+    return () => { alive = false; clearInterval(t); };
   }, [openId]);
 
   async function newGame() {
@@ -68,37 +90,65 @@ export function Chess() {
   const turn = game.fen.split(" ")[1];
   const myTurn = myColor === turn && game.status === "playing";
   const flip = myColor === "b";
-  const rows = flip ? [...board].reverse() : board;
 
-  function squareName(r: number, c: number) {
-    const realR = flip ? 7 - r : r;
-    const realC = flip ? 7 - c : c;
-    return `${String.fromCharCode(97 + realC)}${8 - realR}`;
+  // legal targets from currently selected square (board coords)
+  const targets = new Set<string>();
+  if (sel && myTurn) {
+    const fromName = squareName(sel.c, sel.r);
+    for (const m of legal) if (m.startsWith(fromName)) targets.add(m.slice(2, 4));
   }
 
-  async function clickCell(r: number, c: number) {
+  function isOwnPiece(p: string | null): boolean {
+    if (!p) return false;
+    return turn === "w" ? p === p.toUpperCase() : p === p.toLowerCase();
+  }
+
+  async function clickCell(displayR: number, displayC: number) {
     if (!myTurn) return;
-    const realR = flip ? 7 - r : r;
-    const realC = flip ? 7 - c : c;
+    setErr(null);
+    const realR = flip ? 7 - displayR : displayR;
+    const realC = flip ? 7 - displayC : displayC;
     const piece = board[realR][realC];
-    if (sel) {
-      const fromR = flip ? 7 - sel.r : sel.r, fromC = flip ? 7 - sel.c : sel.c;
-      if (fromR === realR && fromC === realC) { setSel(null); return; }
-      const from = `${String.fromCharCode(97 + fromC)}${8 - fromR}`;
-      const to = squareName(r, c);
-      try { await moveChess(game!.id, from + to); setSel(null); }
-      catch (e: any) { setErr(e?.message || "illegal"); setSel(null); }
-    } else if (piece && ((turn === "w" && piece === piece.toUpperCase()) || (turn === "b" && piece === piece.toLowerCase()))) {
-      setSel({ r, c });
+    // If clicked own piece — switch selection (or deselect if same square)
+    if (isOwnPiece(piece)) {
+      if (sel && sel.r === realR && sel.c === realC) { setSel(null); return; }
+      setSel({ r: realR, c: realC });
+      return;
     }
+    // No selection yet and clicked empty/enemy: nothing
+    if (!sel) return;
+    // Try to move
+    const from = squareName(sel.c, sel.r);
+    const to = squareName(realC, realR);
+    const candidate = from + to;
+    // Find a matching legal move (could include promotion suffix)
+    const match = legal.find(m => m.startsWith(candidate));
+    if (!match) {
+      setErr("Illegal move");
+      setSel(null);
+      return;
+    }
+    let toSend = match;
+    // If pawn promotion, ask
+    const movingPiece = board[sel.r][sel.c];
+    if (movingPiece && movingPiece.toLowerCase() === "p" && (realR === 0 || realR === 7)) {
+      const choice = (window.prompt("Promote to (q/r/b/n)?", "q") || "q").toLowerCase();
+      if (["q", "r", "b", "n"].includes(choice)) toSend = candidate + choice;
+    }
+    try { await moveChess(game!.id, toSend); setSel(null); }
+    catch (e: any) { setErr(e?.message || "Illegal"); setSel(null); }
   }
 
   async function send() { if (!msg.trim()) return; try { await chatChess(game!.id, msg); setMsg(""); } catch {} }
 
+  // Build display rows (flipped if black)
+  const rowIndices = flip ? [7,6,5,4,3,2,1,0] : [0,1,2,3,4,5,6,7];
+  const colIndices = flip ? [7,6,5,4,3,2,1,0] : [0,1,2,3,4,5,6,7];
+
   return (
     <div className="w-full h-full flex flex-col text-xs gap-1">
       <div className="flex gap-1 shrink-0 items-center">
-        <button className="win98-button px-2" onClick={() => { setOpenId(null); setGame(null); setSel(null); }}>← Back</button>
+        <button className="win98-button px-2" onClick={() => { setOpenId(null); setGame(null); setSel(null); setLegal([]); }}>← Back</button>
         <div className="font-bold flex-1 truncate">♟ {game.whiteUser || "(open)"} (W) vs {game.blackUser || "(open)"} (B)</div>
         {!myColor && user && (game.status === "waiting" || !game.blackUser) && <button className="win98-button px-2" onClick={() => join(game.id)}>Join</button>}
         {myColor && game.status === "playing" && <button className="win98-button px-2" onClick={() => resignChess(game.id)}>Resign</button>}
@@ -108,12 +158,19 @@ export function Chess() {
       <div className="flex gap-1 flex-1 overflow-hidden">
         <div className="aspect-square h-full max-h-full">
           <div className="grid grid-cols-8 grid-rows-8 w-full h-full">
-            {rows.flatMap((row, r) => row.map((p, c) => {
-              const dark = (r + c) % 2 === 1;
-              const isSel = sel && sel.r === r && sel.c === c;
+            {rowIndices.flatMap((realR, displayR) => colIndices.map((realC, displayC) => {
+              const dark = (realR + realC) % 2 === 1;
+              const isSel = sel && sel.r === realR && sel.c === realC;
+              const isTarget = targets.has(squareName(realC, realR));
+              const p = board[realR][realC];
               return (
-                <div key={`${r}-${c}`} className={`${dark ? "bg-amber-700" : "bg-amber-100"} flex items-center justify-center text-xl cursor-pointer ${isSel ? "ring-2 ring-yellow-400" : ""}`} onClick={() => clickCell(r, c)}>
+                <div key={`${realR}-${realC}`}
+                  className={`${dark ? "bg-amber-700" : "bg-amber-100"} flex items-center justify-center text-xl cursor-pointer relative ${isSel ? "ring-2 ring-yellow-400 ring-inset" : ""}`}
+                  onClick={() => clickCell(displayR, displayC)}>
                   {p && <span style={{ color: p === p.toUpperCase() ? "#fff" : "#000", textShadow: p === p.toUpperCase() ? "0 0 2px #000" : "none" }}>{PIECE[p]}</span>}
+                  {isTarget && <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                    <div className={`${p ? "border-2 border-green-500 w-full h-full opacity-70" : "w-3 h-3 rounded-full bg-green-500 opacity-60"}`} />
+                  </div>}
                 </div>
               );
             }))}
@@ -131,7 +188,10 @@ export function Chess() {
           )}
         </div>
       </div>
-      <div className="text-[10px] text-gray-600 shrink-0">Turn: {turn === "w" ? "White" : "Black"}{myTurn && " (your turn)"} · Moves: {(game.moves || []).length}</div>
+      <div className="text-[10px] text-gray-600 shrink-0">
+        Turn: {turn === "w" ? "White" : "Black"}{myTurn && " (your turn)"} · Moves: {(game.moves || []).length}
+        {myColor && !myTurn && game.status === "playing" && <span className="ml-2 text-blue-700">Waiting for opponent...</span>}
+      </div>
     </div>
   );
 }
