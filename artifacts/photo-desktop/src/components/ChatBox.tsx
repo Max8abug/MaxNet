@@ -5,7 +5,7 @@ import {
   type ChatMessage, type ChatAuditEntry, type BannedUser,
 } from "../lib/api";
 import { useAuth, userColor } from "../lib/auth-store";
-import { Avatar } from "./Avatar";
+import { Avatar, getCachedAvatar } from "./Avatar";
 import { showFullscreen } from "./ImageViewer";
 import { pushToast } from "./Toast";
 
@@ -156,15 +156,22 @@ export function ChatBox({ onRequestLogin }: Props) {
             ) : (
               messages.map((m) => {
                 const replied = m.replyTo ? messages.find(x => x.id === m.replyTo) : null;
+                const canReply = !!user && m.author !== user.username;
                 return (
-                  <div key={m.id} className="mb-2 flex items-start gap-2 group">
-                    <Avatar username={m.author} size={36} />
+                  <div key={m.id}
+                    className={`mb-2 flex items-start gap-2 group rounded-sm pr-1 ${canReply ? "cursor-pointer hover:bg-blue-50/60" : ""}`}
+                    onClick={() => { if (canReply) { setReplyTo(m); setText(`@${m.author} `); } }}
+                    title={canReply ? "Click to reply" : undefined}>
+                    <Avatar username={m.author} size={48} onClick={() => {
+                      const av = getCachedAvatar(m.author);
+                      if (av) showFullscreen(av);
+                    }} />
                     <div className="flex-1 break-words">
                       <div className="flex items-baseline gap-1">
                         <span className="font-bold" style={{ color: authorColor(m.author) }}>{m.author}</span>
                         <span className="text-[10px] text-gray-500">{new Date(m.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
-                        {user && m.author !== user.username && (
-                          <button className="win98-button px-1 text-[10px] opacity-0 group-hover:opacity-100" onClick={() => { setReplyTo(m); setText(`@${m.author} `); }}>reply</button>
+                        {canReply && (
+                          <button className="win98-button px-1 text-[10px] opacity-0 group-hover:opacity-100" onClick={(e) => { e.stopPropagation(); setReplyTo(m); setText(`@${m.author} `); }}>reply</button>
                         )}
                       </div>
                       {replied && (
@@ -173,17 +180,17 @@ export function ChatBox({ onRequestLogin }: Props) {
                       {m.body && <div>{m.body}</div>}
                       {m.imageUrl && (
                         <div className="mt-0.5">
-                          <img src={m.imageUrl} alt="" className="max-w-[260px] max-h-[200px] win98-inset cursor-zoom-in" onClick={() => showFullscreen(m.imageUrl!)} />
+                          <img src={m.imageUrl} alt="" className="max-w-[260px] max-h-[200px] win98-inset cursor-zoom-in" onClick={(e) => { e.stopPropagation(); showFullscreen(m.imageUrl!); }} />
                         </div>
                       )}
                       {m.videoUrl && (
-                        <video src={m.videoUrl} controls className="max-w-[260px] max-h-[200px] mt-0.5 win98-inset" />
+                        <video src={m.videoUrl} controls className="max-w-[260px] max-h-[200px] mt-0.5 win98-inset" onClick={(e) => e.stopPropagation()} />
                       )}
                     </div>
                     {isAdmin && m.author !== "Max8abug" && (
                       <span className="opacity-0 group-hover:opacity-100 flex gap-0.5 shrink-0">
-                        <button className="win98-button px-1 text-[10px]" onClick={() => deleteOne(m.id)}>x</button>
-                        <button className="win98-button px-1 text-[10px]" onClick={() => quickBan(m.author)}>ban</button>
+                        <button className="win98-button px-1 text-[10px]" onClick={(e) => { e.stopPropagation(); deleteOne(m.id); }}>x</button>
+                        <button className="win98-button px-1 text-[10px]" onClick={(e) => { e.stopPropagation(); quickBan(m.author); }}>ban</button>
                       </span>
                     )}
                   </div>

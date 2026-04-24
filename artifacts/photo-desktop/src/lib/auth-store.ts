@@ -30,6 +30,13 @@ export const useAuth = create<AuthState>((set, get) => ({
   updateProfile: async (data) => {
     await apiUpdateProfile(data);
     await get().refresh();
+    const u = get().user;
+    if (u) {
+      try {
+        const mod = await import("../components/Avatar");
+        mod.bustAvatarCache(u.username);
+      } catch {}
+    }
   },
 }));
 

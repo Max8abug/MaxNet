@@ -53,11 +53,11 @@ export function Taskbar({ page }: { page: string }) {
           Start
         </button>
         {startOpen && (
-          <div className="absolute bottom-full left-0 mb-1 w-72 bg-[#c0c0c0] win98-window flex p-1">
+          <div className="absolute bottom-full left-0 mb-1 w-72 bg-[#c0c0c0] win98-window flex p-1" style={{ maxHeight: 'calc(100dvh - 4rem)' }}>
             <div className="w-8 bg-gradient-to-b from-[#000080] to-[#1084d0] flex flex-col justify-end p-1 shrink-0">
               <span className="text-white font-bold -rotate-90 transform origin-bottom-left whitespace-nowrap mb-8 text-xl">Portfolio 98</span>
             </div>
-            <div className="flex-1 flex flex-col p-1 gap-0.5 max-h-[60vh] overflow-y-auto">
+            <div className="flex-1 flex flex-col p-1 gap-0.5 overflow-y-auto" style={{ maxHeight: 'calc(100dvh - 4.5rem)' }}>
               {items.map((it, i) => (
                 <button key={i} className="text-left px-3 py-1 hover:bg-[#000080] hover:text-white text-sm" onClick={it.act}>{it.label}</button>
               ))}

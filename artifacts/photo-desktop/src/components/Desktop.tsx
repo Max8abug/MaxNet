@@ -13,10 +13,8 @@ export function Desktop({ page }: { page: string }) {
   const user = useAuth((s) => s.user);
 
   const bgStyle: React.CSSProperties = user?.backgroundUrl
-    ? { backgroundImage: `url(${user.backgroundUrl})`, backgroundSize: "cover", backgroundPosition: "center" }
-    : user?.backgroundColor
-      ? { backgroundColor: user.backgroundColor }
-      : {};
+    ? { backgroundImage: `url(${user.backgroundUrl})`, backgroundSize: "cover", backgroundPosition: "center", backgroundColor: user.backgroundColor || "#008080" }
+    : { backgroundColor: user?.backgroundColor || "#008080" };
 
   useEffect(() => { setActivePage(page); }, [page, setActivePage]);
 

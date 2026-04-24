@@ -23,7 +23,7 @@ export function ToastHost() {
     return () => { listeners.delete(cb); };
   }, []);
   return (
-    <div className="fixed top-2 right-2 z-[2000] flex flex-col gap-1 pointer-events-none">
+    <div className="fixed bottom-12 right-2 z-[2000] flex flex-col gap-1 pointer-events-none">
       {list.map((t) => (
         <div key={t.id} className="win98-window bg-[#c0c0c0] w-64 pointer-events-auto shadow-md">
           <div className="bg-[#000080] text-white px-2 py-0.5 text-xs font-bold">{t.title}</div>

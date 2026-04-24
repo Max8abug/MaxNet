@@ -190,7 +190,8 @@ export function Window({
             <Square className="w-3 h-3" strokeWidth={3} />
           </button>
           <button className="win98-button w-5 h-5 flex items-center justify-center pointer-events-auto"
-            onPointerDown={e => { e.stopPropagation(); removeWindow(page, w.id); }}>
+            onPointerDown={e => e.stopPropagation()}
+            onClick={(e) => { e.stopPropagation(); removeWindow(page, w.id); }}>
             <X className="w-3 h-3" strokeWidth={3} />
           </button>
         </div>

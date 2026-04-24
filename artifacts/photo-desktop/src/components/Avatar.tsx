@@ -22,7 +22,7 @@ export function bustAvatarCache(username: string) {
   load(username);
 }
 
-export function Avatar({ username, size = 32 }: { username: string; size?: number }) {
+export function Avatar({ username, size = 32, onClick }: { username: string; size?: number; onClick?: (e: React.MouseEvent) => void }) {
   const [u, setU] = useState<PublicUser | null>(() => cache.get(username) ?? null);
   const ranks = useAuth(s => s.ranks);
   useEffect(() => {
@@ -42,10 +42,18 @@ export function Avatar({ username, size = 32 }: { username: string; size?: numbe
     width: size, height: size, fontSize: Math.round(size * 0.5),
     boxShadow: ringColor !== "transparent" ? `0 0 0 2px ${ringColor}` : undefined,
   };
-  if (url) return <img src={url} alt="" className="win98-inset object-cover shrink-0" style={style} />;
+  const interactive = !!onClick;
+  const cls = `win98-inset object-cover shrink-0 ${interactive ? "cursor-zoom-in" : ""}`;
+  const handle = (e: React.MouseEvent) => { if (onClick) { e.stopPropagation(); onClick(e); } };
+  if (url) return <img src={url} alt="" className={cls} style={style} onClick={handle} title={interactive ? username : undefined} />;
   return (
-    <div className="win98-inset bg-gray-300 flex items-center justify-center shrink-0 font-bold" style={style}>
+    <div className={`win98-inset bg-gray-300 flex items-center justify-center shrink-0 font-bold ${interactive ? "cursor-pointer" : ""}`} style={style} onClick={handle} title={interactive ? username : undefined}>
       {(username[0] || "?").toUpperCase()}
     </div>
   );
+}
+
+export function getCachedAvatar(username: string): string | null {
+  const u = cache.get(username);
+  return u?.avatarUrl || null;
 }

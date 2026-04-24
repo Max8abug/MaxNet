@@ -5,7 +5,8 @@ import {
   type ForumThread, type ForumPost,
 } from "../lib/api";
 import { useAuth } from "../lib/auth-store";
-import { Avatar } from "./Avatar";
+import { Avatar, getCachedAvatar } from "./Avatar";
+import { showFullscreen } from "./ImageViewer";
 
 interface Props { onRequestLogin?: () => void; }
 
@@ -132,7 +133,7 @@ export function Forum({ onRequestLogin }: Props) {
         <div className="flex-1 win98-inset bg-white p-1 overflow-auto flex flex-col gap-1">
           {thread.posts.map((p) => (
             <div key={p.id} className="border-b border-gray-200 pb-2 group flex gap-2">
-              <Avatar username={p.author} size={40} />
+              <Avatar username={p.author} size={52} onClick={() => { const av = getCachedAvatar(p.author); if (av) showFullscreen(av); }} />
               <div className="flex-1">
                 <div className="flex items-center gap-1 text-[11px]">
                   <span className={`font-bold ${p.author === "Max8abug" ? "text-red-700" : ""}`}>{p.author}</span>
@@ -142,7 +143,7 @@ export function Forum({ onRequestLogin }: Props) {
                   )}
                 </div>
                 {p.body && <div className="whitespace-pre-wrap break-words text-[12px] mt-0.5">{p.body}</div>}
-                {p.imageUrl && <img src={p.imageUrl} alt="" className="max-w-[300px] max-h-[200px] mt-1 win98-inset" />}
+                {p.imageUrl && <img src={p.imageUrl} alt="" className="max-w-[300px] max-h-[200px] mt-1 win98-inset cursor-zoom-in" onClick={() => showFullscreen(p.imageUrl!)} />}
               </div>
             </div>
           ))}
@@ -190,7 +191,7 @@ export function Forum({ onRequestLogin }: Props) {
           threads.map((t) => (
             <button key={t.id} onClick={() => setOpenId(t.id)}
               className="w-full text-left px-2 py-1 border-b border-gray-200 hover:bg-[#000080] hover:text-white flex items-center gap-2">
-              <Avatar username={t.author} size={28} />
+              <Avatar username={t.author} size={36} />
               <div className="flex-1 min-w-0">
                 <div className="font-bold text-xs truncate">{t.hasPassword && "🔒 "}{t.title}</div>
                 <div className="text-[10px] opacity-70">
