@@ -24,6 +24,8 @@ export interface WindowData {
   prev?: { x: number; y: number; width: number; height: number };
   // for userpage
   username?: string;
+  // for dms: if set, the DMs panel will open the conversation with this user
+  dmPeer?: string;
 }
 
 export interface StringConnection {

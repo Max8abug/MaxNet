@@ -297,7 +297,7 @@ export function Window({
         {w.type === 'polls' && !isEditing && <Polls />}
         {w.type === 'chess' && !isEditing && <Chess />}
         {w.type === 'cafe' && !isEditing && <Cafe />}
-        {w.type === 'dms' && !isEditing && <DMs />}
+        {w.type === 'dms' && !isEditing && <DMs initialPeer={w.dmPeer} />}
         {w.type === 'userpage' && !isEditing && <UserPage username={w.username || ''} />}
         {w.type === 'mypage' && !isEditing && <MyPageRouter />}
         {w.type === 'ranksadmin' && !isEditing && <RanksAdmin />}

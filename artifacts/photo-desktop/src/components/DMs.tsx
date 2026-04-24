@@ -3,12 +3,16 @@ import { fetchDMContacts, fetchDMs, sendDM, type DMContact, type DMMessage } fro
 import { useAuth, hasPermission } from "../lib/auth-store";
 import { Avatar } from "./Avatar";
 
-export function DMs() {
+export function DMs({ initialPeer }: { initialPeer?: string } = {}) {
   const user = useAuth((s) => s.user);
   const ranks = useAuth((s) => s.ranks);
   const refreshRanks = useAuth((s) => s.refreshRanks);
   const [contacts, setContacts] = useState<DMContact[]>([]);
-  const [other, setOther] = useState<string | null>(null);
+  const [other, setOther] = useState<string | null>(initialPeer ?? null);
+  // If the window was opened later with a different peer (or one is supplied
+  // after mount), follow it. We only auto-switch when initialPeer changes to
+  // a non-empty value, so the user's manual selection is never overridden.
+  useEffect(() => { if (initialPeer) setOther(initialPeer); }, [initialPeer]);
   const [msgs, setMsgs] = useState<DMMessage[]>([]);
   const [text, setText] = useState("");
   const scroll = useRef<HTMLDivElement>(null);

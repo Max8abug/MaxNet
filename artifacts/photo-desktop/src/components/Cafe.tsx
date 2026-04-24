@@ -7,6 +7,7 @@ import {
   type CafePresence, type CafeRoom, type CafeObject, type CafeObjectAction,
 } from "../lib/api";
 import { useAuth, hasPermission } from "../lib/auth-store";
+import { useDesktopStore } from "../store";
 
 const THEMES: Record<string, { bg: string; floor: string; label: string }> = {
   cafe: { bg: "#3a2418", floor: "#7a4f31", label: "☕ Cafe" },
@@ -617,6 +618,13 @@ export function Cafe() {
   const [joined, setJoined] = useState(false);
   // Track who is currently "walking" — username -> timestamp of last detected motion.
   const [walking, setWalking] = useState<Record<string, number>>({});
+  // The other-user profile card: when set, we render a popup that shows
+  // their saved character + a button to start a DM. Tapping a character on
+  // the scene opens this card; tapping anywhere else (or the close button)
+  // dismisses it.
+  const [profilePeer, setProfilePeer] = useState<string | null>(null);
+  const addWindow = useDesktopStore(s => s.addWindow);
+  const activePage = useDesktopStore(s => s.activePage);
   const lastPositions = useRef<Record<string, { x: number; y: number }>>({});
   const myAvatar = useRef(body);
   myAvatar.current = body;
@@ -908,7 +916,12 @@ export function Cafe() {
                 <div className="bg-white border border-black px-1 mb-1 max-w-[120px] text-[10px] rounded">{speech.body}</div>
               )}
               <div className="text-white text-[10px] font-bold" style={{ textShadow: "1px 1px 2px black" }}>{p.username}</div>
-              <div className={`relative ${isWalking ? "cafe-walk" : ""}`} style={{ width: ACCESSORY_W, height: ACCESSORY_H }}>
+              <div
+                className={`relative ${isWalking ? "cafe-walk" : ""} ${!isMe ? "cursor-pointer" : ""}`}
+                style={{ width: ACCESSORY_W, height: ACCESSORY_H }}
+                onPointerDown={!isMe ? (e) => { e.stopPropagation(); } : undefined}
+                onClick={!isMe ? (e) => { e.stopPropagation(); setProfilePeer(p.username); } : undefined}
+              >
                 <CharacterCell color={av.color} hat={av.hat || "none"} accessoryUrl={av.accessory || null} />
               </div>
             </div>
@@ -991,6 +1004,56 @@ export function Cafe() {
           }}
         />
       )}
+
+      {/*
+        Other-user profile popup. Shown when a user taps another character on
+        the scene. Uses the live presence record so the avatar shown matches
+        what they look like right now (their saved cafe avatar). The "Send
+        Message" button opens a brand-new DMs window pre-targeted at them so
+        a chat can be started without hunting for them in the contact list.
+      */}
+      {profilePeer && (() => {
+        const p = presence.find(pp => pp.username === profilePeer);
+        const av: any = p?.avatar || {};
+        return (
+          <div
+            className="absolute inset-0 z-[50] flex items-start justify-center pt-4"
+            style={{ backgroundColor: "rgba(0,0,0,0.35)" }}
+            onPointerDown={(e) => { if (e.target === e.currentTarget) setProfilePeer(null); }}
+          >
+            <div
+              className="win98-window bg-[var(--win98-gray)] p-2 flex flex-col items-center gap-2 min-w-[180px]"
+              onPointerDown={(e) => e.stopPropagation()}
+            >
+              <div className="w-full flex items-center justify-between gap-2">
+                <div className="font-bold text-xs truncate">{profilePeer}</div>
+                <button className="win98-button px-1.5 leading-none text-xs" onClick={() => setProfilePeer(null)}>x</button>
+              </div>
+              <div className="relative" style={{ width: ACCESSORY_W, height: ACCESSORY_H }}>
+                <CharacterCell color={av.color || "#ffd699"} hat={av.hat || "none"} accessoryUrl={av.accessory || null} />
+              </div>
+              <div className="flex gap-1 w-full">
+                <button
+                  className="win98-button px-2 flex-1 text-xs"
+                  onClick={() => {
+                    addWindow(activePage, {
+                      type: "dms",
+                      title: `DM — ${profilePeer}`,
+                      dmPeer: profilePeer,
+                      width: 380,
+                      height: 320,
+                      x: 80 + Math.floor(Math.random() * 60),
+                      y: 80 + Math.floor(Math.random() * 60),
+                    });
+                    setProfilePeer(null);
+                  }}
+                >💬 Send Message</button>
+                <button className="win98-button px-2 text-xs" onClick={() => setProfilePeer(null)}>Close</button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }
