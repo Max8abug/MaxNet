@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { fetchUserPage, saveUserPage, clearUserPage, type UserPageElement } from "../lib/api";
-import { useAuth } from "../lib/auth-store";
+import { useAuth, hasPermission } from "../lib/auth-store";
 
 interface Props { username: string; }
 
@@ -26,7 +26,11 @@ function fileToDataUrl(f: File): Promise<string> {
 
 export function UserPage({ username }: Props) {
   const me = useAuth((s) => s.user);
+  const ranks = useAuth((s) => s.ranks);
+  const refreshRanks = useAuth((s) => s.refreshRanks);
   const isMe = me?.username === username;
+  const canModerate = !!me && (me.isAdmin || hasPermission(me, "deleteMessages", ranks));
+  useEffect(() => { void refreshRanks(); }, [refreshRanks]);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const drawing = useRef(false);
   const last = useRef<{ x: number; y: number } | null>(null);
@@ -54,6 +58,13 @@ export function UserPage({ username }: Props) {
     }
   }
   useEffect(() => { void load(); }, [username]);
+  // Poll for updates so other viewers see changes without reopening the page.
+  // Pause polling while the owner is editing so we don't clobber unsaved work.
+  useEffect(() => {
+    if (edit) return;
+    const t = setInterval(() => { void load(); }, 6000);
+    return () => clearInterval(t);
+  }, [username, edit]);
 
   function getPos(e: React.PointerEvent) {
     const c = canvasRef.current!; const r = c.getBoundingClientRect();
@@ -141,7 +152,7 @@ export function UserPage({ username }: Props) {
     <div className="w-full h-full flex flex-col text-xs gap-1">
       <div className="flex gap-1 shrink-0 flex-wrap">
         <div className="font-bold flex-1">{username}'s personal page</div>
-        {me?.isAdmin && !isMe && <button className="win98-button px-2" onClick={adminClear}>Admin Clear</button>}
+        {canModerate && !isMe && <button className="win98-button px-2" onClick={adminClear}>Mod Clear</button>}
         {isMe && (
           edit ? (
             <>

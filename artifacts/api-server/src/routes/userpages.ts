@@ -1,8 +1,8 @@
 import { Router, type IRouter } from "express";
 import { db, userPagesTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
-import { requireAuth, requireAdmin } from "../lib/auth";
-import { audit } from "./social";
+import { requireAuth } from "../lib/auth";
+import { audit, requireDeleteMessages } from "./social";
 
 const router: IRouter = Router();
 
@@ -54,7 +54,7 @@ router.put("/userpages", requireAuth, async (req, res) => {
   res.json({ ok: true });
 });
 
-router.delete("/userpages/:username", requireAdmin, async (req, res) => {
+router.delete("/userpages/:username", requireDeleteMessages, async (req, res) => {
   const u = String(req.params.username);
   await db.delete(userPagesTable).where(eq(userPagesTable.username, u));
   await audit("userpage", "clear", req.session.username || "admin", u, "");

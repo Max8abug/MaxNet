@@ -4,6 +4,7 @@ export const drawingsTable = pgTable("drawings", {
   id: serial("id").primaryKey(),
   author: text("author").notNull().default("anon"),
   dataUrl: text("data_url").notNull(),
+  votes: jsonb("votes").notNull().default({}),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 

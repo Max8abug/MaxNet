@@ -47,7 +47,8 @@ export function ProfileDialog({ onClose }: Props) {
   async function pickAvatar(file: File) {
     setBusy(true); setErr(null);
     try {
-      const dataUrl = await fileToDataUrl(file, 256);
+      // Store at higher resolution so small chat/forum displays stay sharp.
+      const dataUrl = await fileToDataUrl(file, 384);
       await updateProfile({ avatarUrl: dataUrl });
     } catch (e: any) { setErr(e?.message || "Failed"); }
     finally { setBusy(false); }
@@ -94,7 +95,7 @@ export function ProfileDialog({ onClose }: Props) {
         <div className="p-3 flex flex-col gap-3 text-sm">
           <div className="flex items-center gap-3">
             {user.avatarUrl
-              ? <img src={user.avatarUrl} alt="" className="w-16 h-16 win98-inset object-cover" />
+              ? <img src={user.avatarUrl} alt="" className="w-16 h-16 win98-inset object-cover" style={{ imageRendering: "auto" }} />
               : <div className="w-16 h-16 win98-inset bg-gray-300 flex items-center justify-center text-2xl">?</div>}
             <div className="flex flex-col gap-1 flex-1">
               <button className="win98-button px-2 py-0.5" disabled={busy} onClick={() => avatarRef.current?.click()}>

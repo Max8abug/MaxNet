@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { fetchGuestbook, postGuestbook, deleteGuestbookEntry, type GuestbookEntry } from "../lib/api";
-import { useAuth } from "../lib/auth-store";
+import { useAuth, hasPermission } from "../lib/auth-store";
 import { ModAuditPanel } from "./ModAuditPanel";
 
 type Tab = "view" | "audit";
@@ -12,8 +12,12 @@ export function Guestbook() {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const user = useAuth((s) => s.user);
+  const ranks = useAuth((s) => s.ranks);
+  const refreshRanks = useAuth((s) => s.refreshRanks);
   const isAdmin = !!user?.isAdmin;
+  const canDelete = !!user && (isAdmin || hasPermission(user, "deleteMessages", ranks));
   const [tab, setTab] = useState<Tab>("view");
+  useEffect(() => { void refreshRanks(); }, [refreshRanks]);
 
   async function refresh() { try { setEntries(await fetchGuestbook()); } catch {} }
   useEffect(() => { void refresh(); const t = setInterval(refresh, 8000); return () => clearInterval(t); }, []);
@@ -33,7 +37,7 @@ export function Guestbook() {
 
   return (
     <div className="w-full h-full flex flex-col text-sm">
-      {isAdmin && (
+      {canDelete && (
         <div className="flex gap-1 mb-1 shrink-0">
           <button className={`win98-button px-2 py-0.5 text-xs ${tab === "view" ? "shadow-[inset_1px_1px_#808080] border-t-black border-l-black border-r-white border-b-white" : ""}`} onClick={() => setTab("view")}>Notes</button>
           <button className={`win98-button px-2 py-0.5 text-xs ${tab === "audit" ? "shadow-[inset_1px_1px_#808080] border-t-black border-l-black border-r-white border-b-white" : ""}`} onClick={() => setTab("audit")}>Audit</button>
@@ -55,7 +59,7 @@ export function Guestbook() {
                     <div className="text-[11px] text-gray-600 mt-0.5">
                       — {e.author}, {new Date(e.createdAt).toLocaleDateString()}
                     </div>
-                    {isAdmin && (
+                    {canDelete && (
                       <button className="win98-button absolute top-0 right-0 px-1 text-[10px] opacity-0 group-hover:opacity-100" onClick={() => remove(e.id)}>x</button>
                     )}
                   </div>
@@ -76,7 +80,7 @@ export function Guestbook() {
         </>
       )}
 
-      {tab === "audit" && isAdmin && <ModAuditPanel area="guestbook" />}
+      {tab === "audit" && canDelete && <ModAuditPanel area="guestbook" />}
     </div>
   );
 }

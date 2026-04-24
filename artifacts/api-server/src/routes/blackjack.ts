@@ -1,9 +1,12 @@
 import { Router, type IRouter } from "express";
 import { db, blackjackTablesTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
-import { requireAuth } from "../lib/auth";
+import { requireAuth, isAdminUsername } from "../lib/auth";
+import { getUserPermissions } from "./ranks";
 
 const router: IRouter = Router();
+
+const TURN_TIMEOUT_MS = 20_000;
 
 type Card = { r: string; s: string };
 interface Player { username: string; hand: Card[]; bet: number; status: "playing" | "stood" | "bust" | "win" | "lose" | "push" | "blackjack"; joinedAt: number; }
@@ -14,6 +17,7 @@ interface BJState {
   dealerHidden: boolean;
   players: Player[];
   currentTurn: number;
+  turnStartedAt?: number;
   lastResultAt?: number;
   log: string[];
 }
@@ -66,6 +70,8 @@ function publicState(state: BJState) {
     currentTurn: state.currentTurn,
     log: state.log.slice(-30),
     deckRemaining: state.deck.length,
+    turnStartedAt: state.turnStartedAt || 0,
+    serverNow: Date.now(),
   };
 }
 
@@ -132,6 +138,7 @@ router.post("/blackjack/deal", requireAuth, async (_req, res) => {
   for (const p of state.players) if (value(p.hand) === 21) { p.status = "blackjack"; state.log.push(`${p.username} has blackjack!`); }
   // Advance past blackjacks
   while (state.currentTurn < state.players.length && state.players[state.currentTurn].status !== "playing") state.currentTurn++;
+  state.turnStartedAt = Date.now();
   if (state.currentTurn >= state.players.length) await dealerPlay(state);
   await saveState(id, state);
   res.json(publicState(state));
@@ -190,6 +197,59 @@ router.post("/blackjack/stand", requireAuth, async (req, res) => {
 function advanceTurn(state: BJState) {
   state.currentTurn++;
   while (state.currentTurn < state.players.length && state.players[state.currentTurn].status !== "playing") state.currentTurn++;
+  state.turnStartedAt = Date.now();
 }
+
+router.post("/blackjack/skip", requireAuth, async (req, res) => {
+  const id = await ensureTable();
+  const { state } = await getState(id);
+  const me = req.session.username!;
+  if (state.phase !== "playing") { res.status(400).json({ error: "Nothing to skip" }); return; }
+  const player = state.players[state.currentTurn];
+  if (!player) { res.status(400).json({ error: "No active player" }); return; }
+  const seated = state.players.some((p) => p.username === me);
+  const perms = await getUserPermissions(me);
+  const isMod = isAdminUsername(me) || perms.includes("deleteMessages");
+  const elapsed = Date.now() - (state.turnStartedAt || 0);
+  // Allow: the active player; mods anytime; any seated player after timeout
+  const allowed =
+    player.username === me ||
+    isMod ||
+    (seated && elapsed >= TURN_TIMEOUT_MS);
+  if (!allowed) {
+    const wait = Math.max(0, Math.ceil((TURN_TIMEOUT_MS - elapsed) / 1000));
+    res.status(403).json({ error: `Wait ${wait}s before skipping (or sit down at the table)` });
+    return;
+  }
+  player.status = "stood";
+  state.log.push(`${player.username} was skipped (AFK) by ${me}`);
+  advanceTurn(state);
+  if (state.currentTurn >= state.players.length) await dealerPlay(state);
+  await saveState(id, state);
+  res.json(publicState(state));
+});
+
+router.post("/blackjack/reset", requireAuth, async (req, res) => {
+  const id = await ensureTable();
+  const { state } = await getState(id);
+  const me = req.session.username!;
+  const perms = await getUserPermissions(me);
+  const isMod = isAdminUsername(me) || perms.includes("deleteMessages");
+  const seated = state.players.some((p) => p.username === me);
+  // Anyone seated can reset if game has been stuck > 60s, or any mod anytime.
+  const stale = (state.phase === "playing" || state.phase === "dealer") &&
+    Date.now() - (state.turnStartedAt || 0) > 60_000;
+  if (!isMod && !(seated && stale)) {
+    res.status(403).json({ error: "Only mods can reset, or a seated player after the table is stuck for 60s." });
+    return;
+  }
+  // Reset hands and phase but keep players seated.
+  const players = state.players;
+  Object.assign(state, emptyState());
+  state.players = players.map((p) => ({ ...p, hand: [], status: "playing" as const }));
+  state.log.push(`Table was reset by ${me}.`);
+  await saveState(id, state);
+  res.json(publicState(state));
+});
 
 export default router;

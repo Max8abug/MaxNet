@@ -41,6 +41,7 @@ export function Avatar({ username, size = 32, onClick }: { username: string; siz
   const style: React.CSSProperties = {
     width: size, height: size, fontSize: Math.round(size * 0.5),
     boxShadow: ringColor !== "transparent" ? `0 0 0 2px ${ringColor}` : undefined,
+    imageRendering: "auto",
   };
   const interactive = !!onClick;
   const cls = `win98-inset object-cover shrink-0 ${interactive ? "cursor-zoom-in" : ""}`;
@@ -56,4 +57,9 @@ export function Avatar({ username, size = 32, onClick }: { username: string; siz
 export function getCachedAvatar(username: string): string | null {
   const u = cache.get(username);
   return u?.avatarUrl || null;
+}
+
+export function getCachedUser(username: string): PublicUser | null {
+  if (!cache.has(username)) load(username);
+  return cache.get(username) ?? null;
 }

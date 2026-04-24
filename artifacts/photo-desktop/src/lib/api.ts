@@ -7,6 +7,8 @@ export interface Drawing {
   author: string;
   dataUrl: string;
   createdAt: string;
+  score: number;
+  myVote: number;
 }
 
 export interface ChatMessage {
@@ -109,6 +111,13 @@ export async function submitDrawing(dataUrl: string, author: string): Promise<Dr
     ...opts, method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ dataUrl, author }),
+  }));
+}
+export async function voteDrawing(id: number, vote: -1 | 0 | 1): Promise<{ ok: true; score: number; myVote: number }> {
+  return jsonOrThrow(await fetch(`${BASE}/drawings/${id}/vote`, {
+    ...opts, method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ vote }),
   }));
 }
 
@@ -272,6 +281,8 @@ export interface BJState {
   currentTurn: number;
   log: string[];
   deckRemaining: number;
+  turnStartedAt?: number;
+  serverNow?: number;
 }
 export async function bjState(): Promise<BJState> { return jsonOrThrow(await fetch(`${BASE}/blackjack`, opts)); }
 export async function bjJoin(): Promise<BJState> { return jsonOrThrow(await fetch(`${BASE}/blackjack/join`, { ...opts, method: "POST" })); }
@@ -279,6 +290,8 @@ export async function bjLeave(): Promise<BJState> { return jsonOrThrow(await fet
 export async function bjDeal(): Promise<BJState> { return jsonOrThrow(await fetch(`${BASE}/blackjack/deal`, { ...opts, method: "POST" })); }
 export async function bjHit(): Promise<BJState> { return jsonOrThrow(await fetch(`${BASE}/blackjack/hit`, { ...opts, method: "POST" })); }
 export async function bjStand(): Promise<BJState> { return jsonOrThrow(await fetch(`${BASE}/blackjack/stand`, { ...opts, method: "POST" })); }
+export async function bjSkip(): Promise<BJState> { return jsonOrThrow(await fetch(`${BASE}/blackjack/skip`, { ...opts, method: "POST" })); }
+export async function bjReset(): Promise<BJState> { return jsonOrThrow(await fetch(`${BASE}/blackjack/reset`, { ...opts, method: "POST" })); }
 
 // ----- Flappy -----
 export interface FlappyPlayer { username: string; y: number; score: number; alive: boolean; updatedAt: string; }

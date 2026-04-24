@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import { fetchDrawings, submitDrawing, deleteDrawing, type Drawing } from "../lib/api";
-import { useAuth } from "../lib/auth-store";
+import { fetchDrawings, submitDrawing, deleteDrawing, voteDrawing, type Drawing } from "../lib/api";
+import { useAuth, hasPermission } from "../lib/auth-store";
 import { ModAuditPanel } from "./ModAuditPanel";
 import { Avatar } from "./Avatar";
 import { showFullscreen } from "./ImageViewer";
@@ -21,9 +21,18 @@ export function DrawingPad({ onRequestLogin }: Props) {
   const [width, setWidth] = useState(3);
   const [erase, setErase] = useState(false);
   const user = useAuth((s) => s.user);
+  const ranks = useAuth((s) => s.ranks);
+  const refreshRanks = useAuth((s) => s.refreshRanks);
   const isAdmin = !!user?.isAdmin;
+  const canDelete = !!user && (isAdmin || hasPermission(user, "deleteMessages", ranks));
 
-  useEffect(() => { void refresh(); }, []);
+  useEffect(() => { void refresh(); void refreshRanks(); }, [refreshRanks]);
+  // Auto-refresh the gallery so new submissions and vote totals stay current.
+  useEffect(() => {
+    if (tab !== "wall") return;
+    const t = setInterval(() => { void refresh(); }, 5000);
+    return () => clearInterval(t);
+  }, [tab]);
 
   async function refresh() { try { setDrawings(await fetchDrawings()); } catch {} }
 
@@ -81,6 +90,15 @@ export function DrawingPad({ onRequestLogin }: Props) {
 
   async function del(id: number) { if (!confirm("Delete drawing?")) return; try { await deleteDrawing(id); await refresh(); } catch {} }
 
+  async function castVote(id: number, current: number, target: -1 | 1) {
+    if (!user) { onRequestLogin?.(); return; }
+    const next: -1 | 0 | 1 = current === target ? 0 : target;
+    // Optimistic update so the UI feels responsive.
+    setDrawings((prev) => prev.map((d) => d.id === id ? { ...d, score: d.score - current + next, myVote: next } : d));
+    try { await voteDrawing(id, next); await refresh(); }
+    catch { await refresh(); }
+  }
+
   return (
     <div className="w-full h-full flex flex-col gap-1 text-sm">
       <div className="flex gap-1 shrink-0">
@@ -121,18 +139,32 @@ export function DrawingPad({ onRequestLogin }: Props) {
 
       {tab === "wall" && (
         <div className="flex-1 win98-inset bg-[#a08060] p-2 overflow-auto">
+          <div className="text-[10px] text-white/80 mb-1">Sorted by score · upvote your favorites</div>
           {drawings.length === 0 ? (
             <div className="text-white text-xs">No drawings yet. Be the first.</div>
           ) : (
             <div className="grid grid-cols-3 gap-2">
               {drawings.map(d => (
-                <div key={d.id} className="bg-white p-1 shadow-md border-4 border-amber-100 hover:scale-105 transition-transform cursor-zoom-in relative group" style={{ transform: `rotate(${(d.id % 5 - 2) * 1.5}deg)` }}>
-                  <img src={d.dataUrl} alt="" className="w-full aspect-[4/3] object-contain" onClick={() => showFullscreen(d.dataUrl)} />
-                  <div className="text-[10px] flex items-center gap-1 mt-1 truncate">
+                <div key={d.id} className="bg-white p-1 shadow-md border-4 border-amber-100 hover:scale-105 transition-transform relative group" style={{ transform: `rotate(${(d.id % 5 - 2) * 1.5}deg)` }}>
+                  <img src={d.dataUrl} alt="" className="w-full aspect-[4/3] object-contain cursor-zoom-in" onClick={() => showFullscreen(d.dataUrl)} />
+                  <div className="text-[10px] flex items-center gap-1 mt-1">
                     <Avatar username={d.author} size={14} />
-                    {d.author}
+                    <span className="truncate flex-1">{d.author}</span>
+                    <div className="flex items-center gap-0.5 shrink-0">
+                      <button
+                        className={`win98-button px-1 leading-none text-[11px] ${d.myVote === 1 ? "text-green-700 font-bold shadow-[inset_1px_1px_#808080] border-t-black border-l-black border-r-white border-b-white" : ""}`}
+                        title="Upvote"
+                        onClick={(e) => { e.stopPropagation(); castVote(d.id, d.myVote, 1); }}
+                      >▲</button>
+                      <span className={`tabular-nums px-0.5 ${d.score > 0 ? "text-green-700 font-bold" : d.score < 0 ? "text-red-700 font-bold" : "text-gray-700"}`}>{d.score}</span>
+                      <button
+                        className={`win98-button px-1 leading-none text-[11px] ${d.myVote === -1 ? "text-red-700 font-bold shadow-[inset_1px_1px_#808080] border-t-black border-l-black border-r-white border-b-white" : ""}`}
+                        title="Downvote"
+                        onClick={(e) => { e.stopPropagation(); castVote(d.id, d.myVote, -1); }}
+                      >▼</button>
+                    </div>
                   </div>
-                  {isAdmin && d.author !== "Max8abug" && (
+                  {canDelete && d.author !== "Max8abug" && (
                     <button className="absolute top-1 right-1 win98-button px-1 text-[10px] opacity-0 group-hover:opacity-100" onClick={() => del(d.id)}>x</button>
                   )}
                 </div>

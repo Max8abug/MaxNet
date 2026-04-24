@@ -4,7 +4,7 @@ import {
   deleteForumPost, deleteForumThread, unlockThread,
   type ForumThread, type ForumPost,
 } from "../lib/api";
-import { useAuth } from "../lib/auth-store";
+import { useAuth, hasPermission, userColor } from "../lib/auth-store";
 import { Avatar, getCachedAvatar } from "./Avatar";
 import { showFullscreen } from "./ImageViewer";
 
@@ -47,7 +47,11 @@ export function Forum({ onRequestLogin }: Props) {
   const [err, setErr] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const user = useAuth((s) => s.user);
+  const ranks = useAuth((s) => s.ranks);
+  const refreshRanks = useAuth((s) => s.refreshRanks);
   const isAdmin = !!user?.isAdmin;
+  const canDelete = !!user && (isAdmin || hasPermission(user, "deleteMessages", ranks));
+  useEffect(() => { void refreshRanks(); }, [refreshRanks]);
 
   async function refreshList() { try { setThreads(await fetchThreads()); } catch {} }
   async function refreshThread(id: number) {
@@ -128,7 +132,7 @@ export function Forum({ onRequestLogin }: Props) {
         <div className="flex items-center gap-1 mb-1 shrink-0">
           <button className="win98-button px-2 py-0.5 text-xs" onClick={() => { setOpenId(null); setThread(null); void refreshList(); }}>← Back</button>
           <div className="font-bold flex-1 truncate">{thread.thread.hasPassword && "🔒 "}{thread.thread.title}</div>
-          {isAdmin && <button className="win98-button px-2 py-0.5 text-xs text-red-700" onClick={() => delThread(thread.thread.id)}>Delete Thread</button>}
+          {canDelete && <button className="win98-button px-2 py-0.5 text-xs text-red-700" onClick={() => delThread(thread.thread.id)}>Delete Thread</button>}
         </div>
         <div className="flex-1 win98-inset bg-white p-1 overflow-auto flex flex-col gap-1">
           {thread.posts.map((p) => (
@@ -136,9 +140,9 @@ export function Forum({ onRequestLogin }: Props) {
               <Avatar username={p.author} size={52} onClick={() => { const av = getCachedAvatar(p.author); if (av) showFullscreen(av); }} />
               <div className="flex-1">
                 <div className="flex items-center gap-1 text-[11px]">
-                  <span className={`font-bold ${p.author === "Max8abug" ? "text-red-700" : ""}`}>{p.author}</span>
+                  <span className="font-bold" style={{ color: userColor({ username: p.author }, ranks) || (p.author === "Max8abug" ? "#cc0000" : undefined) }}>{p.author}</span>
                   <span className="text-gray-500">{new Date(p.createdAt).toLocaleString()}</span>
-                  {isAdmin && p.author !== "Max8abug" && (
+                  {canDelete && p.author !== "Max8abug" && (
                     <button className="win98-button px-1 text-[10px] ml-auto opacity-0 group-hover:opacity-100" onClick={() => delPost(p.id)}>delete</button>
                   )}
                 </div>

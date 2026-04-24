@@ -212,18 +212,27 @@ function CharacterEditor({ initialColor, initialHat, initialAccessory, onSave, o
             <button className="win98-button px-2" onClick={clearAll}>Clear</button>
           </div>
           <div className="relative win98-inset bg-white" style={{ width: 320, height: 320 }}>
-            {/* Character preview underneath */}
-            <div className="absolute inset-0 flex items-end justify-center pb-4 pointer-events-none">
-              <div className="flex flex-col items-center">
-                <div className="relative">
-                  <div style={{ width: 80, height: 96, background: color, borderRadius: "50% 50% 30% 30%" }} />
-                  {hat === "cap" && <div className="absolute -top-6 left-0 right-0 text-center text-3xl">🧢</div>}
-                  {hat === "top" && <div className="absolute -top-7 left-0 right-0 text-center text-3xl">🎩</div>}
-                  {hat === "party" && <div className="absolute -top-7 left-0 right-0 text-center text-3xl">🎉</div>}
-                  {hat === "crown" && <div className="absolute -top-7 left-0 right-0 text-center text-3xl">👑</div>}
+            {/*
+              Character preview is positioned to match how the in-game cafe maps
+              the 64x64 accessory image onto the 32x50 character cell at offset
+              (-16, -16). Scale factor is 320/64 = 5 game→canvas pixels.
+              In-game body: cell (4..28, 0..28)  → canvas (100..220, 80..220)
+              In-game legs: cell (4..28, 28..42) → canvas (100..220, 220..290)
+            */}
+            <div className="absolute inset-0 pointer-events-none">
+              {/* body */}
+              <div style={{ position: "absolute", left: 100, top: 80, width: 120, height: 140, background: color, borderRadius: "50% 50% 30% 30%" }} />
+              {/* legs */}
+              <div style={{ position: "absolute", left: 100, top: 220, width: 120, height: 70, background: "#3060a0" }} />
+              {/* hat sits just above the body */}
+              {hat !== "none" && (
+                <div className="absolute text-center text-4xl" style={{ left: 100, top: 35, width: 120 }}>
+                  {hat === "cap" && "🧢"}
+                  {hat === "top" && "🎩"}
+                  {hat === "party" && "🎉"}
+                  {hat === "crown" && "👑"}
                 </div>
-                <div style={{ width: 80, height: 40, background: "#3060a0", marginTop: 2 }} />
-              </div>
+              )}
             </div>
             <canvas
               ref={canvasRef}

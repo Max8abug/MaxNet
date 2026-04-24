@@ -4,8 +4,8 @@ import {
   fetchChatAudit, fetchBans, addBan, removeBan, pingTyping, fetchTyping,
   type ChatMessage, type ChatAuditEntry, type BannedUser,
 } from "../lib/api";
-import { useAuth, userColor } from "../lib/auth-store";
-import { Avatar, getCachedAvatar } from "./Avatar";
+import { useAuth, userColor, hasPermission } from "../lib/auth-store";
+import { Avatar, getCachedAvatar, getCachedUser } from "./Avatar";
 import { showFullscreen } from "./ImageViewer";
 import { pushToast } from "./Toast";
 
@@ -55,6 +55,8 @@ export function ChatBox({ onRequestLogin }: Props) {
   const ranks = useAuth((s) => s.ranks);
   const refreshRanks = useAuth((s) => s.refreshRanks);
   const isAdmin = !!user?.isAdmin;
+  const canDelete = !!user && (isAdmin || hasPermission(user, "deleteMessages", ranks));
+  const canBan = !!user && (isAdmin || hasPermission(user, "ban", ranks));
 
   const [tab, setTab] = useState<Tab>("chat");
   const [audit, setAudit] = useState<ChatAuditEntry[]>([]);
@@ -130,8 +132,8 @@ export function ChatBox({ onRequestLogin }: Props) {
   async function unban(username: string) { try { await removeBan(username); await refreshAdmin(); } catch {} }
 
   function authorColor(name: string): string | undefined {
-    if (name === "Max8abug") return "#cc0000";
-    return undefined; // we colorize only for users in messages list — Avatar already shows ring; would need user lookup. Keep simple.
+    const cached = getCachedUser(name);
+    return userColor(cached || { username: name }, ranks) || undefined;
   }
 
   return (
@@ -187,10 +189,10 @@ export function ChatBox({ onRequestLogin }: Props) {
                         <video src={m.videoUrl} controls className="max-w-[260px] max-h-[200px] mt-0.5 win98-inset" onClick={(e) => e.stopPropagation()} />
                       )}
                     </div>
-                    {isAdmin && m.author !== "Max8abug" && (
+                    {(canDelete || canBan) && m.author !== "Max8abug" && m.author !== user?.username && (
                       <span className="opacity-0 group-hover:opacity-100 flex gap-0.5 shrink-0">
-                        <button className="win98-button px-1 text-[10px]" onClick={(e) => { e.stopPropagation(); deleteOne(m.id); }}>x</button>
-                        <button className="win98-button px-1 text-[10px]" onClick={(e) => { e.stopPropagation(); quickBan(m.author); }}>ban</button>
+                        {canDelete && <button className="win98-button px-1 text-[10px]" onClick={(e) => { e.stopPropagation(); deleteOne(m.id); }}>x</button>}
+                        {canBan && <button className="win98-button px-1 text-[10px]" onClick={(e) => { e.stopPropagation(); quickBan(m.author); }}>ban</button>}
                       </span>
                     )}
                   </div>
@@ -228,7 +230,7 @@ export function ChatBox({ onRequestLogin }: Props) {
                 <button className="win98-button px-2" title="Attach video" onClick={() => videoRef.current?.click()}>🎥</button>
                 <button className="win98-button px-3" disabled={sending} onClick={send}>Send</button>
               </div>
-              {isAdmin && <button className="win98-button px-2 mt-1 self-start text-red-700 text-xs" onClick={clearAll}>Clear All Messages</button>}
+              {canDelete && <button className="win98-button px-2 mt-1 self-start text-red-700 text-xs" onClick={clearAll}>Clear All Messages</button>}
             </>
           ) : (
             <button className="win98-button px-2 py-1 mt-1 shrink-0" onClick={onRequestLogin}>Log in to chat</button>

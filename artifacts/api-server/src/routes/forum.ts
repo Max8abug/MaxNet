@@ -1,8 +1,8 @@
 import { Router, type IRouter } from "express";
 import { db, forumThreadsTable, forumPostsTable } from "@workspace/db";
 import { desc, eq, sql } from "drizzle-orm";
-import { requireAuth, requireAdmin, hashPassword, verifyPassword } from "../lib/auth";
-import { isBanned, audit } from "./social";
+import { requireAuth, hashPassword, verifyPassword } from "../lib/auth";
+import { isBanned, audit, requireDeleteMessages } from "./social";
 
 const router: IRouter = Router();
 
@@ -91,7 +91,7 @@ router.post("/forum/threads/:id/posts", requireAuth, async (req, res) => {
   res.json(post);
 });
 
-router.delete("/forum/posts/:id", requireAdmin, async (req, res) => {
+router.delete("/forum/posts/:id", requireDeleteMessages, async (req, res) => {
   const id = Number(req.params.id);
   if (!Number.isFinite(id)) { res.status(400).json({ error: "bad id" }); return; }
   const [existing] = await db.select().from(forumPostsTable).where(eq(forumPostsTable.id, id)).limit(1);
@@ -101,7 +101,7 @@ router.delete("/forum/posts/:id", requireAdmin, async (req, res) => {
   res.json({ ok: true });
 });
 
-router.delete("/forum/threads/:id", requireAdmin, async (req, res) => {
+router.delete("/forum/threads/:id", requireDeleteMessages, async (req, res) => {
   const id = Number(req.params.id);
   if (!Number.isFinite(id)) { res.status(400).json({ error: "bad id" }); return; }
   const [existing] = await db.select().from(forumThreadsTable).where(eq(forumThreadsTable.id, id)).limit(1);

@@ -51,13 +51,44 @@ function validImageData(s: unknown, max = 2_000_000): s is string {
 }
 
 // ---------- Drawings ----------
-router.get("/drawings", async (_req, res) => {
+router.get("/drawings", async (req, res) => {
   const rows = await db
     .select()
     .from(drawingsTable)
-    .orderBy(desc(drawingsTable.createdAt))
-    .limit(200);
-  res.json(rows);
+    .limit(500);
+  const me = req.session.username;
+  const decorated = rows.map((r) => {
+    const votes = (r.votes && typeof r.votes === "object" ? r.votes : {}) as Record<string, number>;
+    let score = 0;
+    for (const v of Object.values(votes)) score += (v > 0 ? 1 : v < 0 ? -1 : 0);
+    return {
+      id: r.id,
+      author: r.author,
+      dataUrl: r.dataUrl,
+      createdAt: r.createdAt,
+      score,
+      myVote: me ? (votes[me] || 0) : 0,
+    };
+  });
+  decorated.sort((a, b) => (b.score - a.score) || (new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()));
+  res.json(decorated.slice(0, 200));
+});
+
+router.post("/drawings/:id/vote", requireAuth, async (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isFinite(id)) { res.status(400).json({ error: "bad id" }); return; }
+  const raw = Number(req.body?.vote);
+  const vote = raw > 0 ? 1 : raw < 0 ? -1 : 0;
+  const [existing] = await db.select().from(drawingsTable).where(eq(drawingsTable.id, id)).limit(1);
+  if (!existing) { res.status(404).json({ error: "not found" }); return; }
+  const me = req.session.username!;
+  const votes = (existing.votes && typeof existing.votes === "object" ? { ...(existing.votes as Record<string, number>) } : {}) as Record<string, number>;
+  if (vote === 0) delete votes[me];
+  else votes[me] = vote;
+  await db.update(drawingsTable).set({ votes }).where(eq(drawingsTable.id, id));
+  let score = 0;
+  for (const v of Object.values(votes)) score += (v > 0 ? 1 : v < 0 ? -1 : 0);
+  res.json({ ok: true, score, myVote: vote });
 });
 
 router.post("/drawings", requireAuth, async (req, res) => {
@@ -84,7 +115,7 @@ router.post("/drawings", requireAuth, async (req, res) => {
   res.json(row);
 });
 
-router.delete("/drawings/:id", requireAdmin, async (req, res) => {
+router.delete("/drawings/:id", requireDeleteMessages, async (req, res) => {
   const id = Number(req.params.id);
   if (!Number.isFinite(id)) { res.status(400).json({ error: "bad id" }); return; }
   const [existing] = await db.select().from(drawingsTable).where(eq(drawingsTable.id, id)).limit(1);
@@ -246,7 +277,7 @@ router.post("/guestbook", async (req, res) => {
   res.json(row);
 });
 
-router.delete("/guestbook/:id", requireAdmin, async (req, res) => {
+router.delete("/guestbook/:id", requireDeleteMessages, async (req, res) => {
   const id = Number(req.params.id);
   if (!Number.isFinite(id)) { res.status(400).json({ error: "bad id" }); return; }
   const [existing] = await db.select().from(guestbookTable).where(eq(guestbookTable.id, id)).limit(1);
@@ -256,7 +287,7 @@ router.delete("/guestbook/:id", requireAdmin, async (req, res) => {
   res.json({ ok: true });
 });
 
-router.delete("/guestbook", requireAdmin, async (req, res) => {
+router.delete("/guestbook", requireDeleteMessages, async (req, res) => {
   const all = await db.select().from(guestbookTable);
   await db.delete(guestbookTable);
   await audit("guestbook", "clear", req.session.username || "admin", "", `Cleared ${all.length} entries`);
