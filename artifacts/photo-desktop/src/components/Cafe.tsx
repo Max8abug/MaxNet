@@ -708,7 +708,9 @@ export function Cafe() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [presence]);
 
-  // Expire wobble entries after 600ms of no motion.
+  // Expire wobble entries after 1500ms of no motion. This matches the slide
+  // duration we use for remote players below, so the legs keep wobbling for
+  // the entire glide instead of stopping a quarter of the way through.
   useEffect(() => {
     const t = setInterval(() => {
       const now = Date.now();
@@ -716,7 +718,7 @@ export function Cafe() {
         const out: Record<string, number> = {};
         let changed = false;
         for (const [k, v] of Object.entries(w)) {
-          if (now - v < 600) out[k] = v; else changed = true;
+          if (now - v < 1500) out[k] = v; else changed = true;
         }
         return changed ? out : w;
       });
@@ -724,13 +726,23 @@ export function Cafe() {
     return () => clearInterval(t);
   }, []);
 
-  // Move ticker — only runs when joined.
+  // Move ticker — pushes our latest position to the server. Two cadences:
+  //   (a) immediate, on every change of `pos` (click / keypress) so other
+  //       clients see motion within one of their poll cycles instead of
+  //       waiting for our next 2-second heartbeat;
+  //   (b) a slower 2-second heartbeat so an idle user's `lastSeen` gets
+  //       refreshed and they don't drop out of the presence list (which is
+  //       gated on a 30-second freshness window on the server).
   useEffect(() => {
     if (!user || !joined) return;
     moveCafe(pos.x, pos.y, myAvatar.current).catch(() => {});
+  }, [user, joined, pos.x, pos.y]);
+  useEffect(() => {
+    if (!user || !joined) return;
     const t = setInterval(() => { moveCafe(pos.x, pos.y, myAvatar.current).catch(() => {}); }, 2000);
     return () => clearInterval(t);
-  }, [user, joined, pos]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user, joined]);
 
   // Send immediate update when avatar changes (only if joined).
   useEffect(() => {
@@ -936,7 +948,24 @@ export function Cafe() {
             .filter(r => r.to === p.username && r.expiresAt > now)
             .sort((a, b) => b.expiresAt - a.expiresAt)[0];
           return (
-            <div key={p.username} className="absolute flex flex-col items-center" style={{ left: `${(x / W) * 100}%`, top: `${(y / H) * 100}%`, transform: "translate(-50%, -100%)", transition: "left 250ms linear, top 250ms linear" }}>
+            // For remote players the position arrives in jumps every server
+            // poll (~1.5s), so we glide between samples for the full poll
+            // window with an ease-out curve. That turns choppy "step-and-
+            // wait" motion into a natural slide. For our own character we
+            // keep the slide short and snappy so click-to-move still feels
+            // immediate to the local user.
+            <div
+              key={p.username}
+              className="absolute flex flex-col items-center"
+              style={{
+                left: `${(x / W) * 100}%`,
+                top: `${(y / H) * 100}%`,
+                transform: "translate(-50%, -100%)",
+                transition: isMe
+                  ? "left 320ms ease-out, top 320ms ease-out"
+                  : "left 1500ms ease-out, top 1500ms ease-out",
+              }}
+            >
               {myReaction && (
                 <div
                   key={`react-${myReaction.from}-${myReaction.expiresAt}`}
