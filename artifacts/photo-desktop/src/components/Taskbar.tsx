@@ -12,12 +12,14 @@ export function Taskbar({ page }: { page: string }) {
   const [loginOpen, setLoginOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const [, setLocation] = useLocation();
-  const { user, ranks, refresh, refreshRanks, logout } = useAuth();
+  const { user, ranks, refresh, refreshRanks, logout, siteSettings, refreshSiteSettings } = useAuth();
   const wins = windows[page] || [];
   const [dmUnread, setDmUnread] = useState(0);
   const [chatUnread, setChatUnread] = useState(0);
 
-  useEffect(() => { void refresh(); void refreshRanks(); }, [refresh, refreshRanks]);
+  useEffect(() => { void refresh(); void refreshRanks(); void refreshSiteSettings(); }, [refresh, refreshRanks, refreshSiteSettings]);
+  // Re-pull site settings periodically so visitors pick up logo updates without a hard refresh.
+  useEffect(() => { const t = setInterval(() => { void refreshSiteSettings(); }, 30_000); return () => clearInterval(t); }, [refreshSiteSettings]);
 
   // Poll for DM and chat unread counts. Treat the badge as cleared while a window of that type is open and not minimized.
   const dmsOpen = wins.some(w => w.type === 'dms' && (w.state || 'normal') !== 'min');
@@ -73,6 +75,7 @@ export function Taskbar({ page }: { page: string }) {
     { label: "Add Link Shortcut", act: () => open({ type: 'link', title: 'Shortcut', linkLabel: 'Go to About', linkTarget: '/about', width: 200, height: 150 }) },
   ];
   if (user?.isAdmin) items.push({ label: "★ Manage Ranks", act: () => open({ type: 'ranksadmin', title: 'Ranks Admin', width: 480, height: 500 }) });
+  if (user?.isAdmin) items.push({ label: "★ Site Settings", act: () => open({ type: 'sitesettings', title: 'Site Settings', width: 420, height: 400 }) });
 
   const colorStyle = user ? { color: userColor(user, ranks) || undefined } : {};
   const totalUnread = dmUnread + chatUnread;
@@ -112,14 +115,16 @@ export function Taskbar({ page }: { page: string }) {
           className={`win98-button h-8 px-2 mr-2 flex items-center gap-2 font-bold ${startOpen ? 'border-t-black border-l-black border-r-white border-b-white shadow-[inset_1px_1px_#808080]' : ''}`}
           onClick={() => setStartOpen(!startOpen)}
         >
-          <div className="w-5 h-5 bg-gradient-to-br from-blue-600 to-green-500 shadow-inner" />
+          {siteSettings.logoDataUrl
+            ? <img src={siteSettings.logoDataUrl} alt="logo" className="w-5 h-5 object-contain" />
+            : <div className="w-5 h-5 bg-gradient-to-br from-blue-600 to-green-500 shadow-inner" />}
           Start
           <Badge count={totalUnread} />
         </button>
         {startOpen && (
           <div className="absolute bottom-full left-0 mb-1 w-72 bg-[#c0c0c0] win98-window flex p-1" style={{ maxHeight: 'calc(100dvh - 4rem)' }}>
             <div className="w-8 bg-gradient-to-b from-[#000080] to-[#1084d0] flex flex-col justify-end p-1 shrink-0">
-              <span className="text-white font-bold -rotate-90 transform origin-bottom-left whitespace-nowrap mb-8 text-xl">Portfolio 98</span>
+              <span className="text-white font-bold -rotate-90 transform origin-bottom-left whitespace-nowrap mb-8 text-xl">{siteSettings.siteName || 'Portfolio 98'}</span>
             </div>
             <div className="flex-1 flex flex-col p-1 gap-0.5 overflow-y-auto" style={{ maxHeight: 'calc(100dvh - 4.5rem)' }}>
               {items.map((it, i) => (

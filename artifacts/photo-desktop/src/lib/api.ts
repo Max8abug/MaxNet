@@ -113,6 +113,18 @@ export async function submitDrawing(dataUrl: string, author: string): Promise<Dr
     body: JSON.stringify({ dataUrl, author }),
   }));
 }
+export interface SiteSettings { logoDataUrl: string; siteName: string; }
+export async function fetchSiteSettings(): Promise<SiteSettings> {
+  return jsonOrThrow(await fetch(`${BASE}/site-settings`, opts));
+}
+export async function updateSiteSettings(data: Partial<SiteSettings>): Promise<SiteSettings> {
+  return jsonOrThrow(await fetch(`${BASE}/site-settings`, {
+    ...opts, method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  }));
+}
+
 export async function adminDeleteUser(username: string, reason?: string): Promise<void> {
   await jsonOrThrow(await fetch(`${BASE}/users/${encodeURIComponent(username)}`, {
     ...opts, method: "DELETE",

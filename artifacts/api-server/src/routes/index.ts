@@ -13,6 +13,7 @@ import musicRouter from "./music";
 import userpagesRouter from "./userpages";
 import cafeRouter from "./cafe";
 import chessRouter from "./chess";
+import siteSettingsRouter from "./site-settings";
 
 const router: IRouter = Router();
 
@@ -30,5 +31,6 @@ router.use(musicRouter);
 router.use(userpagesRouter);
 router.use(cafeRouter);
 router.use(chessRouter);
+router.use(siteSettingsRouter);
 
 export default router;

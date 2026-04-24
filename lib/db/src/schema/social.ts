@@ -135,6 +135,14 @@ export const bannedUsersTable = pgTable("banned_users", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
+// Site-wide settings (singleton row, id=1) — owner-configurable branding such as the start-menu logo.
+export const siteSettingsTable = pgTable("site_settings", {
+  id: serial("id").primaryKey(),
+  logoDataUrl: text("logo_data_url").notNull().default(""),
+  siteName: text("site_name").notNull().default("Portfolio 98"),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
 // Generalized moderation audit log across chat, guestbook, drawings, forum
 export const chatAuditTable = pgTable("chat_audit_log", {
   id: serial("id").primaryKey(),

@@ -1,12 +1,14 @@
 import { create } from "zustand";
-import { fetchRanks, getMe, login as apiLogin, signup as apiSignup, logout as apiLogout, updateProfile as apiUpdateProfile, type AuthUser, type Rank } from "./api";
+import { fetchRanks, fetchSiteSettings, getMe, login as apiLogin, signup as apiSignup, logout as apiLogout, updateProfile as apiUpdateProfile, type AuthUser, type Rank, type SiteSettings } from "./api";
 
 interface AuthState {
   user: AuthUser | null;
   loading: boolean;
   ranks: Rank[];
+  siteSettings: SiteSettings;
   refresh: () => Promise<void>;
   refreshRanks: () => Promise<void>;
+  refreshSiteSettings: () => Promise<void>;
   login: (u: string, p: string) => Promise<void>;
   signup: (u: string, p: string) => Promise<void>;
   logout: () => Promise<void>;
@@ -17,12 +19,16 @@ export const useAuth = create<AuthState>((set, get) => ({
   user: null,
   loading: true,
   ranks: [],
+  siteSettings: { logoDataUrl: "", siteName: "Portfolio 98" },
   refresh: async () => {
     try { const u = await getMe(); set({ user: u, loading: false }); }
     catch { set({ user: null, loading: false }); }
   },
   refreshRanks: async () => {
     try { const r = await fetchRanks(); set({ ranks: r }); } catch {}
+  },
+  refreshSiteSettings: async () => {
+    try { const s = await fetchSiteSettings(); set({ siteSettings: s }); } catch {}
   },
   login: async (username, password) => { await apiLogin(username, password); await get().refresh(); },
   signup: async (username, password) => { await apiSignup(username, password); await get().refresh(); },
