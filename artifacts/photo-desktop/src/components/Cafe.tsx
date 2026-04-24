@@ -3,6 +3,7 @@ import {
   fetchCafeState, moveCafe, sayCafe, setCafeTheme, leaveCafe,
   fetchCafeRooms, createCafeRoom, deleteCafeRoom,
   fetchCafeObjects, createCafeObject, updateCafeObject, deleteCafeObject,
+  fetchCafeAvatar, saveCafeAvatar,
   type CafePresence, type CafeRoom, type CafeObject, type CafeObjectAction,
 } from "../lib/api";
 import { useAuth, hasPermission } from "../lib/auth-store";
@@ -622,6 +623,30 @@ export function Cafe() {
 
   useEffect(() => { ensureWobbleStyle(); }, []);
 
+  // Pull the user's persisted character whenever the logged-in user changes.
+  // This makes the look stick across leaving the cafe / logging out / new tabs.
+  useEffect(() => {
+    if (!user) {
+      setBody({ color: "#ffd699", hat: "none", accessory: null });
+      return;
+    }
+    let alive = true;
+    (async () => {
+      try {
+        const a = await fetchCafeAvatar();
+        if (!alive) return;
+        if (a && (a.color || a.hat || a.accessory)) {
+          setBody({
+            color: typeof a.color === "string" ? a.color : "#ffd699",
+            hat: typeof a.hat === "string" ? a.hat : "none",
+            accessory: typeof a.accessory === "string" ? a.accessory : null,
+          });
+        }
+      } catch {}
+    })();
+    return () => { alive = false; };
+  }, [user?.username]);
+
   async function loadRooms() {
     try { setRooms(await fetchCafeRooms()); } catch {}
   }
@@ -920,7 +945,15 @@ export function Cafe() {
           initialColor={body.color}
           initialHat={body.hat}
           initialAccessory={body.accessory}
-          onSave={(color, hat, accessory) => { setBody({ color, hat, accessory }); setEditing(false); }}
+          onSave={(color, hat, accessory) => {
+            const next = { color, hat, accessory };
+            setBody(next);
+            setEditing(false);
+            // Fire-and-forget persist; the avatar state is already applied
+            // optimistically, so a transient network error won't lose it for
+            // the current session — the next save retry will reconcile it.
+            saveCafeAvatar(next).catch(() => {});
+          }}
           onCancel={() => setEditing(false)}
         />
       )}

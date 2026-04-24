@@ -484,6 +484,19 @@ export async function leaveCafe(): Promise<void> {
   try { await fetch(`${BASE}/cafe/leave`, { ...opts, method: "POST" }); } catch {}
 }
 
+export interface CafeAvatar { color: string; hat: string; accessory: string | null; }
+export async function fetchCafeAvatar(): Promise<Partial<CafeAvatar>> {
+  const j = await jsonOrThrow(await fetch(`${BASE}/cafe/avatar`, opts)) as { avatar: Partial<CafeAvatar> };
+  return j.avatar || {};
+}
+export async function saveCafeAvatar(avatar: CafeAvatar): Promise<void> {
+  await jsonOrThrow(await fetch(`${BASE}/cafe/avatar`, {
+    ...opts, method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ avatar }),
+  }));
+}
+
 export interface CafeRoom { id: number; slug: string; name: string; backgroundDataUrl: string; floorColor: string; createdBy: string; createdAt: string; }
 export async function fetchCafeRooms(): Promise<CafeRoom[]> {
   return jsonOrThrow(await fetch(`${BASE}/cafe-rooms`, opts));

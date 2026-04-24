@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { db, cafePresenceTable, cafeChatTable, cafeSettingsTable, cafeRoomsTable } from "@workspace/db";
+import { db, cafePresenceTable, cafeChatTable, cafeSettingsTable, cafeRoomsTable, usersTable } from "@workspace/db";
 import { desc, eq, sql } from "drizzle-orm";
 import { requireAuth, isAdminUsername } from "../lib/auth";
 import { isBanned, audit } from "./social";
@@ -75,6 +75,33 @@ router.post("/cafe/theme", requireAuth, async (req, res) => {
 router.post("/cafe/leave", requireAuth, async (req, res) => {
   await db.delete(cafePresenceTable).where(eq(cafePresenceTable.username, req.session.username!));
   res.json({ ok: true });
+});
+
+// Persistent per-user character. Stored on the users row so it survives leaving
+// the cafe, logging out, etc. The in-cafe presence avatar is derived from this
+// every time the user joins a session and rewritten here whenever the editor
+// saves a new look.
+router.get("/cafe/avatar", requireAuth, async (req, res) => {
+  const userId = req.session.userId!;
+  const [u] = await db.select({ cafeAvatar: usersTable.cafeAvatar }).from(usersTable).where(eq(usersTable.id, userId)).limit(1);
+  res.json({ avatar: (u?.cafeAvatar as any) || {} });
+});
+
+router.put("/cafe/avatar", requireAuth, async (req, res) => {
+  const userId = req.session.userId!;
+  const { avatar } = req.body ?? {};
+  if (!avatar || typeof avatar !== "object") { res.status(400).json({ error: "avatar required" }); return; }
+  const a = avatar as { color?: unknown; hat?: unknown; accessory?: unknown };
+  const cleaned = {
+    color: typeof a.color === "string" ? a.color.slice(0, 32) : "#ffd699",
+    hat: typeof a.hat === "string" ? a.hat.slice(0, 32) : "none",
+    accessory:
+      typeof a.accessory === "string" && a.accessory.startsWith("data:image/")
+        ? a.accessory.slice(0, 250_000)
+        : null,
+  };
+  await db.update(usersTable).set({ cafeAvatar: cleaned }).where(eq(usersTable.id, userId));
+  res.json({ ok: true, avatar: cleaned });
 });
 
 export default router;
