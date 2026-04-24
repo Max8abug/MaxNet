@@ -126,6 +126,25 @@ export const cafeRoomsTable = pgTable("cafe_rooms", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
+// Admin-placed clickable objects within a cafe room. `room` matches a built-in
+// theme slug or a cafeRoomsTable.slug. Coordinates are in the cafe's 800×500
+// world space.
+export const cafeObjectsTable = pgTable("cafe_objects", {
+  id: serial("id").primaryKey(),
+  room: text("room").notNull(),
+  name: text("name").notNull(),
+  x: integer("x").notNull(),
+  y: integer("y").notNull(),
+  width: integer("width").notNull().default(48),
+  height: integer("height").notNull().default(48),
+  emoji: text("emoji"),
+  drawingDataUrl: text("drawing_data_url"),
+  actionType: text("action_type").notNull(),
+  actionValue: text("action_value").notNull(),
+  createdBy: text("created_by").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
 export const guestbookTable = pgTable("guestbook_entries", {
   id: serial("id").primaryKey(),
   author: text("author").notNull().default("anon"),

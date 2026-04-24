@@ -1,8 +1,9 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   fetchCafeState, moveCafe, sayCafe, setCafeTheme, leaveCafe,
   fetchCafeRooms, createCafeRoom, deleteCafeRoom,
-  type CafePresence, type CafeRoom,
+  fetchCafeObjects, createCafeObject, updateCafeObject, deleteCafeObject,
+  type CafePresence, type CafeRoom, type CafeObject, type CafeObjectAction,
 } from "../lib/api";
 import { useAuth, hasPermission } from "../lib/auth-store";
 
@@ -298,6 +299,26 @@ function CharacterEditor({ initialColor, initialHat, initialAccessory, onSave, o
   );
 }
 
+// CSS keyframes for the walk wobble — injected once.
+const WOBBLE_STYLE_ID = "cafe-wobble-keyframes";
+function ensureWobbleStyle() {
+  if (typeof document === "undefined") return;
+  if (document.getElementById(WOBBLE_STYLE_ID)) return;
+  const s = document.createElement("style");
+  s.id = WOBBLE_STYLE_ID;
+  s.textContent = `
+    @keyframes cafeWobble {
+      0%   { transform: translateY(0)    rotate(0deg); }
+      20%  { transform: translateY(-2px) rotate(-6deg); }
+      50%  { transform: translateY(0)    rotate(0deg); }
+      80%  { transform: translateY(-2px) rotate(6deg); }
+      100% { transform: translateY(0)    rotate(0deg); }
+    }
+    .cafe-walk { animation: cafeWobble 360ms ease-in-out infinite; transform-origin: 50% 100%; }
+  `;
+  document.head.appendChild(s);
+}
+
 export function Cafe() {
   const user = useAuth(s => s.user);
   const ranks = useAuth(s => s.ranks);
@@ -306,18 +327,32 @@ export function Cafe() {
   const [chat, setChat] = useState<{ author: string; body: string; createdAt: string }[]>([]);
   const [theme, setTheme] = useState("cafe");
   const [rooms, setRooms] = useState<CafeRoom[]>([]);
+  const [objects, setObjects] = useState<CafeObject[]>([]);
   const [managingRooms, setManagingRooms] = useState(false);
+  const [editObjectsMode, setEditObjectsMode] = useState(false);
+  const [pendingObject, setPendingObject] = useState<{ x: number; y: number } | null>(null);
+  const [editingObject, setEditingObject] = useState<CafeObject | null>(null);
   const [pos, setPos] = useState({ x: 200 + Math.floor(Math.random() * 200), y: 250 });
   const [body, setBody] = useState<{ color: string; hat: string; accessory: string | null }>({ color: "#ffd699", hat: "none", accessory: null });
   const [msg, setMsg] = useState("");
   const [editing, setEditing] = useState(false);
+  const [joined, setJoined] = useState(false);
+  // Track who is currently "walking" — username -> timestamp of last detected motion.
+  const [walking, setWalking] = useState<Record<string, number>>({});
+  const lastPositions = useRef<Record<string, { x: number; y: number }>>({});
   const myAvatar = useRef(body);
   myAvatar.current = body;
+
+  useEffect(() => { ensureWobbleStyle(); }, []);
 
   async function loadRooms() {
     try { setRooms(await fetchCafeRooms()); } catch {}
   }
+  async function loadObjects(forTheme: string) {
+    try { setObjects(await fetchCafeObjects(forTheme)); } catch { setObjects([]); }
+  }
   useEffect(() => { void loadRooms(); }, []);
+  useEffect(() => { void loadObjects(theme); }, [theme]);
 
   useEffect(() => { void refreshRanks(); }, [refreshRanks]);
 
@@ -329,24 +364,62 @@ export function Cafe() {
     return () => { alive = false; clearInterval(t); };
   }, []);
 
+  // Detect movement of remote players to drive their wobble.
   useEffect(() => {
-    if (!user) return;
+    const now = Date.now();
+    let any = false;
+    const next: Record<string, number> = { ...walking };
+    for (const p of presence) {
+      const isMe = user && p.username === user.username;
+      if (isMe) continue;
+      const prev = lastPositions.current[p.username];
+      if (prev && (prev.x !== p.x || prev.y !== p.y)) { next[p.username] = now; any = true; }
+      lastPositions.current[p.username] = { x: p.x, y: p.y };
+    }
+    if (any) setWalking(next);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [presence]);
+
+  // Expire wobble entries after 600ms of no motion.
+  useEffect(() => {
+    const t = setInterval(() => {
+      const now = Date.now();
+      setWalking(w => {
+        const out: Record<string, number> = {};
+        let changed = false;
+        for (const [k, v] of Object.entries(w)) {
+          if (now - v < 600) out[k] = v; else changed = true;
+        }
+        return changed ? out : w;
+      });
+    }, 200);
+    return () => clearInterval(t);
+  }, []);
+
+  // Move ticker — only runs when joined.
+  useEffect(() => {
+    if (!user || !joined) return;
+    moveCafe(pos.x, pos.y, myAvatar.current).catch(() => {});
     const t = setInterval(() => { moveCafe(pos.x, pos.y, myAvatar.current).catch(() => {}); }, 2000);
     return () => clearInterval(t);
-  }, [user, pos]);
-  // Send immediate update when avatar changes
+  }, [user, joined, pos]);
+
+  // Send immediate update when avatar changes (only if joined).
   useEffect(() => {
-    if (!user) return;
+    if (!user || !joined) return;
     moveCafe(pos.x, pos.y, body).catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [body.color, body.hat, body.accessory]);
-  useEffect(() => () => { leaveCafe(); }, []);
 
+  // Always leave on unmount.
+  useEffect(() => () => { leaveCafe().catch(() => {}); }, []);
+
+  // Keyboard movement only when joined and not in a modal.
   useEffect(() => {
-    if (!user) return;
+    if (!user || !joined) return;
     const onKey = (e: KeyboardEvent) => {
       if ((e.target as HTMLElement)?.tagName === "INPUT") return;
-      if (editing) return;
+      if (editing || editObjectsMode || pendingObject || editingObject) return;
       let dx = 0, dy = 0;
       if (e.key === "ArrowLeft" || e.key === "a") dx = -20;
       if (e.key === "ArrowRight" || e.key === "d") dx = 20;
@@ -355,20 +428,63 @@ export function Cafe() {
       if (!dx && !dy) return;
       e.preventDefault();
       setPos(p => ({ x: Math.max(20, Math.min(W - 20, p.x + dx)), y: Math.max(40, Math.min(H - 20, p.y + dy)) }));
+      if (user) setWalking(w => ({ ...w, [user.username]: Date.now() }));
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [user, editing]);
+  }, [user, joined, editing, editObjectsMode, pendingObject, editingObject]);
 
   async function send() {
     if (!msg.trim()) return;
     try { await sayCafe(msg); setMsg(""); } catch {}
   }
   async function changeTheme(t: string) { try { await setCafeTheme(t); } catch (e: any) { alert(e?.message || "Failed"); } }
+
+  async function joinCafe() {
+    if (!user) return;
+    setJoined(true);
+    try { await moveCafe(pos.x, pos.y, body); } catch {}
+  }
+  async function leaveNow() {
+    setJoined(false);
+    try { await leaveCafe(); } catch {}
+  }
+
+  function handleObjectAction(o: CafeObject) {
+    switch (o.actionType) {
+      case "teleport": {
+        const target = o.actionValue.trim().toLowerCase();
+        if (!target) return;
+        changeTheme(target);
+        // Reset the local position to a sensible spawn so the user can see they teleported.
+        setPos({ x: 200 + Math.floor(Math.random() * 200), y: 250 });
+        if (joined && user) setWalking(w => ({ ...w, [user.username]: Date.now() }));
+        return;
+      }
+      case "message":
+        alert(o.actionValue);
+        return;
+      case "url": {
+        const url = o.actionValue.trim();
+        if (!/^https?:\/\//i.test(url)) { alert("Invalid URL on object"); return; }
+        window.open(url, "_blank", "noopener,noreferrer");
+        return;
+      }
+    }
+  }
+
   function clickArea(e: React.MouseEvent<HTMLDivElement>) {
     if (!user) return;
     const r = e.currentTarget.getBoundingClientRect();
-    setPos({ x: ((e.clientX - r.left) / r.width) * W, y: ((e.clientY - r.top) / r.height) * H });
+    const x = Math.round(((e.clientX - r.left) / r.width) * W);
+    const y = Math.round(((e.clientY - r.top) / r.height) * H);
+    if (editObjectsMode) {
+      setPendingObject({ x, y });
+      return;
+    }
+    if (!joined) return;
+    setPos({ x, y });
+    setWalking(w => ({ ...w, [user.username]: Date.now() }));
   }
 
   const customRoom = rooms.find(r => r.slug === theme);
@@ -378,9 +494,17 @@ export function Cafe() {
   const canChangeTheme = user && (user.isAdmin || hasPermission(user, "cafeTheme", ranks));
   const recentSpeech = chat.slice(-12);
 
+  // Build the list of names visible in the cafe scene. If I'm joined, ensure I render
+  // even before the server's first echo of my presence.
+  const presenceForScene = useMemo(() => {
+    if (!user || !joined) return presence.filter(p => p.username !== user?.username);
+    if (presence.some(p => p.username === user.username)) return presence;
+    return [...presence, { username: user.username, x: pos.x, y: pos.y, avatar: body, lastSeen: new Date().toISOString() } as any];
+  }, [presence, user, joined, pos.x, pos.y, body]);
+
   return (
     <div className="w-full h-full flex flex-col text-xs gap-1">
-      <div className="flex gap-1 items-center shrink-0">
+      <div className="flex gap-1 items-center shrink-0 flex-wrap">
         <div className="font-bold flex-1">{t.label} — {presence.length} online</div>
         {user && <button className="win98-button px-2" onClick={() => setEditing(true)}>🎨 Customize Character</button>}
         {canChangeTheme && (
@@ -396,10 +520,29 @@ export function Cafe() {
           </select>
         )}
         {user?.isAdmin && (
-          <button className="win98-button px-2" onClick={() => setManagingRooms(true)}>Manage Rooms</button>
+          <>
+            <button className="win98-button px-2" onClick={() => setManagingRooms(true)}>Manage Rooms</button>
+            <button
+              className={`win98-button px-2 ${editObjectsMode ? "font-bold" : ""}`}
+              onClick={() => setEditObjectsMode(v => !v)}
+              title="When on, click empty space to add an object, or click an existing object to edit it."
+            >
+              {editObjectsMode ? "✏ Editing Objects" : "Edit Objects"}
+            </button>
+          </>
+        )}
+        {user && (
+          joined
+            ? <button className="win98-button px-2" onClick={leaveNow}>🚪 Leave Cafe</button>
+            : <button className="win98-button px-2 font-bold" onClick={joinCafe}>🚪 Join Cafe</button>
         )}
       </div>
-      <div className="flex-1 win98-inset overflow-hidden relative" style={{ backgroundColor: t.bg }} onClick={clickArea}>
+
+      <div
+        className="flex-1 win98-inset overflow-hidden relative"
+        style={{ backgroundColor: t.bg, cursor: editObjectsMode ? "crosshair" : (joined ? "pointer" : "default") }}
+        onClick={clickArea}
+      >
         {customRoom ? (
           <img
             src={customRoom.backgroundDataUrl}
@@ -412,29 +555,87 @@ export function Cafe() {
           <Background theme={theme} />
         )}
         <div className="absolute inset-x-0 bottom-0 h-1/3" style={{ backgroundColor: t.floor, opacity: customRoom ? 0.4 : 0.95 }} />
-        {presence.map(p => {
+
+        {/* Cafe objects */}
+        {objects.map(o => (
+          <div
+            key={o.id}
+            className="absolute select-none"
+            style={{
+              left: `${(o.x / W) * 100}%`,
+              top: `${(o.y / H) * 100}%`,
+              width: o.width,
+              height: o.height,
+              transform: "translate(-50%, -50%)",
+              cursor: editObjectsMode ? "move" : "pointer",
+              outline: editObjectsMode ? "2px dashed #ff0" : "none",
+              outlineOffset: 2,
+            }}
+            title={`${o.name} — ${o.actionType}: ${o.actionValue}`}
+            onClick={(e) => {
+              e.stopPropagation();
+              if (editObjectsMode) { setEditingObject(o); return; }
+              handleObjectAction(o);
+            }}
+          >
+            {o.drawingDataUrl ? (
+              <img src={o.drawingDataUrl} alt={o.name} draggable={false} className="w-full h-full pointer-events-none" style={{ imageRendering: "pixelated", objectFit: "contain" }} />
+            ) : (
+              <div className="w-full h-full flex items-center justify-center" style={{ fontSize: Math.min(o.width, o.height) * 0.85, lineHeight: 1 }}>
+                {o.emoji || "❓"}
+              </div>
+            )}
+            {editObjectsMode && (
+              <div className="absolute -top-4 left-0 bg-yellow-200 text-black text-[9px] px-1 border border-black whitespace-nowrap">
+                {o.name} · {o.actionType}
+              </div>
+            )}
+          </div>
+        ))}
+
+        {/* People */}
+        {presenceForScene.map(p => {
           const isMe = user && p.username === user.username;
           const av: any = isMe ? body : (p.avatar || {});
           const speech = recentSpeech.findLast?.(c => c.author === p.username);
           const x = isMe ? pos.x : p.x, y = isMe ? pos.y : p.y;
+          const isWalking = !!walking[p.username];
           return (
-            <div key={p.username} className="absolute flex flex-col items-center" style={{ left: `${(x / W) * 100}%`, top: `${(y / H) * 100}%`, transform: "translate(-50%, -100%)" }}>
+            <div key={p.username} className="absolute flex flex-col items-center" style={{ left: `${(x / W) * 100}%`, top: `${(y / H) * 100}%`, transform: "translate(-50%, -100%)", transition: "left 250ms linear, top 250ms linear" }}>
               {speech && (Date.now() - new Date(speech.createdAt).getTime() < 8000) && (
                 <div className="bg-white border border-black px-1 mb-1 max-w-[120px] text-[10px] rounded">{speech.body}</div>
               )}
               <div className="text-white text-[10px] font-bold" style={{ textShadow: "1px 1px 2px black" }}>{p.username}</div>
-              <div className="relative" style={{ width: CELL_W, height: CELL_H }}>
+              <div className={`relative ${isWalking ? "cafe-walk" : ""}`} style={{ width: CELL_W, height: CELL_H }}>
                 <CharacterCell color={av.color} hat={av.hat || "none"} accessoryUrl={av.accessory || null} />
               </div>
             </div>
           );
         })}
+
+        {/* Not-joined overlay */}
+        {user && !joined && (
+          <div
+            className="absolute inset-0 flex items-center justify-center"
+            style={{ backgroundColor: "rgba(0,0,0,0.45)" }}
+            onClick={(e) => { e.stopPropagation(); }}
+          >
+            <button className="win98-button px-4 py-2 text-base font-bold" onClick={joinCafe}>
+              🚪 Join Cafe
+            </button>
+          </div>
+        )}
       </div>
+
       {user ? (
-        <div className="flex gap-1 shrink-0">
-          <input className="win98-inset px-1 flex-1" placeholder="Say something... (or use arrows / click to walk)" value={msg} onChange={e => setMsg(e.target.value)} onKeyDown={e => e.key === "Enter" && send()} />
-          <button className="win98-button px-2" onClick={send}>Say</button>
-        </div>
+        joined ? (
+          <div className="flex gap-1 shrink-0">
+            <input className="win98-inset px-1 flex-1" placeholder="Say something... (or use arrows / click to walk)" value={msg} onChange={e => setMsg(e.target.value)} onKeyDown={e => e.key === "Enter" && send()} />
+            <button className="win98-button px-2" onClick={send}>Say</button>
+          </div>
+        ) : (
+          <div className="text-gray-600">Click <b>Join Cafe</b> above to walk around and chat. Other people are still visible.</div>
+        )
       ) : <div className="text-gray-500">Log in to join the cafe.</div>}
 
       {editing && user && (
@@ -452,6 +653,32 @@ export function Cafe() {
           rooms={rooms}
           onClose={() => setManagingRooms(false)}
           onChanged={loadRooms}
+        />
+      )}
+
+      {pendingObject && user?.isAdmin && (
+        <ObjectEditor
+          mode="create"
+          initial={{ x: pendingObject.x, y: pendingObject.y, room: theme }}
+          rooms={rooms}
+          onClose={() => setPendingObject(null)}
+          onSaved={async () => { setPendingObject(null); await loadObjects(theme); }}
+        />
+      )}
+
+      {editingObject && user?.isAdmin && (
+        <ObjectEditor
+          mode="edit"
+          initial={editingObject}
+          rooms={rooms}
+          onClose={() => setEditingObject(null)}
+          onSaved={async () => { setEditingObject(null); await loadObjects(theme); }}
+          onDelete={async () => {
+            if (!confirm(`Delete object "${editingObject.name}"?`)) return;
+            try { await deleteCafeObject(editingObject.id); } catch (e: any) { alert(e?.message || "Failed"); return; }
+            setEditingObject(null);
+            await loadObjects(theme);
+          }}
         />
       )}
     </div>
@@ -573,6 +800,185 @@ function RoomManager({ rooms, onClose, onChanged }: {
           <div className="flex justify-end gap-1">
             <button className="win98-button px-2" onClick={onClose}>Close</button>
             <button className="win98-button px-2" disabled={busy} onClick={submit}>{busy ? "Saving…" : "Add Room"}</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ObjectEditor({ mode, initial, rooms, onClose, onSaved, onDelete }: {
+  mode: "create" | "edit";
+  initial: Partial<CafeObject> & { x: number; y: number; room: string };
+  rooms: CafeRoom[];
+  onClose: () => void;
+  onSaved: () => Promise<void> | void;
+  onDelete?: () => Promise<void> | void;
+}) {
+  const [name, setName] = useState(initial.name || "");
+  const [x, setX] = useState(initial.x);
+  const [y, setY] = useState(initial.y);
+  const [width, setWidth] = useState(initial.width || 48);
+  const [height, setHeight] = useState(initial.height || 48);
+  const [emoji, setEmoji] = useState(initial.emoji || "");
+  const [drawingDataUrl, setDrawingDataUrl] = useState<string | null>(initial.drawingDataUrl || null);
+  const [actionType, setActionType] = useState<CafeObjectAction>((initial.actionType as CafeObjectAction) || "message");
+  const [actionValue, setActionValue] = useState(initial.actionValue || "");
+  const [room] = useState(initial.room);
+  const [busy, setBusy] = useState(false);
+  const [drawing, setDrawing] = useState(false);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const drawingCtx = useRef<CanvasRenderingContext2D | null>(null);
+  const [strokeColor, setStrokeColor] = useState("#000000");
+  const [strokeSize, setStrokeSize] = useState(6);
+
+  useEffect(() => {
+    const c = canvasRef.current; if (!c) return;
+    const ctx = c.getContext("2d"); if (!ctx) return;
+    ctx.imageSmoothingEnabled = false;
+    drawingCtx.current = ctx;
+    if (drawingDataUrl) {
+      const img = new Image();
+      img.onload = () => { ctx.clearRect(0, 0, c.width, c.height); ctx.drawImage(img, 0, 0, c.width, c.height); };
+      img.src = drawingDataUrl;
+    } else {
+      ctx.clearRect(0, 0, c.width, c.height);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  function canvasPoint(e: React.PointerEvent<HTMLCanvasElement>) {
+    const c = canvasRef.current!;
+    const r = c.getBoundingClientRect();
+    return { x: ((e.clientX - r.left) / r.width) * c.width, y: ((e.clientY - r.top) / r.height) * c.height };
+  }
+  function startDraw(e: React.PointerEvent<HTMLCanvasElement>) {
+    e.currentTarget.setPointerCapture(e.pointerId);
+    setDrawing(true);
+    const ctx = drawingCtx.current; if (!ctx) return;
+    const p = canvasPoint(e);
+    ctx.beginPath(); ctx.moveTo(p.x, p.y);
+    ctx.lineCap = "round"; ctx.lineJoin = "round";
+    ctx.strokeStyle = strokeColor; ctx.lineWidth = strokeSize;
+  }
+  function moveDraw(e: React.PointerEvent<HTMLCanvasElement>) {
+    if (!drawing) return;
+    const ctx = drawingCtx.current; if (!ctx) return;
+    const p = canvasPoint(e);
+    ctx.lineTo(p.x, p.y); ctx.stroke();
+  }
+  function endDraw() {
+    if (!drawing) return;
+    setDrawing(false);
+    const c = canvasRef.current; if (!c) return;
+    setDrawingDataUrl(c.toDataURL("image/png"));
+  }
+  function clearDraw() {
+    const c = canvasRef.current; const ctx = drawingCtx.current; if (!c || !ctx) return;
+    ctx.clearRect(0, 0, c.width, c.height);
+    setDrawingDataUrl(null);
+  }
+
+  async function submit() {
+    if (!name.trim()) { alert("Name required"); return; }
+    if (!actionValue.trim()) { alert("Action value required"); return; }
+    if (!emoji.trim() && !drawingDataUrl) { alert("Provide an emoji or draw something"); return; }
+    setBusy(true);
+    try {
+      const payload = {
+        room, name: name.trim(),
+        x: Math.round(x), y: Math.round(y),
+        width: Math.round(width), height: Math.round(height),
+        emoji: emoji.trim() || null,
+        drawingDataUrl: drawingDataUrl,
+        actionType, actionValue: actionValue.trim(),
+      };
+      if (mode === "create") await createCafeObject(payload as any);
+      else if (initial.id != null) await updateCafeObject(initial.id, payload as any);
+      await onSaved();
+    } catch (e: any) {
+      alert(e?.message || "Failed");
+    } finally { setBusy(false); }
+  }
+
+  // Build the room slug list for the teleport picker.
+  const teleportTargets: { value: string; label: string }[] = [
+    ...Object.entries(THEMES).map(([k, v]) => ({ value: k, label: v.label })),
+    ...rooms.map(r => ({ value: r.slug, label: `🖼 ${r.name}` })),
+  ];
+
+  return (
+    <div className="absolute inset-0 z-30 flex items-center justify-center" style={{ backgroundColor: "rgba(0,0,0,0.5)" }} onClick={onClose}>
+      <div className="win98-window p-2 w-[460px] max-h-[90%] overflow-auto" onClick={e => e.stopPropagation()}>
+        <div className="font-bold mb-2">{mode === "create" ? "Add Object" : `Edit Object: ${initial.name}`}</div>
+        <div className="grid grid-cols-2 gap-2 text-xs">
+          <label className="col-span-2">Name
+            <input className="win98-inset px-1 w-full" value={name} onChange={e => setName(e.target.value)} placeholder="e.g. Door to Library" />
+          </label>
+          <label>X
+            <input type="number" className="win98-inset px-1 w-full" value={x} onChange={e => setX(Number(e.target.value))} />
+          </label>
+          <label>Y
+            <input type="number" className="win98-inset px-1 w-full" value={y} onChange={e => setY(Number(e.target.value))} />
+          </label>
+          <label>Width
+            <input type="number" min={16} max={400} className="win98-inset px-1 w-full" value={width} onChange={e => setWidth(Number(e.target.value))} />
+          </label>
+          <label>Height
+            <input type="number" min={16} max={400} className="win98-inset px-1 w-full" value={height} onChange={e => setHeight(Number(e.target.value))} />
+          </label>
+          <label className="col-span-2">Emoji (optional, used if no drawing)
+            <input className="win98-inset px-1 w-full" value={emoji} onChange={e => setEmoji(e.target.value)} placeholder="🚪 🪑 🍰 ❓" />
+          </label>
+          <label className="col-span-2">Action
+            <select className="win98-inset px-1 w-full" value={actionType} onChange={e => setActionType(e.target.value as CafeObjectAction)}>
+              <option value="message">Show message</option>
+              <option value="teleport">Teleport to room</option>
+              <option value="url">Open URL</option>
+            </select>
+          </label>
+          <label className="col-span-2">
+            {actionType === "teleport" ? "Target room" : actionType === "url" ? "URL (https://…)" : "Message text"}
+            {actionType === "teleport" ? (
+              <select className="win98-inset px-1 w-full" value={actionValue} onChange={e => setActionValue(e.target.value)}>
+                <option value="">— pick a room —</option>
+                {teleportTargets.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+              </select>
+            ) : (
+              <input className="win98-inset px-1 w-full" value={actionValue} onChange={e => setActionValue(e.target.value)} placeholder={actionType === "url" ? "https://example.com" : "Hello!"} />
+            )}
+          </label>
+        </div>
+
+        <div className="mt-2 border-t pt-2">
+          <div className="font-bold text-xs mb-1">Drawing (optional, overrides emoji)</div>
+          <div className="flex gap-2 items-center text-xs mb-1">
+            <input type="color" value={strokeColor} onChange={e => setStrokeColor(e.target.value)} />
+            <label>Size <input type="range" min={1} max={24} value={strokeSize} onChange={e => setStrokeSize(Number(e.target.value))} /></label>
+            <button className="win98-button px-2" onClick={clearDraw}>Clear</button>
+          </div>
+          <canvas
+            ref={canvasRef}
+            width={96}
+            height={96}
+            className="win98-inset bg-white touch-none"
+            style={{ width: 192, height: 192, imageRendering: "pixelated", cursor: "crosshair" }}
+            onPointerDown={startDraw}
+            onPointerMove={moveDraw}
+            onPointerUp={endDraw}
+            onPointerCancel={endDraw}
+          />
+        </div>
+
+        <div className="flex justify-between gap-1 mt-2">
+          <div>
+            {mode === "edit" && onDelete && (
+              <button className="win98-button px-2" onClick={onDelete}>Delete</button>
+            )}
+          </div>
+          <div className="flex gap-1">
+            <button className="win98-button px-2" onClick={onClose}>Cancel</button>
+            <button className="win98-button px-2" disabled={busy} onClick={submit}>{busy ? "Saving…" : (mode === "create" ? "Create" : "Save")}</button>
           </div>
         </div>
       </div>

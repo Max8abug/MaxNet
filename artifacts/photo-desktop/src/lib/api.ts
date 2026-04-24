@@ -499,6 +499,43 @@ export async function deleteCafeRoom(slug: string): Promise<void> {
   await jsonOrThrow(await fetch(`${BASE}/cafe-rooms/${encodeURIComponent(slug)}`, { ...opts, method: "DELETE" }));
 }
 
+export type CafeObjectAction = "teleport" | "message" | "url";
+export interface CafeObject {
+  id: number;
+  room: string;
+  name: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  emoji: string | null;
+  drawingDataUrl: string | null;
+  actionType: CafeObjectAction;
+  actionValue: string;
+  createdBy: string;
+  createdAt: string;
+}
+export async function fetchCafeObjects(room: string): Promise<CafeObject[]> {
+  return jsonOrThrow(await fetch(`${BASE}/cafe-objects?room=${encodeURIComponent(room)}`, opts));
+}
+export async function createCafeObject(data: Omit<CafeObject, "id" | "createdBy" | "createdAt">): Promise<CafeObject> {
+  return jsonOrThrow(await fetch(`${BASE}/cafe-objects`, {
+    ...opts, method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  }));
+}
+export async function updateCafeObject(id: number, patch: Partial<Omit<CafeObject, "id" | "createdBy" | "createdAt">>): Promise<CafeObject> {
+  return jsonOrThrow(await fetch(`${BASE}/cafe-objects/${id}`, {
+    ...opts, method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(patch),
+  }));
+}
+export async function deleteCafeObject(id: number): Promise<void> {
+  await jsonOrThrow(await fetch(`${BASE}/cafe-objects/${id}`, { ...opts, method: "DELETE" }));
+}
+
 // ----- Chess -----
 export interface ChessLobby { id: number; name: string; hostUser: string; whiteUser: string | null; blackUser: string | null; fen: string; moves: string[]; status: string; winner: string | null; chat: { author: string; body: string; at: number }[]; updatedAt: string; createdAt: string; }
 export async function fetchChessLobbies(): Promise<ChessLobby[]> { return jsonOrThrow(await fetch(`${BASE}/chess/lobbies`, opts)); }
