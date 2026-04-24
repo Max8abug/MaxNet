@@ -253,6 +253,55 @@ function CharacterEditor({ initialColor, initialHat, initialAccessory, onSave, o
 
   function resetView() { setZoom(1); setPan({ x: 0, y: 0 }); }
 
+  // Undo / redo stack. Each entry is a PNG data URL of the canvas before a
+  // change was applied. We capture the "before" state on stroke start (and on
+  // clear), then push it onto the past stack when the change actually lands.
+  // Capped at MAX_HISTORY entries to keep memory bounded.
+  const MAX_HISTORY = 30;
+  const historyRef = useRef<{ past: string[]; future: string[] }>({ past: [], future: [] });
+  const [historyTick, setHistoryTick] = useState(0);
+  const beforeStrokeRef = useRef<string | null>(null);
+  const strokeDrew = useRef(false);
+
+  function snapshot(): string {
+    return canvasRef.current!.toDataURL("image/png");
+  }
+  function restoreFrom(dataUrl: string) {
+    const c = canvasRef.current!;
+    const ctx = c.getContext("2d")!;
+    if (!dataUrl) { ctx.clearRect(0, 0, c.width, c.height); return; }
+    const img = new Image();
+    img.onload = () => { ctx.clearRect(0, 0, c.width, c.height); ctx.drawImage(img, 0, 0); };
+    img.src = dataUrl;
+  }
+  function commitHistory(before: string) {
+    const h = historyRef.current;
+    h.past.push(before);
+    if (h.past.length > MAX_HISTORY) h.past.shift();
+    h.future = [];
+    setHistoryTick(t => t + 1);
+  }
+  function undo() {
+    const h = historyRef.current;
+    if (!h.past.length) return;
+    const current = snapshot();
+    const prev = h.past.pop()!;
+    h.future.push(current);
+    if (h.future.length > MAX_HISTORY) h.future.shift();
+    restoreFrom(prev);
+    setHistoryTick(t => t + 1);
+  }
+  function redo() {
+    const h = historyRef.current;
+    if (!h.future.length) return;
+    const current = snapshot();
+    const next = h.future.pop()!;
+    h.past.push(current);
+    if (h.past.length > MAX_HISTORY) h.past.shift();
+    restoreFrom(next);
+    setHistoryTick(t => t + 1);
+  }
+
   // Restore previous accessory drawing if present
   useEffect(() => {
     const c = canvasRef.current; if (!c) return;
@@ -263,7 +312,28 @@ function CharacterEditor({ initialColor, initialHat, initialAccessory, onSave, o
       img.onload = () => ctx.drawImage(img, 0, 0, c.width, c.height);
       img.src = initialAccessory;
     }
+    // Reset history to a fresh state when the initial accessory changes
+    historyRef.current = { past: [], future: [] };
+    setHistoryTick(t => t + 1);
   }, [initialAccessory]);
+
+  // Ctrl/Cmd + Z = undo, Ctrl/Cmd + Shift + Z (or Ctrl/Cmd + Y) = redo.
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      const meta = e.metaKey || e.ctrlKey;
+      if (!meta) return;
+      const k = e.key.toLowerCase();
+      if (k === "z") {
+        e.preventDefault();
+        if (e.shiftKey) redo(); else undo();
+      } else if (k === "y") {
+        e.preventDefault();
+        redo();
+      }
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
 
   function getPos(e: React.PointerEvent) {
     // getBoundingClientRect reflects the post-transform rendered size, so this
@@ -296,6 +366,10 @@ function CharacterEditor({ initialColor, initialHat, initialAccessory, onSave, o
       return;
     }
 
+    // Capture the canvas state before this stroke so we can push it to undo
+    // history if the user actually draws anything.
+    beforeStrokeRef.current = snapshot();
+    strokeDrew.current = false;
     drawing.current = true;
     last.current = getPos(e);
   }
@@ -338,13 +412,22 @@ function CharacterEditor({ initialColor, initialHat, initialAccessory, onSave, o
     }
     ctx.beginPath(); ctx.moveTo(last.current!.x, last.current!.y); ctx.lineTo(p.x, p.y); ctx.stroke();
     last.current = p;
+    strokeDrew.current = true;
   }
   function pu(e: React.PointerEvent) {
+    const wasDrawing = drawing.current;
     drawing.current = false;
     last.current = null;
     pointers.current.delete(e.pointerId);
     if (pointers.current.size < 2) pinchStart.current = null;
     try { (e.target as HTMLElement).releasePointerCapture(e.pointerId); } catch {}
+    // Commit the pre-stroke snapshot to undo history only if the stroke
+    // actually changed pixels on the canvas.
+    if (wasDrawing && strokeDrew.current && beforeStrokeRef.current) {
+      commitHistory(beforeStrokeRef.current);
+    }
+    beforeStrokeRef.current = null;
+    strokeDrew.current = false;
   }
 
   // Re-clamp pan if the viewport size or zoom changes (e.g., on resize).
@@ -353,7 +436,14 @@ function CharacterEditor({ initialColor, initialHat, initialAccessory, onSave, o
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dispW, dispH, zoom]);
 
-  function clearAll() { const c = canvasRef.current!; c.getContext("2d")!.clearRect(0, 0, c.width, c.height); }
+  function clearAll() {
+    const c = canvasRef.current!;
+    const before = snapshot();
+    c.getContext("2d")!.clearRect(0, 0, c.width, c.height);
+    // Only push a history entry if there was actually something to clear.
+    const after = snapshot();
+    if (before !== after) commitHistory(before);
+  }
 
   function save() {
     const c = canvasRef.current!;
@@ -390,6 +480,18 @@ function CharacterEditor({ initialColor, initialHat, initialAccessory, onSave, o
             <button className={`win98-button px-2 ${tool === "erase" ? "shadow-[inset_1px_1px_#808080] border-t-black border-l-black border-r-white border-b-white" : ""}`} onClick={() => setTool("erase")}>Eraser</button>
             <input type="color" value={strokeColor} onChange={(e) => setStrokeColor(e.target.value)} />
             <input type="range" min={1} max={40} value={strokeWidth} onChange={(e) => setStrokeWidth(Number(e.target.value))} className="flex-1 min-w-[80px]" />
+            <button
+              className="win98-button px-2 disabled:opacity-50"
+              onClick={undo}
+              disabled={historyRef.current.past.length === 0}
+              title="Undo (Ctrl/Cmd+Z)"
+            >↶ Undo</button>
+            <button
+              className="win98-button px-2 disabled:opacity-50"
+              onClick={redo}
+              disabled={historyRef.current.future.length === 0}
+              title="Redo (Ctrl/Cmd+Shift+Z)"
+            >↷ Redo</button>
             <button className="win98-button px-2" onClick={clearAll}>Clear</button>
           </div>
           {/*
