@@ -192,6 +192,34 @@ function CharacterEditor({ initialColor, initialHat, initialAccessory, onSave, o
   const drawing = useRef(false);
   const last = useRef<{ x: number; y: number } | null>(null);
 
+  // Responsive display scale: the canvas backing buffer always stays at
+  // EDITOR_CANVAS_W × EDITOR_CANVAS_H so saved drawings keep full resolution,
+  // but the on-screen size shrinks to fit smaller viewports. We reserve room
+  // for the modal chrome (header, toolbar rows, save buttons, paddings) when
+  // computing the available height.
+  const MODAL_CHROME_H = 220; // header + tool rows + save row + paddings
+  const MODAL_CHROME_W = 32;  // horizontal paddings inside the window
+  const [displayScale, setDisplayScale] = useState(EDITOR_SCALE);
+  useEffect(() => {
+    function recompute() {
+      const vw = window.innerWidth;
+      const vh = window.innerHeight;
+      const maxW = Math.max(120, vw - MODAL_CHROME_W);
+      const maxH = Math.max(180, vh - MODAL_CHROME_H);
+      const s = Math.min(EDITOR_SCALE, maxW / ACCESSORY_W, maxH / ACCESSORY_H);
+      setDisplayScale(Math.max(1.5, s));
+    }
+    recompute();
+    window.addEventListener("resize", recompute);
+    window.addEventListener("orientationchange", recompute);
+    return () => {
+      window.removeEventListener("resize", recompute);
+      window.removeEventListener("orientationchange", recompute);
+    };
+  }, []);
+  const dispW = ACCESSORY_W * displayScale;
+  const dispH = ACCESSORY_H * displayScale;
+
   // Restore previous accessory drawing if present
   useEffect(() => {
     const c = canvasRef.current; if (!c) return;
@@ -238,14 +266,18 @@ function CharacterEditor({ initialColor, initialHat, initialAccessory, onSave, o
   }
 
   return (
-    <div className="fixed inset-0 z-[1100] flex items-center justify-center bg-black/40" onPointerDown={(e) => { if (e.target === e.currentTarget) onCancel(); }}>
-      <div className="win98-window bg-[#c0c0c0] flex flex-col" style={{ width: 360 }} onPointerDown={(e) => e.stopPropagation()}>
-        <div className="bg-[#000080] text-white px-2 py-1 flex items-center justify-between text-sm">
+    <div className="fixed inset-0 z-[1100] flex items-center justify-center bg-black/40 p-2 overflow-auto" onPointerDown={(e) => { if (e.target === e.currentTarget) onCancel(); }}>
+      <div
+        className="win98-window bg-[#c0c0c0] flex flex-col"
+        style={{ width: "min(360px, 100%)", maxHeight: "calc(100dvh - 16px)" }}
+        onPointerDown={(e) => e.stopPropagation()}
+      >
+        <div className="bg-[#000080] text-white px-2 py-1 flex items-center justify-between text-sm shrink-0">
           <span>Customize Character</span>
           <button className="win98-button px-1.5 leading-none" onClick={onCancel}>x</button>
         </div>
-        <div className="p-2 flex flex-col gap-2 text-xs">
-          <div className="flex items-center gap-2">
+        <div className="p-2 flex flex-col gap-2 text-xs overflow-y-auto">
+          <div className="flex items-center gap-2 flex-wrap">
             <span>Body color</span>
             <input type="color" value={color} onChange={(e) => setColor(e.target.value)} />
             <span>Hat</span>
@@ -254,30 +286,33 @@ function CharacterEditor({ initialColor, initialHat, initialAccessory, onSave, o
             </select>
           </div>
           <div className="text-[10px] text-gray-700">Draw on top of your character — the area <b>above</b> the head is for hats / hair / antennae, the body area is for clothes & face. Maps 1:1 onto the in-game character.</div>
-          <div className="flex gap-1 items-center">
+          <div className="flex gap-1 items-center flex-wrap">
             <button className={`win98-button px-2 ${tool === "pen" ? "shadow-[inset_1px_1px_#808080] border-t-black border-l-black border-r-white border-b-white" : ""}`} onClick={() => setTool("pen")}>Pen</button>
             <button className={`win98-button px-2 ${tool === "erase" ? "shadow-[inset_1px_1px_#808080] border-t-black border-l-black border-r-white border-b-white" : ""}`} onClick={() => setTool("erase")}>Eraser</button>
             <input type="color" value={strokeColor} onChange={(e) => setStrokeColor(e.target.value)} />
-            <input type="range" min={1} max={40} value={strokeWidth} onChange={(e) => setStrokeWidth(Number(e.target.value))} className="flex-1" />
+            <input type="range" min={1} max={40} value={strokeWidth} onChange={(e) => setStrokeWidth(Number(e.target.value))} className="flex-1 min-w-[80px]" />
             <button className="win98-button px-2" onClick={clearAll}>Clear</button>
           </div>
           {/*
             The editor preview and drawing canvas BOTH cover exactly the
-            character cell area at EDITOR_SCALE×. The character preview is the
+            character cell area at displayScale×. The character preview is the
             same JSX used in-game, wrapped in a CSS scale transform so its body
             and legs occupy the IDENTICAL pixels in the editor that the saved
             drawing will occupy in-game (when rendered back at scale 1).
+            The canvas backing buffer stays at EDITOR_CANVAS_W × EDITOR_CANVAS_H
+            so saved PNGs keep full resolution; only the on-screen size changes
+            with displayScale to fit the viewport.
             Result: where the user draws is exactly where it appears on the
             in-game avatar — no offsets, no margins, no rounding error.
           */}
           <div className="win98-inset bg-white self-center" style={{ padding: 0 }}>
-            <div className="relative" style={{ width: EDITOR_CANVAS_W, height: EDITOR_CANVAS_H, boxSizing: "content-box" }}>
+            <div className="relative" style={{ width: dispW, height: dispH, boxSizing: "content-box" }}>
               <div
                 className="absolute top-0 left-0 pointer-events-none"
                 style={{
                   width: ACCESSORY_W,
                   height: ACCESSORY_H,
-                  transform: `scale(${EDITOR_SCALE})`,
+                  transform: `scale(${displayScale})`,
                   transformOrigin: "top left",
                 }}
               >
@@ -289,14 +324,14 @@ function CharacterEditor({ initialColor, initialHat, initialAccessory, onSave, o
                   drawn above this line shows up above the in-game character. */}
               <div
                 className="absolute left-0 right-0 pointer-events-none"
-                style={{ top: HEAD_PAD * EDITOR_SCALE, height: 1, background: "rgba(0,0,0,0.15)" }}
+                style={{ top: HEAD_PAD * displayScale, height: 1, background: "rgba(0,0,0,0.15)" }}
               />
               <canvas
                 ref={canvasRef}
                 width={EDITOR_CANVAS_W}
                 height={EDITOR_CANVAS_H}
                 className="absolute inset-0 touch-none"
-                style={{ width: EDITOR_CANVAS_W, height: EDITOR_CANVAS_H, touchAction: "none", cursor: "crosshair" }}
+                style={{ width: dispW, height: dispH, touchAction: "none", cursor: "crosshair" }}
                 onPointerDown={pd}
                 onPointerMove={pm}
                 onPointerUp={pu}
@@ -304,7 +339,7 @@ function CharacterEditor({ initialColor, initialHat, initialAccessory, onSave, o
               />
             </div>
           </div>
-          <div className="flex gap-1 justify-end">
+          <div className="flex gap-1 justify-end shrink-0">
             <button className="win98-button px-3" onClick={onCancel}>Cancel</button>
             <button className="win98-button px-3 font-bold" onClick={save}>Save Character</button>
           </div>
