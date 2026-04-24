@@ -113,6 +113,19 @@ export const cafeSettingsTable = pgTable("cafe_settings", {
   theme: text("theme").notNull().default("cafe"),
 });
 
+// Admin-uploaded custom cafe rooms. The `slug` is the value stored in
+// cafe_settings.theme when the room is active. Built-in themes (cafe, library,
+// holiday, park, city) are NOT stored here — they're hard-coded in the client.
+export const cafeRoomsTable = pgTable("cafe_rooms", {
+  id: serial("id").primaryKey(),
+  slug: text("slug").notNull().unique(),
+  name: text("name").notNull(),
+  backgroundDataUrl: text("background_data_url").notNull(),
+  floorColor: text("floor_color").notNull().default("#444444"),
+  createdBy: text("created_by").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
 export const guestbookTable = pgTable("guestbook_entries", {
   id: serial("id").primaryKey(),
   author: text("author").notNull().default("anon"),

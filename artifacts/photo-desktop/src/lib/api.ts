@@ -484,6 +484,21 @@ export async function leaveCafe(): Promise<void> {
   try { await fetch(`${BASE}/cafe/leave`, { ...opts, method: "POST" }); } catch {}
 }
 
+export interface CafeRoom { id: number; slug: string; name: string; backgroundDataUrl: string; floorColor: string; createdBy: string; createdAt: string; }
+export async function fetchCafeRooms(): Promise<CafeRoom[]> {
+  return jsonOrThrow(await fetch(`${BASE}/cafe-rooms`, opts));
+}
+export async function createCafeRoom(data: { slug: string; name: string; backgroundDataUrl: string; floorColor?: string }): Promise<CafeRoom> {
+  return jsonOrThrow(await fetch(`${BASE}/cafe-rooms`, {
+    ...opts, method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  }));
+}
+export async function deleteCafeRoom(slug: string): Promise<void> {
+  await jsonOrThrow(await fetch(`${BASE}/cafe-rooms/${encodeURIComponent(slug)}`, { ...opts, method: "DELETE" }));
+}
+
 // ----- Chess -----
 export interface ChessLobby { id: number; name: string; hostUser: string; whiteUser: string | null; blackUser: string | null; fen: string; moves: string[]; status: string; winner: string | null; chat: { author: string; body: string; at: number }[]; updatedAt: string; createdAt: string; }
 export async function fetchChessLobbies(): Promise<ChessLobby[]> { return jsonOrThrow(await fetch(`${BASE}/chess/lobbies`, opts)); }

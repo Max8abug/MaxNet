@@ -1,5 +1,9 @@
 import { useEffect, useRef, useState } from "react";
-import { fetchCafeState, moveCafe, sayCafe, setCafeTheme, leaveCafe, type CafePresence } from "../lib/api";
+import {
+  fetchCafeState, moveCafe, sayCafe, setCafeTheme, leaveCafe,
+  fetchCafeRooms, createCafeRoom, deleteCafeRoom,
+  type CafePresence, type CafeRoom,
+} from "../lib/api";
 import { useAuth, hasPermission } from "../lib/auth-store";
 
 const THEMES: Record<string, { bg: string; floor: string; label: string }> = {
@@ -211,40 +215,48 @@ function CharacterEditor({ initialColor, initialHat, initialAccessory, onSave, o
             <input type="range" min={1} max={20} value={strokeWidth} onChange={(e) => setStrokeWidth(Number(e.target.value))} className="flex-1" />
             <button className="win98-button px-2" onClick={clearAll}>Clear</button>
           </div>
-          <div className="relative win98-inset bg-white" style={{ width: 320, height: 320 }}>
-            {/*
-              Character preview is positioned to match how the in-game cafe maps
-              the 64x64 accessory image onto the 32x50 character cell at offset
-              (-16, -16). Scale factor is 320/64 = 5 game→canvas pixels.
-              In-game body: cell (4..28, 0..28)  → canvas (100..220, 80..220)
-              In-game legs: cell (4..28, 28..42) → canvas (100..220, 220..290)
-            */}
-            <div className="absolute inset-0 pointer-events-none">
-              {/* body */}
-              <div style={{ position: "absolute", left: 100, top: 80, width: 120, height: 140, background: color, borderRadius: "50% 50% 30% 30%" }} />
-              {/* legs */}
-              <div style={{ position: "absolute", left: 100, top: 220, width: 120, height: 70, background: "#3060a0" }} />
-              {/* hat sits just above the body */}
-              {hat !== "none" && (
-                <div className="absolute text-center text-4xl" style={{ left: 100, top: 35, width: 120 }}>
-                  {hat === "cap" && "🧢"}
-                  {hat === "top" && "🎩"}
-                  {hat === "party" && "🎉"}
-                  {hat === "crown" && "👑"}
-                </div>
-              )}
+          {/*
+            Outer wrapper holds the win98 inset border. The inner 320×320 box has
+            no border so the absolute children (preview + drawing canvas) share
+            the exact same coordinate system — otherwise the inset's 2px border
+            shifts the canvas off the body sketch and pen strokes land in the
+            wrong place.
+
+            Character preview is positioned to match how the in-game cafe maps
+            the 64x64 accessory image onto the 32x50 character cell at offset
+            (-16, -16). Scale factor is 320/64 = 5 game→canvas pixels.
+            In-game body: cell (4..28, 0..28)  → canvas (100..220, 80..220)
+            In-game legs: cell (4..28, 28..42) → canvas (100..220, 220..290)
+          */}
+          <div className="win98-inset bg-white self-center" style={{ padding: 0 }}>
+            <div className="relative" style={{ width: 320, height: 320, boxSizing: "content-box" }}>
+              <div className="absolute inset-0 pointer-events-none">
+                {/* body */}
+                <div style={{ position: "absolute", left: 100, top: 80, width: 120, height: 140, background: color, borderRadius: "50% 50% 30% 30%" }} />
+                {/* legs */}
+                <div style={{ position: "absolute", left: 100, top: 220, width: 120, height: 70, background: "#3060a0" }} />
+                {/* hat sits just above the body */}
+                {hat !== "none" && (
+                  <div className="absolute text-center text-4xl leading-none" style={{ left: 100, top: 40, width: 120, height: 40 }}>
+                    {hat === "cap" && "🧢"}
+                    {hat === "top" && "🎩"}
+                    {hat === "party" && "🎉"}
+                    {hat === "crown" && "👑"}
+                  </div>
+                )}
+              </div>
+              <canvas
+                ref={canvasRef}
+                width={320}
+                height={320}
+                className="absolute inset-0 touch-none"
+                style={{ width: 320, height: 320, touchAction: "none", cursor: "crosshair" }}
+                onPointerDown={pd}
+                onPointerMove={pm}
+                onPointerUp={pu}
+                onPointerCancel={pu}
+              />
             </div>
-            <canvas
-              ref={canvasRef}
-              width={320}
-              height={320}
-              className="absolute inset-0 w-full h-full touch-none"
-              style={{ touchAction: "none", cursor: "crosshair" }}
-              onPointerDown={pd}
-              onPointerMove={pm}
-              onPointerUp={pu}
-              onPointerCancel={pu}
-            />
           </div>
           <div className="flex gap-1 justify-end">
             <button className="win98-button px-3" onClick={onCancel}>Cancel</button>
@@ -263,12 +275,19 @@ export function Cafe() {
   const [presence, setPresence] = useState<CafePresence[]>([]);
   const [chat, setChat] = useState<{ author: string; body: string; createdAt: string }[]>([]);
   const [theme, setTheme] = useState("cafe");
+  const [rooms, setRooms] = useState<CafeRoom[]>([]);
+  const [managingRooms, setManagingRooms] = useState(false);
   const [pos, setPos] = useState({ x: 200 + Math.floor(Math.random() * 200), y: 250 });
   const [body, setBody] = useState<{ color: string; hat: string; accessory: string | null }>({ color: "#ffd699", hat: "none", accessory: null });
   const [msg, setMsg] = useState("");
   const [editing, setEditing] = useState(false);
   const myAvatar = useRef(body);
   myAvatar.current = body;
+
+  async function loadRooms() {
+    try { setRooms(await fetchCafeRooms()); } catch {}
+  }
+  useEffect(() => { void loadRooms(); }, []);
 
   useEffect(() => { void refreshRanks(); }, [refreshRanks]);
 
@@ -322,7 +341,10 @@ export function Cafe() {
     setPos({ x: ((e.clientX - r.left) / r.width) * W, y: ((e.clientY - r.top) / r.height) * H });
   }
 
-  const t = THEMES[theme] || THEMES.cafe;
+  const customRoom = rooms.find(r => r.slug === theme);
+  const t = customRoom
+    ? { bg: "#000", floor: customRoom.floorColor, label: `🖼 ${customRoom.name}` }
+    : (THEMES[theme] || THEMES.cafe);
   const canChangeTheme = user && (user.isAdmin || hasPermission(user, "cafeTheme", ranks));
   const recentSpeech = chat.slice(-12);
 
@@ -333,13 +355,33 @@ export function Cafe() {
         {user && <button className="win98-button px-2" onClick={() => setEditing(true)}>🎨 Customize Character</button>}
         {canChangeTheme && (
           <select className="win98-inset" value={theme} onChange={e => changeTheme(e.target.value)}>
-            {Object.entries(THEMES).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
+            <optgroup label="Built-in">
+              {Object.entries(THEMES).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
+            </optgroup>
+            {rooms.length > 0 && (
+              <optgroup label="Custom rooms">
+                {rooms.map(r => <option key={r.slug} value={r.slug}>🖼 {r.name}</option>)}
+              </optgroup>
+            )}
           </select>
+        )}
+        {user?.isAdmin && (
+          <button className="win98-button px-2" onClick={() => setManagingRooms(true)}>Manage Rooms</button>
         )}
       </div>
       <div className="flex-1 win98-inset overflow-hidden relative" style={{ backgroundColor: t.bg }} onClick={clickArea}>
-        <Background theme={theme} />
-        <div className="absolute inset-x-0 bottom-0 h-1/3" style={{ backgroundColor: t.floor, opacity: 0.95 }} />
+        {customRoom ? (
+          <img
+            src={customRoom.backgroundDataUrl}
+            alt={customRoom.name}
+            className="absolute inset-0 w-full h-full pointer-events-none select-none"
+            style={{ objectFit: "cover" }}
+            draggable={false}
+          />
+        ) : (
+          <Background theme={theme} />
+        )}
+        <div className="absolute inset-x-0 bottom-0 h-1/3" style={{ backgroundColor: t.floor, opacity: customRoom ? 0.4 : 0.95 }} />
         {presence.map(p => {
           const isMe = user && p.username === user.username;
           const av: any = isMe ? body : (p.avatar || {});
@@ -382,6 +424,136 @@ export function Cafe() {
           onCancel={() => setEditing(false)}
         />
       )}
+
+      {managingRooms && user?.isAdmin && (
+        <RoomManager
+          rooms={rooms}
+          onClose={() => setManagingRooms(false)}
+          onChanged={loadRooms}
+        />
+      )}
+    </div>
+  );
+}
+
+function RoomManager({ rooms, onClose, onChanged }: {
+  rooms: CafeRoom[];
+  onClose: () => void;
+  onChanged: () => Promise<void> | void;
+}) {
+  const [slug, setSlug] = useState("");
+  const [name, setName] = useState("");
+  const [floorColor, setFloorColor] = useState("#444444");
+  const [bgDataUrl, setBgDataUrl] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  function pickFile(file: File | null | undefined) {
+    setErr(null);
+    if (!file) return;
+    if (!file.type.startsWith("image/")) { setErr("Pick an image file."); return; }
+    const img = new Image();
+    const reader = new FileReader();
+    reader.onload = () => {
+      img.onload = () => {
+        const canvas = document.createElement("canvas");
+        canvas.width = 800;
+        canvas.height = 500;
+        const ctx = canvas.getContext("2d")!;
+        ctx.drawImage(img, 0, 0, 800, 500);
+        const url = canvas.toDataURL("image/jpeg", 0.82);
+        if (url.length > 1_900_000) {
+          const smaller = canvas.toDataURL("image/jpeg", 0.6);
+          setBgDataUrl(smaller);
+        } else {
+          setBgDataUrl(url);
+        }
+      };
+      img.onerror = () => setErr("Could not read that image.");
+      img.src = String(reader.result);
+    };
+    reader.readAsDataURL(file);
+  }
+
+  async function submit() {
+    setErr(null);
+    if (!/^[a-z0-9][a-z0-9-]{1,30}$/.test(slug)) { setErr("Slug must be 2-31 chars: lowercase letters, numbers, dashes."); return; }
+    if (!name.trim()) { setErr("Name required"); return; }
+    if (!bgDataUrl) { setErr("Pick a background image"); return; }
+    setBusy(true);
+    try {
+      await createCafeRoom({ slug, name: name.trim(), backgroundDataUrl: bgDataUrl, floorColor });
+      setSlug(""); setName(""); setBgDataUrl(""); setFloorColor("#444444");
+      await onChanged();
+    } catch (e: any) {
+      setErr(e?.message || "Failed to create room");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function remove(s: string) {
+    if (!confirm(`Delete room "${s}"? Anyone currently viewing it will fall back to the default theme.`)) return;
+    try { await deleteCafeRoom(s); await onChanged(); } catch (e: any) { setErr(e?.message || "Delete failed"); }
+  }
+
+  return (
+    <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/40" onClick={onClose}>
+      <div className="win98-window w-[520px] max-h-[90%] overflow-auto" onClick={e => e.stopPropagation()}>
+        <div className="win98-titlebar flex justify-between items-center px-1">
+          <span>Manage Cafe Rooms</span>
+          <button className="win98-button px-2" onClick={onClose}>×</button>
+        </div>
+        <div className="p-2 flex flex-col gap-2 text-xs">
+          <div className="font-bold">Existing rooms</div>
+          {rooms.length === 0 ? (
+            <div className="text-gray-600">No custom rooms yet.</div>
+          ) : (
+            <div className="flex flex-col gap-1">
+              {rooms.map(r => (
+                <div key={r.slug} className="flex items-center gap-2 win98-inset p-1">
+                  <img src={r.backgroundDataUrl} alt="" className="w-16 h-10 object-cover" />
+                  <div className="flex-1">
+                    <div className="font-bold">{r.name}</div>
+                    <div className="text-gray-600">slug: {r.slug} · by {r.createdBy}</div>
+                  </div>
+                  <button className="win98-button px-2" onClick={() => remove(r.slug)}>Delete</button>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <hr className="my-1" />
+          <div className="font-bold">Add a new room</div>
+          <label className="flex flex-col gap-1">
+            Name
+            <input className="win98-inset px-1" value={name} onChange={e => setName(e.target.value)} maxLength={40} />
+          </label>
+          <label className="flex flex-col gap-1">
+            Slug (URL-safe id)
+            <input className="win98-inset px-1" value={slug} onChange={e => setSlug(e.target.value.toLowerCase())} placeholder="e.g. beach-hut" />
+          </label>
+          <label className="flex items-center gap-2">
+            Floor color
+            <input type="color" value={floorColor} onChange={e => setFloorColor(e.target.value)} />
+            <span className="text-gray-600">overlay tint along the bottom</span>
+          </label>
+          <label className="flex flex-col gap-1">
+            Background image (will be resized to 800×500)
+            <input type="file" accept="image/*" onChange={e => pickFile(e.target.files?.[0])} />
+          </label>
+          {bgDataUrl && (
+            <div className="win98-inset p-1">
+              <img src={bgDataUrl} alt="preview" className="w-full" style={{ maxHeight: 160, objectFit: "contain" }} />
+            </div>
+          )}
+          {err && <div className="text-red-700">{err}</div>}
+          <div className="flex justify-end gap-1">
+            <button className="win98-button px-2" onClick={onClose}>Close</button>
+            <button className="win98-button px-2" disabled={busy} onClick={submit}>{busy ? "Saving…" : "Add Room"}</button>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

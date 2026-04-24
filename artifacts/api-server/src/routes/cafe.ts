@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { db, cafePresenceTable, cafeChatTable, cafeSettingsTable } from "@workspace/db";
+import { db, cafePresenceTable, cafeChatTable, cafeSettingsTable, cafeRoomsTable } from "@workspace/db";
 import { desc, eq, sql } from "drizzle-orm";
 import { requireAuth, isAdminUsername } from "../lib/auth";
 import { isBanned, audit } from "./social";
@@ -7,7 +7,9 @@ import { getUserPermissions } from "./ranks";
 
 const router: IRouter = Router();
 
-const VALID_THEMES = ["cafe", "library", "holiday", "park", "city"];
+// Themes hard-coded in the client. Custom rooms uploaded by admins are stored
+// in cafe_rooms and looked up at theme-set time so we don't reject their slugs.
+const BUILTIN_THEMES = ["cafe", "library", "holiday", "park", "city"];
 
 async function ensureSettings() {
   const [s] = await db.select().from(cafeSettingsTable).limit(1);
@@ -56,7 +58,14 @@ router.post("/cafe/theme", requireAuth, async (req, res) => {
   const perms = await getUserPermissions(me);
   if (!isAdminUsername(me) && !perms.includes("cafeTheme")) { res.status(403).json({ error: "Not allowed" }); return; }
   const { theme } = req.body ?? {};
-  if (typeof theme !== "string" || !VALID_THEMES.includes(theme)) { res.status(400).json({ error: "Invalid theme" }); return; }
+  if (typeof theme !== "string" || !theme) { res.status(400).json({ error: "Invalid theme" }); return; }
+
+  // Either a built-in theme or a custom-room slug that actually exists.
+  if (!BUILTIN_THEMES.includes(theme)) {
+    const [room] = await db.select().from(cafeRoomsTable).where(eq(cafeRoomsTable.slug, theme)).limit(1);
+    if (!room) { res.status(400).json({ error: "Unknown theme or room" }); return; }
+  }
+
   await ensureSettings();
   await db.update(cafeSettingsTable).set({ theme });
   await audit("cafe", "theme", me, "", theme);
