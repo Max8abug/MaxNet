@@ -5,16 +5,19 @@ import { hashPassword, verifyPassword, isAdminUsername, findUserByUsername } fro
 
 const router: IRouter = Router();
 
-router.get("/auth/me", (req, res) => {
-  if (!req.session.userId) {
-    res.json({ user: null });
-    return;
-  }
+router.get("/auth/me", async (req, res) => {
+  if (!req.session.userId) { res.json({ user: null }); return; }
+  const [u] = await db.select().from(usersTable).where(eq(usersTable.id, req.session.userId)).limit(1);
+  if (!u) { res.json({ user: null }); return; }
   res.json({
     user: {
-      id: req.session.userId,
-      username: req.session.username,
-      isAdmin: !!req.session.isAdmin,
+      id: u.id,
+      username: u.username,
+      isAdmin: u.isAdmin,
+      avatarUrl: u.avatarUrl,
+      backgroundUrl: u.backgroundUrl,
+      backgroundColor: u.backgroundColor,
+      rank: u.rank,
     },
   });
 });
@@ -132,8 +135,19 @@ router.get("/users/:username", async (req, res) => {
       username: user.username,
       isAdmin: user.isAdmin,
       avatarUrl: user.avatarUrl,
+      rank: user.rank,
     },
   });
+});
+
+router.get("/users", async (_req, res) => {
+  const rows = await db.select({
+    username: usersTable.username,
+    isAdmin: usersTable.isAdmin,
+    avatarUrl: usersTable.avatarUrl,
+    rank: usersTable.rank,
+  }).from(usersTable).limit(500);
+  res.json(rows);
 });
 
 router.post("/auth/logout", (req, res) => {

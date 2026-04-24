@@ -3,9 +3,12 @@ import { fetchDrawings, submitDrawing, deleteDrawing, type Drawing } from "../li
 import { useAuth } from "../lib/auth-store";
 import { ModAuditPanel } from "./ModAuditPanel";
 import { Avatar } from "./Avatar";
+import { showFullscreen } from "./ImageViewer";
 
 interface Props { onRequestLogin?: () => void; }
-type Tab = "draw" | "view" | "audit";
+type Tab = "draw" | "wall" | "audit";
+
+const PALETTE = ["#000000", "#ffffff", "#ff3030", "#ff8c00", "#ffd700", "#39c139", "#1e90ff", "#a040ff", "#8b4513", "#ff69b4"];
 
 export function DrawingPad({ onRequestLogin }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -13,17 +16,14 @@ export function DrawingPad({ onRequestLogin }: Props) {
   const last = useRef<{ x: number; y: number } | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [drawings, setDrawings] = useState<Drawing[]>([]);
-  const [index, setIndex] = useState(0);
   const [tab, setTab] = useState<Tab>("draw");
+  const [color, setColor] = useState("#000000");
+  const [width, setWidth] = useState(3);
+  const [erase, setErase] = useState(false);
   const user = useAuth((s) => s.user);
   const isAdmin = !!user?.isAdmin;
 
   useEffect(() => { void refresh(); }, []);
-  useEffect(() => {
-    if (tab !== "view" || drawings.length < 2) return;
-    const t = setInterval(() => setIndex((i) => (i + 1) % drawings.length), 2500);
-    return () => clearInterval(t);
-  }, [tab, drawings.length]);
 
   async function refresh() { try { setDrawings(await fetchDrawings()); } catch {} }
 
@@ -53,11 +53,12 @@ export function DrawingPad({ onRequestLogin }: Props) {
     (e.target as HTMLElement).setPointerCapture(e.pointerId);
   }
   function onPointerMove(e: React.PointerEvent) {
-    if (!drawing.current) return;
-    e.stopPropagation();
+    if (!drawing.current) return; e.stopPropagation();
     const c = canvasRef.current!; const ctx = c.getContext("2d")!;
     const p = getPos(e);
-    ctx.strokeStyle = "#111"; ctx.lineWidth = 3; ctx.lineCap = "round"; ctx.lineJoin = "round";
+    ctx.strokeStyle = erase ? "#ffffff" : color;
+    ctx.lineWidth = erase ? width * 4 : width;
+    ctx.lineCap = "round"; ctx.lineJoin = "round";
     ctx.beginPath(); ctx.moveTo(last.current!.x, last.current!.y); ctx.lineTo(p.x, p.y); ctx.stroke();
     last.current = p;
   }
@@ -73,22 +74,18 @@ export function DrawingPad({ onRequestLogin }: Props) {
     try {
       const dataUrl = c.toDataURL("image/png");
       await submitDrawing(dataUrl, user.username);
-      clearCanvas(); await refresh(); setTab("view");
+      clearCanvas(); await refresh(); setTab("wall");
     } catch (e: any) { alert(e?.message || "Failed"); }
     finally { setSubmitting(false); }
   }
 
-  async function delCurrent() {
-    const d = drawings[index]; if (!d) return;
-    if (!confirm(`Delete drawing by ${d.author}?`)) return;
-    try { await deleteDrawing(d.id); await refresh(); setIndex(0); } catch {}
-  }
+  async function del(id: number) { if (!confirm("Delete drawing?")) return; try { await deleteDrawing(id); await refresh(); } catch {} }
 
   return (
     <div className="w-full h-full flex flex-col gap-1 text-sm">
       <div className="flex gap-1 shrink-0">
         <button className={`win98-button px-2 py-0.5 ${tab === "draw" ? "shadow-[inset_1px_1px_#808080] border-t-black border-l-black border-r-white border-b-white" : ""}`} onClick={() => setTab("draw")}>Draw</button>
-        <button className={`win98-button px-2 py-0.5 ${tab === "view" ? "shadow-[inset_1px_1px_#808080] border-t-black border-l-black border-r-white border-b-white" : ""}`} onClick={() => { setTab("view"); void refresh(); }}>Gallery ({drawings.length})</button>
+        <button className={`win98-button px-2 py-0.5 ${tab === "wall" ? "shadow-[inset_1px_1px_#808080] border-t-black border-l-black border-r-white border-b-white" : ""}`} onClick={() => { setTab("wall"); void refresh(); }}>Gallery Wall ({drawings.length})</button>
         {isAdmin && (
           <button className={`win98-button px-2 py-0.5 ${tab === "audit" ? "shadow-[inset_1px_1px_#808080] border-t-black border-l-black border-r-white border-b-white" : ""}`} onClick={() => setTab("audit")}>Audit</button>
         )}
@@ -99,33 +96,48 @@ export function DrawingPad({ onRequestLogin }: Props) {
             <button className="win98-button px-2 py-0.5 font-bold" disabled={submitting} onClick={handleSubmit}>{submitting ? "..." : user ? "Submit" : "Log in to submit"}</button>
           </>
         )}
-        {tab === "view" && isAdmin && drawings[index] && drawings[index].author !== "Max8abug" && (
-          <button className="win98-button px-2 py-0.5 text-red-700 text-xs" onClick={delCurrent}>Delete</button>
-        )}
       </div>
 
       {tab === "draw" && (
-        <div className="flex-1 win98-inset bg-white overflow-hidden flex items-center justify-center">
-          <canvas ref={canvasRef} width={400} height={300}
-            className="w-full h-full bg-white touch-none cursor-crosshair"
-            style={{ touchAction: "none" }}
-            onPointerDown={onPointerDown} onPointerMove={onPointerMove}
-            onPointerUp={onPointerUp} onPointerCancel={onPointerUp} />
-        </div>
+        <>
+          <div className="flex items-center gap-1 shrink-0 flex-wrap">
+            {PALETTE.map(c => (
+              <button key={c} className={`w-5 h-5 win98-inset ${!erase && color === c ? "ring-2 ring-black" : ""}`} style={{ backgroundColor: c }} onClick={() => { setColor(c); setErase(false); }} />
+            ))}
+            <input type="color" value={color} onChange={e => { setColor(e.target.value); setErase(false); }} />
+            <button className={`win98-button px-2 py-0.5 text-xs ${erase ? "shadow-[inset_1px_1px_#808080] border-t-black border-l-black border-r-white border-b-white" : ""}`} onClick={() => setErase(!erase)}>Eraser</button>
+            <span className="text-xs ml-1">size</span>
+            <input type="range" min={1} max={20} value={width} onChange={e => setWidth(Number(e.target.value))} className="w-16" />
+          </div>
+          <div className="flex-1 win98-inset bg-white overflow-hidden flex items-center justify-center">
+            <canvas ref={canvasRef} width={500} height={360}
+              className="w-full h-full bg-white touch-none cursor-crosshair"
+              style={{ touchAction: "none" }}
+              onPointerDown={onPointerDown} onPointerMove={onPointerMove}
+              onPointerUp={onPointerUp} onPointerCancel={onPointerUp} />
+          </div>
+        </>
       )}
 
-      {tab === "view" && (
-        <div className="flex-1 win98-inset bg-white flex flex-col items-center justify-center overflow-hidden p-1">
+      {tab === "wall" && (
+        <div className="flex-1 win98-inset bg-[#a08060] p-2 overflow-auto">
           {drawings.length === 0 ? (
-            <div className="text-gray-500 text-xs">No drawings yet. Be the first.</div>
+            <div className="text-white text-xs">No drawings yet. Be the first.</div>
           ) : (
-            <>
-              <img src={drawings[index]?.dataUrl} alt="Visitor drawing" className="max-w-full max-h-full object-contain" draggable={false} />
-              <div className="text-xs mt-1 truncate w-full text-center flex items-center justify-center gap-1">
-                <Avatar username={drawings[index]?.author || "anon"} size={16} />
-                by {drawings[index]?.author} — {index + 1}/{drawings.length}
-              </div>
-            </>
+            <div className="grid grid-cols-3 gap-2">
+              {drawings.map(d => (
+                <div key={d.id} className="bg-white p-1 shadow-md border-4 border-amber-100 hover:scale-105 transition-transform cursor-zoom-in relative group" style={{ transform: `rotate(${(d.id % 5 - 2) * 1.5}deg)` }}>
+                  <img src={d.dataUrl} alt="" className="w-full aspect-[4/3] object-contain" onClick={() => showFullscreen(d.dataUrl)} />
+                  <div className="text-[10px] flex items-center gap-1 mt-1 truncate">
+                    <Avatar username={d.author} size={14} />
+                    {d.author}
+                  </div>
+                  {isAdmin && d.author !== "Max8abug" && (
+                    <button className="absolute top-1 right-1 win98-button px-1 text-[10px] opacity-0 group-hover:opacity-100" onClick={() => del(d.id)}>x</button>
+                  )}
+                </div>
+              ))}
+            </div>
           )}
         </div>
       )}

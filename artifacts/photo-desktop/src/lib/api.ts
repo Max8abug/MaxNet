@@ -14,6 +14,8 @@ export interface ChatMessage {
   author: string;
   body: string;
   imageUrl?: string | null;
+  videoUrl?: string | null;
+  replyTo?: number | null;
   createdAt: string;
 }
 
@@ -38,6 +40,7 @@ export interface AuthUser {
   avatarUrl?: string | null;
   backgroundUrl?: string | null;
   backgroundColor?: string | null;
+  rank?: string | null;
 }
 
 export async function updateProfile(data: { avatarUrl?: string | null; backgroundUrl?: string | null; backgroundColor?: string | null }): Promise<void> {
@@ -48,7 +51,10 @@ export async function updateProfile(data: { avatarUrl?: string | null; backgroun
   }));
 }
 
-export interface PublicUser { username: string; isAdmin: boolean; avatarUrl: string | null; }
+export interface PublicUser { username: string; isAdmin: boolean; avatarUrl: string | null; rank?: string | null; }
+export async function fetchUsers(): Promise<PublicUser[]> {
+  return jsonOrThrow(await fetch(`${BASE}/users`, opts));
+}
 export async function fetchUserProfile(username: string): Promise<PublicUser | null> {
   const j = await jsonOrThrow(await fetch(`${BASE}/users/${encodeURIComponent(username)}`, opts));
   return j.user ?? null;
@@ -110,12 +116,18 @@ export async function submitDrawing(dataUrl: string, author: string): Promise<Dr
 export async function fetchChat(): Promise<ChatMessage[]> {
   return jsonOrThrow(await fetch(`${BASE}/chat`, opts));
 }
-export async function postChat(body: string, imageUrl?: string | null): Promise<ChatMessage> {
+export async function postChat(body: string, imageUrl?: string | null, videoUrl?: string | null, replyTo?: number | null): Promise<ChatMessage> {
   return jsonOrThrow(await fetch(`${BASE}/chat`, {
     ...opts, method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ body, imageUrl: imageUrl || null }),
+    body: JSON.stringify({ body, imageUrl: imageUrl || null, videoUrl: videoUrl || null, replyTo: replyTo ?? null }),
   }));
+}
+export async function pingTyping(): Promise<void> {
+  try { await fetch(`${BASE}/chat/typing`, { ...opts, method: "POST" }); } catch {}
+}
+export async function fetchTyping(): Promise<string[]> {
+  try { const j = await jsonOrThrow(await fetch(`${BASE}/chat/typing`, opts)); return j.typing || []; } catch { return []; }
 }
 export async function clearChat(): Promise<void> {
   await jsonOrThrow(await fetch(`${BASE}/chat`, { ...opts, method: "DELETE" }));
@@ -201,13 +213,20 @@ export async function pingVisit(): Promise<number> {
 }
 
 // ----- Forum -----
-export interface ForumThread { id: number; title: string; author: string; createdAt: string; postCount: number; }
+export interface ForumThread { id: number; title: string; author: string; createdAt: string; postCount: number; hasPassword?: boolean; }
 export interface ForumPost { id: number; threadId: number; author: string; body: string; imageUrl?: string | null; createdAt: string; }
 export async function fetchThreads(): Promise<ForumThread[]> {
   return jsonOrThrow(await fetch(`${BASE}/forum/threads`, opts));
 }
 export async function fetchThread(id: number): Promise<{ thread: ForumThread; posts: ForumPost[] }> {
   return jsonOrThrow(await fetch(`${BASE}/forum/threads/${id}`, opts));
+}
+export async function fetchThreadOrLock(id: number): Promise<{ ok: true; thread: ForumThread; posts: ForumPost[] } | { ok: false; needsPassword: true; thread: ForumThread }> {
+  const r = await fetch(`${BASE}/forum/threads/${id}`, opts);
+  const j = await r.json();
+  if (r.ok) return { ok: true, ...j };
+  if (j?.needsPassword) return { ok: false, needsPassword: true, thread: j.thread };
+  throw new Error(j?.error || `HTTP ${r.status}`);
 }
 export async function createThread(title: string, body: string): Promise<ForumThread> {
   return jsonOrThrow(await fetch(`${BASE}/forum/threads`, {
@@ -280,4 +299,106 @@ export async function flappyScore(score: number): Promise<void> {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ score }),
   }));
+}
+
+// ----- Ranks -----
+export interface Rank { id: number; name: string; color: string; permissions: string[]; tier: number; }
+export async function fetchRanks(): Promise<Rank[]> { return jsonOrThrow(await fetch(`${BASE}/ranks`, opts)); }
+export async function createRank(name: string, color: string, permissions: string[], tier: number): Promise<Rank> {
+  return jsonOrThrow(await fetch(`${BASE}/ranks`, { ...opts, method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name, color, permissions, tier }) }));
+}
+export async function deleteRank(name: string): Promise<void> {
+  await jsonOrThrow(await fetch(`${BASE}/ranks/${encodeURIComponent(name)}`, { ...opts, method: "DELETE" }));
+}
+export async function assignRank(username: string, rank: string | null): Promise<void> {
+  await jsonOrThrow(await fetch(`${BASE}/ranks/assign`, { ...opts, method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ username, rank }) }));
+}
+
+// ----- Forum (passwords) -----
+export async function createThreadWithOpts(title: string, body: string, password?: string): Promise<ForumThread> {
+  return jsonOrThrow(await fetch(`${BASE}/forum/threads`, { ...opts, method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ title, body, password: password || undefined }) }));
+}
+export async function unlockThread(id: number, password: string): Promise<void> {
+  await jsonOrThrow(await fetch(`${BASE}/forum/threads/${id}/unlock`, { ...opts, method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ password }) }));
+}
+
+// ----- DMs -----
+export interface DMContact { username: string; avatarUrl: string | null; rank: string | null; isAdmin: boolean; }
+export interface DMMessage { id: number; fromUser: string; toUser: string; body: string; createdAt: string; }
+export interface DMConversation { partner: string; lastBody: string; lastAt: string; unread: number; }
+export async function fetchDMContacts(): Promise<DMContact[]> { return jsonOrThrow(await fetch(`${BASE}/dms/contacts`, opts)); }
+export async function fetchDMConversations(): Promise<DMConversation[]> { return jsonOrThrow(await fetch(`${BASE}/dms`, opts)); }
+export async function fetchDMs(other: string): Promise<DMMessage[]> { return jsonOrThrow(await fetch(`${BASE}/dms/${encodeURIComponent(other)}`, opts)); }
+export async function sendDM(other: string, body: string): Promise<DMMessage> {
+  return jsonOrThrow(await fetch(`${BASE}/dms/${encodeURIComponent(other)}`, { ...opts, method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ body }) }));
+}
+
+// ----- Polls -----
+export interface Poll { id: number; question: string; creator: string; options: { id: number; label: string }[]; votes: Record<string, number>; createdAt: string; }
+export async function fetchPolls(): Promise<Poll[]> { return jsonOrThrow(await fetch(`${BASE}/polls`, opts)); }
+export async function createPoll(question: string, options: string[]): Promise<Poll> {
+  return jsonOrThrow(await fetch(`${BASE}/polls`, { ...opts, method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ question, options }) }));
+}
+export async function votePoll(id: number, optionId: number): Promise<void> {
+  await jsonOrThrow(await fetch(`${BASE}/polls/${id}/vote`, { ...opts, method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ optionId }) }));
+}
+export async function deletePoll(id: number): Promise<void> {
+  await jsonOrThrow(await fetch(`${BASE}/polls/${id}`, { ...opts, method: "DELETE" }));
+}
+
+// ----- Music -----
+export interface Track { id: number; uploader: string; title: string; createdAt: string; }
+export async function fetchTracks(): Promise<Track[]> { return jsonOrThrow(await fetch(`${BASE}/music`, opts)); }
+export async function fetchTrackAudio(id: number): Promise<string> {
+  const j = await jsonOrThrow(await fetch(`${BASE}/music/${id}/audio`, opts));
+  return j.dataUrl;
+}
+export async function uploadTrack(title: string, dataUrl: string): Promise<Track> {
+  return jsonOrThrow(await fetch(`${BASE}/music`, { ...opts, method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ title, dataUrl }) }));
+}
+export async function deleteTrack(id: number): Promise<void> {
+  await jsonOrThrow(await fetch(`${BASE}/music/${id}`, { ...opts, method: "DELETE" }));
+}
+
+// ----- User pages -----
+export async function fetchUserPage(username: string): Promise<{ dataUrl: string; updatedAt: string } | null> {
+  const j = await jsonOrThrow(await fetch(`${BASE}/userpages/${encodeURIComponent(username)}`, opts));
+  return j.page;
+}
+export async function saveUserPage(dataUrl: string): Promise<void> {
+  await jsonOrThrow(await fetch(`${BASE}/userpages`, { ...opts, method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ dataUrl }) }));
+}
+
+// ----- Cafe -----
+export interface CafePresence { username: string; x: number; y: number; avatar: any; lastSeen: string; }
+export interface CafeChatMsg { id: number; author: string; body: string; createdAt: string; }
+export interface CafeState { presence: CafePresence[]; chat: CafeChatMsg[]; theme: string; }
+export async function fetchCafeState(): Promise<CafeState> { return jsonOrThrow(await fetch(`${BASE}/cafe/state`, opts)); }
+export async function moveCafe(x: number, y: number, avatar: any): Promise<void> {
+  await fetch(`${BASE}/cafe/move`, { ...opts, method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ x, y, avatar }) });
+}
+export async function sayCafe(body: string): Promise<void> {
+  await jsonOrThrow(await fetch(`${BASE}/cafe/say`, { ...opts, method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ body }) }));
+}
+export async function setCafeTheme(theme: string): Promise<void> {
+  await jsonOrThrow(await fetch(`${BASE}/cafe/theme`, { ...opts, method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ theme }) }));
+}
+export async function leaveCafe(): Promise<void> {
+  try { await fetch(`${BASE}/cafe/leave`, { ...opts, method: "POST" }); } catch {}
+}
+
+// ----- Chess -----
+export interface ChessLobby { id: number; name: string; hostUser: string; whiteUser: string | null; blackUser: string | null; fen: string; moves: string[]; status: string; winner: string | null; chat: { author: string; body: string; at: number }[]; updatedAt: string; createdAt: string; }
+export async function fetchChessLobbies(): Promise<ChessLobby[]> { return jsonOrThrow(await fetch(`${BASE}/chess/lobbies`, opts)); }
+export async function createChessLobby(name: string): Promise<ChessLobby> {
+  return jsonOrThrow(await fetch(`${BASE}/chess/lobbies`, { ...opts, method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name }) }));
+}
+export async function fetchChessLobby(id: number): Promise<ChessLobby> { return jsonOrThrow(await fetch(`${BASE}/chess/lobbies/${id}`, opts)); }
+export async function joinChessLobby(id: number): Promise<void> { await jsonOrThrow(await fetch(`${BASE}/chess/lobbies/${id}/join`, { ...opts, method: "POST" })); }
+export async function moveChess(id: number, uci: string): Promise<void> {
+  await jsonOrThrow(await fetch(`${BASE}/chess/lobbies/${id}/move`, { ...opts, method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ uci }) }));
+}
+export async function resignChess(id: number): Promise<void> { await jsonOrThrow(await fetch(`${BASE}/chess/lobbies/${id}/resign`, { ...opts, method: "POST" })); }
+export async function chatChess(id: number, body: string): Promise<void> {
+  await jsonOrThrow(await fetch(`${BASE}/chess/lobbies/${id}/chat`, { ...opts, method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ body }) }));
 }

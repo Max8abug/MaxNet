@@ -88,20 +88,22 @@ router.get("/chat", async (_req, res) => {
 });
 
 router.post("/chat", requireAuth, async (req, res) => {
-  const { body, imageUrl } = req.body ?? {};
+  const { body, imageUrl, videoUrl, replyTo } = req.body ?? {};
   const trimmedBody = typeof body === "string" ? body.trim() : "";
-  if (!trimmedBody && !imageUrl) {
-    res.status(400).json({ error: "body or image required" });
+  if (!trimmedBody && !imageUrl && !videoUrl) {
+    res.status(400).json({ error: "body or media required" });
     return;
   }
-  if (trimmedBody.length > 500) {
-    res.status(413).json({ error: "Message too long" });
-    return;
-  }
+  if (trimmedBody.length > 500) { res.status(413).json({ error: "Message too long" }); return; }
   if (imageUrl !== undefined && imageUrl !== null && !validImageData(imageUrl, 3_000_000)) {
-    res.status(400).json({ error: "bad imageUrl" });
-    return;
+    res.status(400).json({ error: "bad imageUrl" }); return;
   }
+  if (videoUrl !== undefined && videoUrl !== null) {
+    if (typeof videoUrl !== "string" || !videoUrl.startsWith("data:video/") || videoUrl.length > 12_000_000) {
+      res.status(400).json({ error: "bad videoUrl (max ~9MB)" }); return;
+    }
+  }
+  const replyToId = (typeof replyTo === "number" && Number.isFinite(replyTo)) ? replyTo : null;
   const author = req.session.username || "anon";
   if (await isBanned(author)) {
     await audit("chat", "blocked", author, author, trimmedBody.slice(0, 500));
@@ -110,10 +112,26 @@ router.post("/chat", requireAuth, async (req, res) => {
   }
   const [row] = await db
     .insert(chatMessagesTable)
-    .values({ body: trimmedBody, author, imageUrl: imageUrl || null })
+    .values({ body: trimmedBody, author, imageUrl: imageUrl || null, videoUrl: videoUrl || null, replyTo: replyToId })
     .returning();
-  await audit("chat", "post", author, "", trimmedBody + (imageUrl ? " [image]" : ""));
+  await audit("chat", "post", author, "", trimmedBody + (imageUrl ? " [image]" : "") + (videoUrl ? " [video]" : ""));
   res.json(row);
+});
+
+// ---------- Typing indicator ----------
+const typingMap = new Map<string, number>(); // username -> lastTypingMs
+router.post("/chat/typing", requireAuth, (req, res) => {
+  typingMap.set(req.session.username!, Date.now());
+  res.json({ ok: true });
+});
+router.get("/chat/typing", (_req, res) => {
+  const now = Date.now();
+  const list: string[] = [];
+  for (const [u, t] of typingMap.entries()) {
+    if (now - t < 4000) list.push(u);
+    else typingMap.delete(u);
+  }
+  res.json({ typing: list });
 });
 
 router.delete("/chat", requireAdmin, async (req, res) => {

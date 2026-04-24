@@ -6,6 +6,13 @@ import forumRouter from "./forum";
 import youtubeRouter from "./youtube";
 import blackjackRouter from "./blackjack";
 import flappyRouter from "./flappy";
+import ranksRouter from "./ranks";
+import dmsRouter from "./dms";
+import pollsRouter from "./polls";
+import musicRouter from "./music";
+import userpagesRouter from "./userpages";
+import cafeRouter from "./cafe";
+import chessRouter from "./chess";
 
 const router: IRouter = Router();
 
@@ -16,5 +23,12 @@ router.use(forumRouter);
 router.use(youtubeRouter);
 router.use(blackjackRouter);
 router.use(flappyRouter);
+router.use(ranksRouter);
+router.use(dmsRouter);
+router.use(pollsRouter);
+router.use(musicRouter);
+router.use(userpagesRouter);
+router.use(cafeRouter);
+router.use(chessRouter);
 
 export default router;

@@ -1,7 +1,7 @@
 import { Router, type IRouter } from "express";
 import { db, forumThreadsTable, forumPostsTable } from "@workspace/db";
 import { desc, eq, sql } from "drizzle-orm";
-import { requireAuth, requireAdmin } from "../lib/auth";
+import { requireAuth, requireAdmin, hashPassword, verifyPassword } from "../lib/auth";
 import { isBanned, audit } from "./social";
 
 const router: IRouter = Router();
@@ -13,6 +13,7 @@ router.get("/forum/threads", async (_req, res) => {
       title: forumThreadsTable.title,
       author: forumThreadsTable.author,
       createdAt: forumThreadsTable.createdAt,
+      hasPassword: sql<boolean>`${forumThreadsTable.passwordHash} is not null`,
       postCount: sql<number>`(select count(*) from ${forumPostsTable} where ${forumPostsTable.threadId} = ${forumThreadsTable.id})`,
     })
     .from(forumThreadsTable)
@@ -22,7 +23,7 @@ router.get("/forum/threads", async (_req, res) => {
 });
 
 router.post("/forum/threads", requireAuth, async (req, res) => {
-  const { title, body } = req.body ?? {};
+  const { title, body, password } = req.body ?? {};
   if (typeof title !== "string" || !title.trim()) { res.status(400).json({ error: "title required" }); return; }
   if (typeof body !== "string" || !body.trim()) { res.status(400).json({ error: "body required" }); return; }
   if (title.length > 120) { res.status(413).json({ error: "Title too long" }); return; }
@@ -33,10 +34,23 @@ router.post("/forum/threads", requireAuth, async (req, res) => {
     res.status(403).json({ error: "You are banned." });
     return;
   }
-  const [thread] = await db.insert(forumThreadsTable).values({ title: title.trim().slice(0, 120), author }).returning();
+  const passwordHash = (typeof password === "string" && password.length >= 1) ? await hashPassword(password) : null;
+  const [thread] = await db.insert(forumThreadsTable).values({ title: title.trim().slice(0, 120), author, passwordHash }).returning();
   await db.insert(forumPostsTable).values({ threadId: thread.id, author, body: body.trim() });
   await audit("forum", "thread", author, "", title.trim().slice(0, 120));
-  res.json(thread);
+  res.json({ ...thread, passwordHash: undefined, hasPassword: !!passwordHash });
+});
+
+router.post("/forum/threads/:id/unlock", async (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isFinite(id)) { res.status(400).json({ error: "bad id" }); return; }
+  const [thread] = await db.select().from(forumThreadsTable).where(eq(forumThreadsTable.id, id)).limit(1);
+  if (!thread) { res.status(404).json({ error: "not found" }); return; }
+  if (!thread.passwordHash) { res.json({ ok: true }); return; }
+  const ok = typeof req.body?.password === "string" && await verifyPassword(req.body.password, thread.passwordHash);
+  if (!ok) { res.status(401).json({ error: "Wrong password" }); return; }
+  (req.session as any).forumUnlocked = { ...((req.session as any).forumUnlocked || {}), [id]: true };
+  res.json({ ok: true });
 });
 
 router.get("/forum/threads/:id", async (req, res) => {
@@ -44,8 +58,14 @@ router.get("/forum/threads/:id", async (req, res) => {
   if (!Number.isFinite(id)) { res.status(400).json({ error: "bad id" }); return; }
   const [thread] = await db.select().from(forumThreadsTable).where(eq(forumThreadsTable.id, id)).limit(1);
   if (!thread) { res.status(404).json({ error: "not found" }); return; }
+  const sessUnlocked = (req.session as any).forumUnlocked || {};
+  const isOwner = req.session.username && req.session.username === thread.author;
+  if (thread.passwordHash && !sessUnlocked[id] && !isOwner && !req.session.isAdmin) {
+    res.status(403).json({ error: "password required", needsPassword: true, thread: { id: thread.id, title: thread.title, author: thread.author, hasPassword: true, createdAt: thread.createdAt } });
+    return;
+  }
   const posts = await db.select().from(forumPostsTable).where(eq(forumPostsTable.threadId, id)).orderBy(forumPostsTable.createdAt);
-  res.json({ thread, posts });
+  res.json({ thread: { ...thread, passwordHash: undefined, hasPassword: !!thread.passwordHash }, posts });
 });
 
 router.post("/forum/threads/:id/posts", requireAuth, async (req, res) => {
