@@ -1,7 +1,7 @@
 import { Router, type IRouter } from "express";
-import { db, usersTable } from "@workspace/db";
+import { db, usersTable, bannedUsersTable, userPagesTable, chatAuditTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
-import { hashPassword, verifyPassword, isAdminUsername, findUserByUsername } from "../lib/auth";
+import { hashPassword, verifyPassword, isAdminUsername, findUserByUsername, requireAdmin } from "../lib/auth";
 
 const router: IRouter = Router();
 
@@ -148,6 +148,33 @@ router.get("/users", async (_req, res) => {
     rank: usersTable.rank,
   }).from(usersTable).limit(500);
   res.json(rows);
+});
+
+// Admin: permanently delete a user (also bans them so they can't immediately re-register).
+router.delete("/users/:username", requireAdmin, async (req, res) => {
+  const username = String(req.params.username || "").trim();
+  if (!username) { res.status(400).json({ error: "username required" }); return; }
+  if (isAdminUsername(username)) { res.status(400).json({ error: "Cannot delete the site owner." }); return; }
+
+  const target = await findUserByUsername(username);
+  if (!target) { res.status(404).json({ error: "User not found" }); return; }
+
+  // Ban first so the seat is locked even if a stray session existed.
+  const actor = req.session.username || "admin";
+  const reason = String((req.body && (req.body as any).reason) || "Account deleted by admin");
+  try {
+    await db.insert(bannedUsersTable).values({ username, bannedBy: actor, reason });
+  } catch {
+    // Already banned — fine.
+  }
+
+  // Remove the account itself and their personal page; chat/forum/etc. content
+  // is left intact so threads stay readable, but the admin can delete those
+  // individually from each surface.
+  await db.delete(userPagesTable).where(eq(userPagesTable.username, username));
+  await db.delete(usersTable).where(eq(usersTable.id, target.id));
+  await db.insert(chatAuditTable).values({ area: "user", action: "delete", actor, target: username, body: reason });
+  res.json({ ok: true });
 });
 
 router.post("/auth/logout", (req, res) => {

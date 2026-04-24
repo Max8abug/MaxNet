@@ -113,6 +113,13 @@ export async function submitDrawing(dataUrl: string, author: string): Promise<Dr
     body: JSON.stringify({ dataUrl, author }),
   }));
 }
+export async function adminDeleteUser(username: string, reason?: string): Promise<void> {
+  await jsonOrThrow(await fetch(`${BASE}/users/${encodeURIComponent(username)}`, {
+    ...opts, method: "DELETE",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ reason: reason || "" }),
+  }));
+}
 export async function voteDrawing(id: number, vote: -1 | 0 | 1): Promise<{ ok: true; score: number; myVote: number }> {
   return jsonOrThrow(await fetch(`${BASE}/drawings/${id}/vote`, {
     ...opts, method: "POST",
