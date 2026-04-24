@@ -161,6 +161,19 @@ export const ipBansTable = pgTable("ip_bans", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
+// Site news / announcements posted by moderators+. Each post can carry an
+// arbitrary number of inline image attachments stored as data URLs (capped on
+// the API side so total payload stays sane).
+export const newsPostsTable = pgTable("news_posts", {
+  id: serial("id").primaryKey(),
+  author: text("author").notNull(),
+  title: text("title").notNull().default(""),
+  body: text("body").notNull().default(""),
+  images: jsonb("images").notNull().default([]),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
 // Site-wide settings (singleton row, id=1) — owner-configurable branding such as the start-menu logo.
 export const siteSettingsTable = pgTable("site_settings", {
   id: serial("id").primaryKey(),

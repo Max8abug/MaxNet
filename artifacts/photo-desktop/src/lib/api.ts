@@ -125,6 +125,28 @@ export async function updateSiteSettings(data: Partial<SiteSettings>): Promise<S
   }));
 }
 
+export interface NewsPost { id: number; author: string; title: string; body: string; images: string[]; createdAt: string; updatedAt: string; }
+export async function fetchNews(): Promise<NewsPost[]> {
+  return jsonOrThrow(await fetch(`${BASE}/news`, opts));
+}
+export async function createNews(data: { title: string; body: string; images: string[] }): Promise<NewsPost> {
+  return jsonOrThrow(await fetch(`${BASE}/news`, {
+    ...opts, method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  }));
+}
+export async function updateNews(id: number, data: { title?: string; body?: string; images?: string[] }): Promise<NewsPost> {
+  return jsonOrThrow(await fetch(`${BASE}/news/${id}`, {
+    ...opts, method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  }));
+}
+export async function deleteNews(id: number): Promise<void> {
+  await jsonOrThrow(await fetch(`${BASE}/news/${id}`, { ...opts, method: "DELETE" }));
+}
+
 export interface IpRecord {
   ip: string;
   firstSeen: string;

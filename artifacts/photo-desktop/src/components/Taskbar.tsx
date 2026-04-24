@@ -55,6 +55,7 @@ export function Taskbar({ page }: { page: string }) {
 
   const open = (data: any) => { addWindow(page, data); setStartOpen(false); };
   const items: { label: string; act: () => void }[] = [
+    { label: "Open Site News", act: () => open({ type: 'news', title: 'Site News', width: 520, height: 480 }) },
     { label: "Open Photo Gallery", act: () => open({ type: 'sharedphotos', title: 'Photo Gallery', width: 460, height: 460 }) },
     { label: "Add Synced YouTube", act: () => open({ type: 'youtube', title: 'YouTube', width: 480, height: 320 }) },
     { label: "Open Forum", act: () => open({ type: 'forum', title: 'Forum', width: 460, height: 420 }) },
