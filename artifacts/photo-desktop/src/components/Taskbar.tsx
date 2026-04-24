@@ -4,7 +4,7 @@ import { useLocation } from 'wouter';
 import { useAuth, userColor } from '../lib/auth-store';
 import { LoginDialog } from './LoginDialog';
 import { ProfileDialog } from './ProfileDialog';
-import { fetchDMConversations, fetchChat } from '../lib/api';
+import { fetchDMConversations, fetchChat, fetchCafeState } from '../lib/api';
 
 export function Taskbar({ page }: { page: string }) {
   const { addWindow, isStringMode, setStringMode, resetState, windows, toggleWindowState, bringToFront } = useDesktopStore();
@@ -16,6 +16,11 @@ export function Taskbar({ page }: { page: string }) {
   const wins = windows[page] || [];
   const [dmUnread, setDmUnread] = useState(0);
   const [chatUnread, setChatUnread] = useState(0);
+  // Live count of users currently visible in the cafe. Polled from the public
+  // /cafe/state endpoint so even logged-out visitors can see when the cafe is
+  // busy and decide to drop in. The cafe component does its own faster poll
+  // when the window is open; this poll just keeps the taskbar chip warm.
+  const [cafeCount, setCafeCount] = useState(0);
 
   useEffect(() => { void refresh(); void refreshRanks(); void refreshSiteSettings(); }, [refresh, refreshRanks, refreshSiteSettings]);
   // Re-pull site settings periodically so visitors pick up logo updates without a hard refresh.
@@ -24,6 +29,19 @@ export function Taskbar({ page }: { page: string }) {
   // Poll for DM and chat unread counts. Treat the badge as cleared while a window of that type is open and not minimized.
   const dmsOpen = wins.some(w => w.type === 'dms' && (w.state || 'normal') !== 'min');
   const chatOpen = wins.some(w => w.type === 'chat' && (w.state || 'normal') !== 'min');
+
+  // Poll the cafe presence count so the taskbar chip pulses live, even when
+  // the cafe window is closed. Independent from auth — anyone can see how
+  // busy the room is.
+  useEffect(() => {
+    let alive = true;
+    const tick = async () => {
+      try { const s = await fetchCafeState(); if (!alive) return; setCafeCount(s.presence?.length || 0); } catch {}
+    };
+    void tick();
+    const t = setInterval(tick, 8000);
+    return () => { alive = false; clearInterval(t); };
+  }, []);
   useEffect(() => {
     if (!user) { setDmUnread(0); setChatUnread(0); return; }
     let alive = true;
@@ -81,10 +99,13 @@ export function Taskbar({ page }: { page: string }) {
   const colorStyle = user ? { color: userColor(user, ranks) || undefined } : {};
   const totalUnread = dmUnread + chatUnread;
 
-  function Badge({ count }: { count: number }) {
+  function Badge({ count, tone = 'red' }: { count: number; tone?: 'red' | 'green' }) {
     if (!count) return null;
+    // Green tone is used for live presence indicators (e.g. cafe occupancy)
+    // so it doesn't visually compete with the red "unread" badges.
+    const bg = tone === 'green' ? 'bg-green-600' : 'bg-red-600';
     return (
-      <span className="absolute -top-1 -right-1 bg-red-600 text-white text-[9px] font-bold rounded-full min-w-[16px] h-4 px-1 flex items-center justify-center border border-white shadow">
+      <span className={`absolute -top-1 -right-1 ${bg} text-white text-[9px] font-bold rounded-full min-w-[16px] h-4 px-1 flex items-center justify-center border border-white shadow`}>
         {count > 99 ? '99+' : count}
       </span>
     );
@@ -106,6 +127,15 @@ export function Taskbar({ page }: { page: string }) {
       bringToFront(page, existing.id);
     } else {
       addWindow(page, { type: 'chat', title: 'Chatbox', width: 360, height: 420 });
+    }
+  }
+  function openCafe() {
+    const existing = wins.find(w => w.type === 'cafe');
+    if (existing) {
+      if ((existing.state || 'normal') === 'min') toggleWindowState(page, existing.id, 'min');
+      bringToFront(page, existing.id);
+    } else {
+      addWindow(page, { type: 'cafe', title: 'Cafe', width: 720, height: 560 });
     }
   }
 
@@ -133,6 +163,7 @@ export function Taskbar({ page }: { page: string }) {
                   {it.label}
                   {it.label === 'Open DMs' && <span className="absolute right-2 top-1/2 -translate-y-1/2"><Badge count={dmUnread} /></span>}
                   {it.label === 'Add Chatbox' && <span className="absolute right-2 top-1/2 -translate-y-1/2"><Badge count={chatUnread} /></span>}
+                  {it.label === 'Open Cafe' && <span className="absolute right-2 top-1/2 -translate-y-1/2"><Badge count={cafeCount} tone="green" /></span>}
                 </button>
               ))}
               <div className="h-[2px] w-full border-t border-t-[#808080] border-b border-b-white my-1" />
@@ -156,18 +187,33 @@ export function Taskbar({ page }: { page: string }) {
         {isStringMode ? 'Cancel' : 'String'}
       </button>
 
-      {user && (
-        <div className="flex items-center gap-1 ml-1">
-          <button className="win98-button h-8 px-2 text-xs relative" onClick={openDms} title="Direct Messages">
-            ✉ DMs
-            <Badge count={dmUnread} />
-          </button>
-          <button className="win98-button h-8 px-2 text-xs relative" onClick={openChat} title="Chatbox">
-            💬 Chat
-            <Badge count={chatUnread} />
-          </button>
-        </div>
-      )}
+      <div className="flex items-center gap-1 ml-1">
+        {/* Live cafe occupancy chip — always visible. The green dot is the
+            "presence pulse": it gently throbs whenever someone is in the
+            cafe so people working in other windows notice the room is alive
+            without it being intrusive. Click jumps straight in. */}
+        <button
+          className="win98-button h-8 px-2 text-xs relative flex items-center gap-1"
+          onClick={openCafe}
+          title={cafeCount > 0 ? `${cafeCount} ${cafeCount === 1 ? 'person' : 'people'} in the cafe` : 'Cafe is empty — open it'}
+        >
+          <span className={`inline-block w-2 h-2 rounded-full ${cafeCount > 0 ? 'bg-green-500 cafe-presence-pulse' : 'bg-gray-400'}`} />
+          ☕ Cafe
+          <Badge count={cafeCount} tone="green" />
+        </button>
+        {user && (
+          <>
+            <button className="win98-button h-8 px-2 text-xs relative" onClick={openDms} title="Direct Messages">
+              ✉ DMs
+              <Badge count={dmUnread} />
+            </button>
+            <button className="win98-button h-8 px-2 text-xs relative" onClick={openChat} title="Chatbox">
+              💬 Chat
+              <Badge count={chatUnread} />
+            </button>
+          </>
+        )}
+      </div>
 
       <div className="flex items-center gap-1 ml-1 flex-1 overflow-x-auto">
         {wins.filter(w => (w.state || 'normal') === 'min').map(w => (
