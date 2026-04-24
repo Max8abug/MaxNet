@@ -220,6 +220,39 @@ function CharacterEditor({ initialColor, initialHat, initialAccessory, onSave, o
   const dispW = ACCESSORY_W * displayScale;
   const dispH = ACCESSORY_H * displayScale;
 
+  // Pinch-to-zoom + 2-finger pan inside the editor viewport.
+  // - 1 finger / mouse: draws as before.
+  // - 2 fingers: pinch zooms (anchored on the gesture midpoint) and pans.
+  // The canvas backing buffer is unchanged, so saved drawings keep their
+  // resolution. Zoom is purely a visual transform on the editor viewport.
+  const viewportRef = useRef<HTMLDivElement>(null);
+  const [zoom, setZoom] = useState(1);
+  const [pan, setPan] = useState({ x: 0, y: 0 });
+  const pointers = useRef<Map<number, { x: number; y: number }>>(new Map());
+  const pinchStart = useRef<null | {
+    dist: number;
+    midLocalX: number;
+    midLocalY: number;
+    zoom: number;
+    panX: number;
+    panY: number;
+  }>(null);
+
+  const MIN_ZOOM = 1;
+  const MAX_ZOOM = 6;
+
+  function clampPan(px: number, py: number, z: number) {
+    // Keep the scaled content from being dragged off the viewport.
+    const minX = Math.min(0, dispW - dispW * z);
+    const minY = Math.min(0, dispH - dispH * z);
+    return {
+      x: Math.max(minX, Math.min(0, px)),
+      y: Math.max(minY, Math.min(0, py)),
+    };
+  }
+
+  function resetView() { setZoom(1); setPan({ x: 0, y: 0 }); }
+
   // Restore previous accessory drawing if present
   useEffect(() => {
     const c = canvasRef.current; if (!c) return;
@@ -233,11 +266,65 @@ function CharacterEditor({ initialColor, initialHat, initialAccessory, onSave, o
   }, [initialAccessory]);
 
   function getPos(e: React.PointerEvent) {
+    // getBoundingClientRect reflects the post-transform rendered size, so this
+    // mapping stays correct at any zoom level.
     const c = canvasRef.current!; const r = c.getBoundingClientRect();
     return { x: ((e.clientX - r.left) / r.width) * c.width, y: ((e.clientY - r.top) / r.height) * c.height };
   }
-  function pd(e: React.PointerEvent) { e.preventDefault(); drawing.current = true; last.current = getPos(e); (e.target as HTMLElement).setPointerCapture(e.pointerId); }
+  function pd(e: React.PointerEvent) {
+    e.preventDefault();
+    pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    try { (e.target as HTMLElement).setPointerCapture(e.pointerId); } catch {}
+
+    if (pointers.current.size >= 2) {
+      // Switching into pinch mode — abort any in-progress stroke.
+      drawing.current = false;
+      last.current = null;
+      const pts = Array.from(pointers.current.values()).slice(0, 2);
+      const rect = viewportRef.current?.getBoundingClientRect();
+      if (!rect) return;
+      const midX = (pts[0].x + pts[1].x) / 2;
+      const midY = (pts[0].y + pts[1].y) / 2;
+      pinchStart.current = {
+        dist: Math.max(1, Math.hypot(pts[1].x - pts[0].x, pts[1].y - pts[0].y)),
+        midLocalX: midX - rect.left,
+        midLocalY: midY - rect.top,
+        zoom,
+        panX: pan.x,
+        panY: pan.y,
+      };
+      return;
+    }
+
+    drawing.current = true;
+    last.current = getPos(e);
+  }
   function pm(e: React.PointerEvent) {
+    if (pointers.current.has(e.pointerId)) {
+      pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    }
+
+    if (pointers.current.size >= 2 && pinchStart.current) {
+      const pts = Array.from(pointers.current.values()).slice(0, 2);
+      const rect = viewportRef.current?.getBoundingClientRect();
+      if (!rect) return;
+      const newDist = Math.max(1, Math.hypot(pts[1].x - pts[0].x, pts[1].y - pts[0].y));
+      const newMidLocalX = (pts[0].x + pts[1].x) / 2 - rect.left;
+      const newMidLocalY = (pts[0].y + pts[1].y) / 2 - rect.top;
+      const scale = newDist / pinchStart.current.dist;
+      const newZoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, pinchStart.current.zoom * scale));
+      // Keep the content point originally under the gesture midpoint pinned
+      // to wherever the (possibly moved) midpoint is now.
+      const contentX = (pinchStart.current.midLocalX - pinchStart.current.panX) / pinchStart.current.zoom;
+      const contentY = (pinchStart.current.midLocalY - pinchStart.current.panY) / pinchStart.current.zoom;
+      const newPanX = newMidLocalX - contentX * newZoom;
+      const newPanY = newMidLocalY - contentY * newZoom;
+      const clamped = clampPan(newPanX, newPanY, newZoom);
+      setZoom(newZoom);
+      setPan(clamped);
+      return;
+    }
+
     if (!drawing.current) return;
     const c = canvasRef.current!; const ctx = c.getContext("2d")!;
     const p = getPos(e);
@@ -252,7 +339,19 @@ function CharacterEditor({ initialColor, initialHat, initialAccessory, onSave, o
     ctx.beginPath(); ctx.moveTo(last.current!.x, last.current!.y); ctx.lineTo(p.x, p.y); ctx.stroke();
     last.current = p;
   }
-  function pu(e: React.PointerEvent) { drawing.current = false; last.current = null; try { (e.target as HTMLElement).releasePointerCapture(e.pointerId); } catch {} }
+  function pu(e: React.PointerEvent) {
+    drawing.current = false;
+    last.current = null;
+    pointers.current.delete(e.pointerId);
+    if (pointers.current.size < 2) pinchStart.current = null;
+    try { (e.target as HTMLElement).releasePointerCapture(e.pointerId); } catch {}
+  }
+
+  // Re-clamp pan if the viewport size or zoom changes (e.g., on resize).
+  useEffect(() => {
+    setPan(p => clampPan(p.x, p.y, zoom));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dispW, dispH, zoom]);
 
   function clearAll() { const c = canvasRef.current!; c.getContext("2d")!.clearRect(0, 0, c.width, c.height); }
 
@@ -305,8 +404,24 @@ function CharacterEditor({ initialColor, initialHat, initialAccessory, onSave, o
             Result: where the user draws is exactly where it appears on the
             in-game avatar — no offsets, no margins, no rounding error.
           */}
-          <div className="win98-inset bg-white self-center" style={{ padding: 0 }}>
-            <div className="relative" style={{ width: dispW, height: dispH, boxSizing: "content-box" }}>
+          <div className="text-[10px] text-gray-700">Tip: pinch with two fingers to zoom in / out, drag with two fingers to pan.</div>
+          <div
+            ref={viewportRef}
+            className="win98-inset bg-white self-center relative"
+            style={{ padding: 0, width: dispW, height: dispH, overflow: "hidden", touchAction: "none" }}
+          >
+            {/* Inner transform layer: pinch-to-zoom and pan are applied here.
+                The drawing canvas underneath uses getBoundingClientRect, so the
+                drawing-coordinate mapping stays correct under any transform. */}
+            <div
+              className="absolute top-0 left-0"
+              style={{
+                width: dispW,
+                height: dispH,
+                transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
+                transformOrigin: "0 0",
+              }}
+            >
               <div
                 className="absolute top-0 left-0 pointer-events-none"
                 style={{
@@ -330,7 +445,7 @@ function CharacterEditor({ initialColor, initialHat, initialAccessory, onSave, o
                 ref={canvasRef}
                 width={EDITOR_CANVAS_W}
                 height={EDITOR_CANVAS_H}
-                className="absolute inset-0 touch-none"
+                className="absolute inset-0"
                 style={{ width: dispW, height: dispH, touchAction: "none", cursor: "crosshair" }}
                 onPointerDown={pd}
                 onPointerMove={pm}
@@ -338,6 +453,16 @@ function CharacterEditor({ initialColor, initialHat, initialAccessory, onSave, o
                 onPointerCancel={pu}
               />
             </div>
+            {zoom > 1.01 && (
+              <button
+                className="win98-button absolute top-1 right-1 px-1.5 py-0.5 text-[10px] z-10"
+                onPointerDown={(e) => { e.stopPropagation(); }}
+                onClick={(e) => { e.stopPropagation(); resetView(); }}
+                title="Reset zoom and pan"
+              >
+                {zoom.toFixed(1)}× · Reset
+              </button>
+            )}
           </div>
           <div className="flex gap-1 justify-end shrink-0">
             <button className="win98-button px-3" onClick={onCancel}>Cancel</button>
