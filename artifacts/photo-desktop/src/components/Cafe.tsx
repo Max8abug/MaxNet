@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
-  fetchCafeState, moveCafe, sayCafe, setCafeTheme, leaveCafe,
+  fetchCafeState, moveCafe, sayCafe, reactCafe, setCafeTheme, leaveCafe,
   fetchCafeRooms, createCafeRoom, deleteCafeRoom,
   fetchCafeObjects, createCafeObject, updateCafeObject, deleteCafeObject,
   fetchCafeAvatar, saveCafeAvatar,
-  type CafePresence, type CafeRoom, type CafeObject, type CafeObjectAction,
+  type CafePresence, type CafeReaction, type CafeRoom, type CafeObject, type CafeObjectAction,
 } from "../lib/api";
 import { useAuth, hasPermission } from "../lib/auth-store";
 import { useDesktopStore } from "../store";
@@ -594,6 +594,14 @@ function ensureWobbleStyle() {
       100% { transform: translateY(0)    rotate(0deg); }
     }
     .cafe-walk { animation: cafeWobble 360ms ease-in-out infinite; transform-origin: 50% 100%; }
+    @keyframes cafeReactPop {
+      0%   { transform: translate(-50%, 0)    scale(0.4); opacity: 0; }
+      18%  { transform: translate(-50%, -6px) scale(1.25); opacity: 1; }
+      40%  { transform: translate(-50%, -10px) scale(1); opacity: 1; }
+      85%  { transform: translate(-50%, -28px) scale(1); opacity: 1; }
+      100% { transform: translate(-50%, -42px) scale(0.9); opacity: 0; }
+    }
+    .cafe-react { animation: cafeReactPop 4000ms ease-out forwards; }
   `;
   document.head.appendChild(s);
 }
@@ -605,6 +613,16 @@ export function Cafe() {
   const [presence, setPresence] = useState<CafePresence[]>([]);
   const [chat, setChat] = useState<{ author: string; body: string; createdAt: string }[]>([]);
   const [theme, setTheme] = useState("cafe");
+  const [reactions, setReactions] = useState<CafeReaction[]>([]);
+  // Force a re-render every ~250ms while any reaction is active so we can
+  // drop expired bubbles even between server polls. Cheap because the array
+  // is almost always 0–2 items.
+  const [, setReactionTick] = useState(0);
+  useEffect(() => {
+    if (reactions.length === 0) return;
+    const t = setInterval(() => setReactionTick(n => n + 1), 250);
+    return () => clearInterval(t);
+  }, [reactions.length]);
   const [rooms, setRooms] = useState<CafeRoom[]>([]);
   const [objects, setObjects] = useState<CafeObject[]>([]);
   const [managingRooms, setManagingRooms] = useState(false);
@@ -668,7 +686,7 @@ export function Cafe() {
 
   useEffect(() => {
     let alive = true;
-    const tick = async () => { try { const s = await fetchCafeState(); if (!alive) return; setPresence(s.presence); setChat(s.chat); setTheme(s.theme); } catch {} };
+    const tick = async () => { try { const s = await fetchCafeState(); if (!alive) return; setPresence(s.presence); setChat(s.chat); setTheme(s.theme); setReactions(s.reactions || []); } catch {} };
     void tick();
     const t = setInterval(tick, 1500);
     return () => { alive = false; clearInterval(t); };
@@ -910,8 +928,23 @@ export function Cafe() {
           const speech = recentSpeech.findLast?.(c => c.author === p.username);
           const x = isMe ? pos.x : p.x, y = isMe ? pos.y : p.y;
           const isWalking = !!walking[p.username];
+          // Pick the most recent live reaction targeted at this user. We
+          // key it by `from + expiresAt` so a fresh reaction restarts the CSS
+          // animation even when it replaces an in-flight one.
+          const now = Date.now();
+          const myReaction = reactions
+            .filter(r => r.to === p.username && r.expiresAt > now)
+            .sort((a, b) => b.expiresAt - a.expiresAt)[0];
           return (
             <div key={p.username} className="absolute flex flex-col items-center" style={{ left: `${(x / W) * 100}%`, top: `${(y / H) * 100}%`, transform: "translate(-50%, -100%)", transition: "left 250ms linear, top 250ms linear" }}>
+              {myReaction && (
+                <div
+                  key={`react-${myReaction.from}-${myReaction.expiresAt}`}
+                  className="cafe-react absolute left-1/2 text-2xl pointer-events-none select-none"
+                  style={{ top: -22, textShadow: "0 1px 3px rgba(0,0,0,0.6)" }}
+                  title={`from ${myReaction.from}`}
+                >{myReaction.emoji}</div>
+              )}
               {speech && (Date.now() - new Date(speech.createdAt).getTime() < 8000) && (
                 <div className="bg-white border border-black px-1 mb-1 max-w-[120px] text-[10px] rounded">{speech.body}</div>
               )}
@@ -1031,6 +1064,22 @@ export function Cafe() {
               </div>
               <div className="relative" style={{ width: ACCESSORY_W, height: ACCESSORY_H }}>
                 <CharacterCell color={av.color || "#ffd699"} hat={av.hat || "none"} accessoryUrl={av.accessory || null} />
+              </div>
+              {/* Quick reactions: each button fires a server-side ephemeral
+                  reaction that all clients pick up in their next poll and show
+                  as a floating emoji over the recipient. The popup stays open
+                  so a user can chain a few feelings (wave + heart) before
+                  closing. We swallow errors to keep the UI snappy — the worst
+                  case is a missed reaction. */}
+              <div className="flex gap-1 w-full justify-center flex-wrap" aria-label="Quick reactions">
+                {(["👋", "❤️", "😂", "😢", "👍", "😮"] as const).map((emoji) => (
+                  <button
+                    key={emoji}
+                    className="win98-button px-1.5 text-base leading-none"
+                    title={`React with ${emoji}`}
+                    onClick={() => { reactCafe(profilePeer, emoji).catch(() => {}); }}
+                  >{emoji}</button>
+                ))}
               </div>
               <div className="flex gap-1 w-full">
                 <button

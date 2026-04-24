@@ -469,13 +469,17 @@ export async function clearUserPage(username: string): Promise<void> {
 // ----- Cafe -----
 export interface CafePresence { username: string; x: number; y: number; avatar: any; lastSeen: string; }
 export interface CafeChatMsg { id: number; author: string; body: string; createdAt: string; }
-export interface CafeState { presence: CafePresence[]; chat: CafeChatMsg[]; theme: string; }
+export interface CafeReaction { from: string; to: string; emoji: string; expiresAt: number; }
+export interface CafeState { presence: CafePresence[]; chat: CafeChatMsg[]; theme: string; reactions: CafeReaction[]; }
 export async function fetchCafeState(): Promise<CafeState> { return jsonOrThrow(await fetch(`${BASE}/cafe/state`, opts)); }
 export async function moveCafe(x: number, y: number, avatar: any): Promise<void> {
   await fetch(`${BASE}/cafe/move`, { ...opts, method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ x, y, avatar }) });
 }
 export async function sayCafe(body: string): Promise<void> {
   await jsonOrThrow(await fetch(`${BASE}/cafe/say`, { ...opts, method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ body }) }));
+}
+export async function reactCafe(target: string, emoji: string): Promise<void> {
+  await jsonOrThrow(await fetch(`${BASE}/cafe/react`, { ...opts, method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ target, emoji }) }));
 }
 export async function setCafeTheme(theme: string): Promise<void> {
   await jsonOrThrow(await fetch(`${BASE}/cafe/theme`, { ...opts, method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ theme }) }));

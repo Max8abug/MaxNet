@@ -11,6 +11,22 @@ const router: IRouter = Router();
 // in cafe_rooms and looked up at theme-set time so we don't reject their slugs.
 const BUILTIN_THEMES = ["cafe", "library", "holiday", "park", "city"];
 
+// Quick-emoji reactions are deliberately ephemeral and high-volume, so they
+// live in process memory rather than the database. They expire after a few
+// seconds and are pruned on every poll. The set of allowed emojis is fixed on
+// the server so a malicious client cannot blast unicode through the channel.
+type CafeReaction = { from: string; to: string; emoji: string; expiresAt: number };
+const REACTIONS: CafeReaction[] = [];
+const REACTION_TTL_MS = 4000;
+const REACTION_RATE_LIMIT_MS = 600;
+const REACTION_LAST: Map<string, number> = new Map();
+const ALLOWED_EMOJIS = new Set(["👋", "❤️", "😂", "😢", "👍", "😮"]);
+function pruneReactions(now: number) {
+  for (let i = REACTIONS.length - 1; i >= 0; i--) {
+    if (REACTIONS[i].expiresAt <= now) REACTIONS.splice(i, 1);
+  }
+}
+
 async function ensureSettings() {
   const [s] = await db.select().from(cafeSettingsTable).limit(1);
   if (!s) await db.insert(cafeSettingsTable).values({ theme: "cafe" });
@@ -18,11 +34,13 @@ async function ensureSettings() {
 
 router.get("/cafe/state", async (_req, res) => {
   await ensureSettings();
-  const cutoff = new Date(Date.now() - 30_000);
+  const now = Date.now();
+  const cutoff = new Date(now - 30_000);
   const presence = await db.select().from(cafePresenceTable).where(sql`${cafePresenceTable.lastSeen} > ${cutoff}`);
   const chat = await db.select().from(cafeChatTable).orderBy(desc(cafeChatTable.createdAt)).limit(40);
   const [settings] = await db.select().from(cafeSettingsTable).limit(1);
-  res.json({ presence, chat: chat.reverse(), theme: settings?.theme || "cafe" });
+  pruneReactions(now);
+  res.json({ presence, chat: chat.reverse(), theme: settings?.theme || "cafe", reactions: REACTIONS });
 });
 
 router.post("/cafe/move", requireAuth, async (req, res) => {
@@ -69,6 +87,31 @@ router.post("/cafe/theme", requireAuth, async (req, res) => {
   await ensureSettings();
   await db.update(cafeSettingsTable).set({ theme });
   await audit("cafe", "theme", me, "", theme);
+  res.json({ ok: true });
+});
+
+router.post("/cafe/react", requireAuth, async (req, res) => {
+  const me = req.session.username!;
+  const { target, emoji } = req.body ?? {};
+  if (typeof target !== "string" || !target) { res.status(400).json({ error: "target required" }); return; }
+  if (typeof emoji !== "string" || !ALLOWED_EMOJIS.has(emoji)) { res.status(400).json({ error: "Invalid emoji" }); return; }
+  if (await isBanned(me)) { res.status(403).json({ error: "Banned" }); return; }
+  const now = Date.now();
+  // Cheap per-user rate limit so a button-mashing client can't flood the
+  // shared in-memory queue. We don't need to be exact — a few hundred ms
+  // is plenty to keep the channel calm.
+  const last = REACTION_LAST.get(me) || 0;
+  if (now - last < REACTION_RATE_LIMIT_MS) { res.status(429).json({ error: "Slow down" }); return; }
+  // Target must currently be in the cafe (active in the last 30s) — there's
+  // no point queueing a wave for someone who isn't here to see it.
+  const cutoff = new Date(now - 30_000);
+  const [t] = await db.select().from(cafePresenceTable).where(eq(cafePresenceTable.username, target)).limit(1);
+  if (!t || new Date(t.lastSeen).getTime() < cutoff.getTime()) {
+    res.status(404).json({ error: "Target not in cafe" }); return;
+  }
+  REACTION_LAST.set(me, now);
+  pruneReactions(now);
+  REACTIONS.push({ from: me, to: target, emoji, expiresAt: now + REACTION_TTL_MS });
   res.json({ ok: true });
 });
 
