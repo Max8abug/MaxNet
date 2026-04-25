@@ -4,6 +4,7 @@ import pinoHttp from "pino-http";
 import router from "./routes";
 import { logger } from "./lib/logger";
 import { sessionMiddleware } from "./lib/auth";
+import { recordError } from "./lib/error-buffer";
 
 const app: Express = express();
 app.set("trust proxy", 1);
@@ -44,6 +45,16 @@ const errorHandler: ErrorRequestHandler = (err, req, res, _next) => {
     { err, method: req.method, url: req.url?.split("?")[0] },
     "Unhandled error in request",
   );
+  // Capture into the in-memory ring buffer so admins can review recent
+  // failures via the diagnostics window without needing access to raw
+  // container logs.
+  recordError({
+    method: req.method,
+    url: req.url?.split("?")[0] ?? "",
+    message: err instanceof Error ? err.message : String(err),
+    stack: err instanceof Error && err.stack ? err.stack : null,
+    user: req.session?.username ?? null,
+  });
   if (res.headersSent) return;
   const isProduction = process.env["NODE_ENV"] === "production";
   // We surface the raw error message under `detail` in two cases:

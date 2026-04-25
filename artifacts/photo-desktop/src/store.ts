@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 
-export type WindowType = 'photo' | 'gallery' | 'text' | 'link' | 'youtube' | 'drawing' | 'chat' | 'visits' | 'guestbook' | 'sharedphotos' | 'forum' | 'blackjack' | 'flappy' | 'music' | 'polls' | 'chess' | 'cafe' | 'dms' | 'userpage' | 'ranksadmin' | 'userlist' | 'mypage';
+export type WindowType = 'photo' | 'gallery' | 'text' | 'link' | 'youtube' | 'drawing' | 'chat' | 'visits' | 'guestbook' | 'sharedphotos' | 'forum' | 'blackjack' | 'flappy' | 'music' | 'polls' | 'chess' | 'cafe' | 'dms' | 'userpage' | 'ranksadmin' | 'userlist' | 'mypage' | 'sitesettings' | 'iplookup' | 'news' | 'diagnostics';
 
 export type WindowState = 'normal' | 'min' | 'max';
 

@@ -576,3 +576,22 @@ export async function fetchChessMoves(id: number): Promise<string[]> {
   const j = await jsonOrThrow(await fetch(`${BASE}/chess/lobbies/${id}/moves`, opts));
   return j.moves || [];
 }
+
+export interface DiagnosticsError {
+  id: number;
+  timestamp: string;
+  method: string;
+  url: string;
+  message: string;
+  stack: string | null;
+  user: string | null;
+}
+
+export async function fetchDiagnosticsErrors(): Promise<DiagnosticsError[]> {
+  const j = await jsonOrThrow(await fetch(`${BASE}/diagnostics/errors`, opts));
+  return j.errors || [];
+}
+
+export async function clearDiagnosticsErrors(): Promise<void> {
+  await jsonOrThrow(await fetch(`${BASE}/diagnostics/errors`, { ...opts, method: "DELETE" }));
+}

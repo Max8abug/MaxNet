@@ -23,6 +23,7 @@ import { SiteSettingsDialog } from './SiteSettingsDialog';
 import { IpLookup } from './IpLookup';
 import { News } from './News';
 import { UserList } from './UserList';
+import { DiagnosticsPanel } from './DiagnosticsPanel';
 import { useAuth } from '../lib/auth-store';
 
 function getYouTubeEmbedUrl(url: string): string | null {
@@ -305,6 +306,7 @@ export function Window({
         {w.type === 'iplookup' && !isEditing && <IpLookup username={w.username || ''} />}
         {w.type === 'news' && !isEditing && <News />}
         {w.type === 'userlist' && !isEditing && <UserList page={page} />}
+        {w.type === 'diagnostics' && !isEditing && <DiagnosticsPanel />}
         {showLogin && <LoginDialog onClose={() => setShowLogin(false)} />}
 
         {!isMax && (
