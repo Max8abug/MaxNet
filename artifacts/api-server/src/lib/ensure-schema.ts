@@ -51,6 +51,10 @@ export async function ensureSchema(): Promise<void> {
       votes jsonb NOT NULL DEFAULT '{}'::jsonb,
       created_at timestamp NOT NULL DEFAULT now()
     );
+    ALTER TABLE drawings ADD COLUMN IF NOT EXISTS author text NOT NULL DEFAULT 'anon';
+    ALTER TABLE drawings ADD COLUMN IF NOT EXISTS data_url text NOT NULL DEFAULT '';
+    ALTER TABLE drawings ADD COLUMN IF NOT EXISTS votes jsonb NOT NULL DEFAULT '{}'::jsonb;
+    ALTER TABLE drawings ADD COLUMN IF NOT EXISTS created_at timestamp NOT NULL DEFAULT now();
 
     CREATE TABLE IF NOT EXISTS chat_messages (
       id serial PRIMARY KEY,
