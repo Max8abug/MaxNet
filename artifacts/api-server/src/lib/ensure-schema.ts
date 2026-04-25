@@ -300,6 +300,24 @@ export async function ensureSchema(): Promise<void> {
       score integer NOT NULL,
       created_at timestamp NOT NULL DEFAULT now()
     );
+
+    -- express-session store table used by connect-pg-simple. Historically
+    -- we relied on connect-pg-simple's own \`createTableIfMissing\` to
+    -- bootstrap this, but esbuild does not bundle the library's
+    -- \`table.sql\` template into our dist output, so the runtime fallback
+    -- crashes with ENOENT and the session table is never created. The
+    -- visible symptom was that login appeared to succeed but every
+    -- subsequent auth-required request (submit a drawing, post in chat,
+    -- etc.) came back as 401 "Login required" because the session row was
+    -- never persisted. Creating the table here — using the canonical
+    -- connect-pg-simple shape — closes that gap on every startup.
+    CREATE TABLE IF NOT EXISTS "session" (
+      "sid" varchar NOT NULL COLLATE "default",
+      "sess" jsonb NOT NULL,
+      "expire" timestamp(6) NOT NULL,
+      CONSTRAINT "session_pkey" PRIMARY KEY ("sid") NOT DEFERRABLE INITIALLY IMMEDIATE
+    );
+    CREATE INDEX IF NOT EXISTS "IDX_session_expire" ON "session" ("expire");
   `;
 
   const client = await pool.connect();

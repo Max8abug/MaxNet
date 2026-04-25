@@ -27,12 +27,16 @@ export const sessionMiddleware: RequestHandler = session({
   store: new PgSession({
     conObject: { connectionString: databaseUrl },
     tableName: "session",
-    // The session table is part of our Drizzle schema, but a freshly
-    // provisioned production database may not have had `drizzle-kit push`
-    // run against it before the first request arrives. Letting the session
-    // store create the table on demand prevents every login attempt from
-    // throwing "relation \"session\" does not exist" and returning HTTP 500.
-    createTableIfMissing: true,
+    // The session table is created idempotently by `ensureSchema()` at
+    // startup (see lib/ensure-schema.ts). We deliberately do NOT use
+    // connect-pg-simple's `createTableIfMissing` here: that option reads
+    // the library's bundled `table.sql` from disk, but esbuild does not
+    // copy that file into our `dist/` output, so the runtime fallback
+    // crashes with ENOENT on every session write. The visible symptom
+    // was logins appearing to succeed while the session row was never
+    // persisted, which broke every auth-required route (drawing pad,
+    // chat, etc.) with a 401 "Login required".
+    createTableIfMissing: false,
   }),
   secret,
   resave: false,
