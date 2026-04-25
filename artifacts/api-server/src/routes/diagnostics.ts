@@ -1,6 +1,8 @@
 import { Router, type IRouter } from "express";
 import { eq } from "drizzle-orm";
+import { getTableConfig, type PgTable } from "drizzle-orm/pg-core";
 import { db, pool, drawingsTable } from "@workspace/db";
+import * as schema from "@workspace/db";
 import { requireAdmin } from "../lib/auth";
 import { listErrors, clearErrors, describeError } from "../lib/error-buffer";
 import { isBanned, audit } from "./social";
@@ -279,6 +281,149 @@ router.post("/diagnostics/test-drawing", requireAdmin, async (req, res, next) =>
       steps,
     });
   } catch (e) {
+    next(e);
+  }
+});
+
+// ----------------------------------------------------------------------
+// Schema drift check
+// ----------------------------------------------------------------------
+// Compares the live Postgres schema against what Drizzle (the in-code
+// source of truth) expects. Mostly useful for spotting prod databases
+// that are stale relative to the latest deploy — e.g. a new column was
+// added in code but the table on prod still doesn't have it. Pairs with
+// the self-healing ALTERs in `ensure-schema.ts`: this report tells you
+// whether those healed anything, and whether there are tables/columns we
+// haven't covered yet.
+
+interface SchemaColumnDrift {
+  name: string;
+  expectedType: string;
+  actualType: string | null;
+}
+
+interface SchemaTableDrift {
+  table: string;
+  exists: boolean;
+  missingColumns: SchemaColumnDrift[];
+  // Columns present on the DB but not in the Drizzle schema. Informational
+  // only — usually means a column was renamed/removed in code without a
+  // matching DROP COLUMN, which is fine but worth noticing.
+  extraColumns: string[];
+}
+
+interface SchemaDriftResult {
+  ok: boolean;
+  ranAt: string;
+  durationMs: number;
+  totalTables: number;
+  driftedTables: number;
+  tables: SchemaTableDrift[];
+  error: string | null;
+}
+
+router.get("/diagnostics/schema-drift", requireAdmin, async (_req, res, next) => {
+  const start = Date.now();
+  const result: SchemaDriftResult = {
+    ok: true,
+    ranAt: new Date().toISOString(),
+    durationMs: 0,
+    totalTables: 0,
+    driftedTables: 0,
+    tables: [],
+    error: null,
+  };
+
+  try {
+    // Collect every Drizzle pgTable exported from @workspace/db. We
+    // duck-type on the presence of the Drizzle-internal Symbol that
+    // marks a real PgTable so we don't try to introspect, say, the
+    // exported `pool` or `db` instances.
+    const tables: PgTable[] = [];
+    for (const v of Object.values(schema)) {
+      if (v && typeof v === "object" && Symbol.for("drizzle:IsDrizzleTable") in v) {
+        tables.push(v as PgTable);
+      }
+    }
+
+    // One query for every column on every public-schema table. Cheaper
+    // than per-table round-trips and gives us the full picture.
+    const colsRes = await pool.query<{
+      table_name: string;
+      column_name: string;
+      data_type: string;
+    }>(
+      `SELECT table_name, column_name, data_type
+         FROM information_schema.columns
+        WHERE table_schema = 'public'`,
+    );
+
+    const actualByTable = new Map<string, Map<string, string>>();
+    for (const row of colsRes.rows) {
+      let m = actualByTable.get(row.table_name);
+      if (!m) {
+        m = new Map();
+        actualByTable.set(row.table_name, m);
+      }
+      m.set(row.column_name, row.data_type);
+    }
+
+    for (const table of tables) {
+      const cfg = getTableConfig(table);
+      const actualCols = actualByTable.get(cfg.name);
+      const drift: SchemaTableDrift = {
+        table: cfg.name,
+        exists: actualCols != null,
+        missingColumns: [],
+        extraColumns: [],
+      };
+
+      const expectedNames = new Set<string>();
+      for (const col of cfg.columns) {
+        expectedNames.add(col.name);
+        const expectedType = col.getSQLType();
+        const actualType = actualCols?.get(col.name) ?? null;
+        if (!actualCols || actualType == null) {
+          drift.missingColumns.push({
+            name: col.name,
+            expectedType,
+            actualType,
+          });
+        }
+      }
+
+      if (actualCols) {
+        for (const name of actualCols.keys()) {
+          if (!expectedNames.has(name)) drift.extraColumns.push(name);
+        }
+      }
+
+      const drifted = !drift.exists || drift.missingColumns.length > 0;
+      if (drifted) {
+        result.driftedTables += 1;
+        result.ok = false;
+      }
+      result.tables.push(drift);
+    }
+
+    result.totalTables = result.tables.length;
+    // Sort: drifted tables first (missing > missing-cols > clean), then
+    // alphabetical. Lets the UI render the interesting rows up top.
+    result.tables.sort((a, b) => {
+      const score = (t: SchemaTableDrift) =>
+        !t.exists ? 0 : t.missingColumns.length > 0 ? 1 : 2;
+      const sa = score(a);
+      const sb = score(b);
+      if (sa !== sb) return sa - sb;
+      return a.table.localeCompare(b.table);
+    });
+
+    result.durationMs = Date.now() - start;
+    res.json(result);
+  } catch (e) {
+    result.error = e instanceof Error ? e.message : String(e);
+    result.ok = false;
+    result.durationMs = Date.now() - start;
     next(e);
   }
 });

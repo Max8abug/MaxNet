@@ -4,13 +4,15 @@ import {
   clearDiagnosticsErrors,
   runDiagnosticsHealthcheck,
   runDiagnosticsDrawingTest,
+  runDiagnosticsSchemaDrift,
   type DiagnosticsError,
   type DiagnosticsHealth,
   type DiagnosticsTestResult,
+  type DiagnosticsSchemaDrift,
 } from "../lib/api";
 import { useAuth } from "../lib/auth-store";
 
-type Tab = "errors" | "health" | "drawing";
+type Tab = "errors" | "health" | "drawing" | "schema";
 
 export function DiagnosticsPanel() {
   const user = useAuth((s) => s.user);
@@ -26,6 +28,9 @@ export function DiagnosticsPanel() {
   const [drawTest, setDrawTest] = useState<DiagnosticsTestResult | null>(null);
   const [drawLoading, setDrawLoading] = useState(false);
   const [drawErr, setDrawErr] = useState<string | null>(null);
+  const [schema, setSchema] = useState<DiagnosticsSchemaDrift | null>(null);
+  const [schemaLoading, setSchemaLoading] = useState(false);
+  const [schemaErr, setSchemaErr] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -68,6 +73,18 @@ export function DiagnosticsPanel() {
       setDrawErr(e?.message || "Failed");
     } finally {
       setDrawLoading(false);
+    }
+  }, []);
+
+  const runSchema = useCallback(async () => {
+    setSchemaLoading(true);
+    setSchemaErr(null);
+    try {
+      setSchema(await runDiagnosticsSchemaDrift());
+    } catch (e: any) {
+      setSchemaErr(e?.message || "Failed");
+    } finally {
+      setSchemaLoading(false);
     }
   }, []);
 
@@ -114,6 +131,13 @@ export function DiagnosticsPanel() {
           onClick={() => setTab("drawing")}
         >
           Drawing Test
+        </button>
+        <button
+          className={`px-3 py-1 border border-b-0 ${tab === "schema" ? "bg-white border-gray-500 font-bold" : "bg-gray-300 border-gray-400"}`}
+          onClick={() => setTab("schema")}
+        >
+          Schema Drift
+          {schema && schema.driftedTables > 0 && ` (${schema.driftedTables})`}
         </button>
       </div>
 
@@ -194,6 +218,15 @@ export function DiagnosticsPanel() {
           loading={drawLoading}
           err={drawErr}
           onRun={() => void runDrawing()}
+        />
+      )}
+
+      {tab === "schema" && (
+        <SchemaDriftTab
+          result={schema}
+          loading={schemaLoading}
+          err={schemaErr}
+          onRun={() => void runSchema()}
         />
       )}
     </div>
@@ -404,6 +437,101 @@ function DrawingTestTab({
                 )}
               </div>
             ))}
+          </div>
+        )}
+      </div>
+    </>
+  );
+}
+
+function SchemaDriftTab({
+  result,
+  loading,
+  err,
+  onRun,
+}: {
+  result: DiagnosticsSchemaDrift | null;
+  loading: boolean;
+  err: string | null;
+  onRun: () => void;
+}) {
+  return (
+    <>
+      <div className="flex items-center gap-1 p-1 border-b border-gray-400">
+        <button className="win98-button px-2 py-0.5" onClick={onRun} disabled={loading}>
+          {loading ? "Checking…" : "Check Schema Drift"}
+        </button>
+        {result && (
+          <span className="ml-2 text-[10px] text-gray-700">
+            ran at {new Date(result.ranAt).toLocaleString()} · {result.durationMs}ms · {result.totalTables} tables
+          </span>
+        )}
+        {result && (
+          <span
+            className={`ml-auto px-2 py-0.5 text-[10px] font-bold ${result.ok ? "bg-green-200 text-green-900" : "bg-red-200 text-red-900"}`}
+          >
+            {result.ok ? "IN SYNC" : `DRIFT (${result.driftedTables})`}
+          </span>
+        )}
+      </div>
+
+      {err && <div className="text-red-700 px-1 py-1">{err}</div>}
+
+      <div className="flex-1 overflow-auto win98-inset bg-white p-2">
+        {!result && !loading && !err && (
+          <div className="text-gray-600">
+            Click <b>Check Schema Drift</b> to compare every Drizzle-defined table against the live Postgres
+            database. Missing tables and missing columns are flagged so you can confirm the self-healing
+            <code> ensure-schema</code> bootstrap covers everything the code expects.
+          </div>
+        )}
+
+        {result && (
+          <div className="flex flex-col gap-1">
+            {result.tables.length === 0 && (
+              <div className="text-gray-600">No Drizzle tables registered.</div>
+            )}
+            {result.tables.map(t => {
+              const status = !t.exists
+                ? "MISSING TABLE"
+                : t.missingColumns.length > 0
+                  ? `${t.missingColumns.length} missing col${t.missingColumns.length === 1 ? "" : "s"}`
+                  : "ok";
+              const tone = !t.exists
+                ? "border-red-500 bg-red-50"
+                : t.missingColumns.length > 0
+                  ? "border-yellow-500 bg-yellow-50"
+                  : "border-green-400 bg-green-50";
+              const icon = !t.exists ? "✗" : t.missingColumns.length > 0 ? "!" : "✓";
+              return (
+                <div key={t.table} className={`border p-1 ${tone}`}>
+                  <div className="flex items-center gap-2">
+                    <span className="font-bold w-4 text-center">{icon}</span>
+                    <span className="font-mono font-bold flex-1">{t.table}</span>
+                    <span className="text-[10px] text-gray-700">{status}</span>
+                  </div>
+                  {t.missingColumns.length > 0 && (
+                    <div className="pl-6 mt-1">
+                      <div className="text-[10px] font-bold text-red-800">missing columns</div>
+                      <div className="grid grid-cols-[auto_auto] gap-x-2 gap-y-0.5 text-[10px]">
+                        {t.missingColumns.map(c => (
+                          <div key={c.name} className="contents">
+                            <span className="font-mono">{c.name}</span>
+                            <span className="font-mono text-gray-700">{c.expectedType}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {t.extraColumns.length > 0 && (
+                    <div className="pl-6 mt-1 text-[10px] text-gray-600">
+                      <span className="font-bold">extra columns on DB:</span>{" "}
+                      <span className="font-mono">{t.extraColumns.join(", ")}</span>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
         )}
       </div>

@@ -641,3 +641,30 @@ export interface DiagnosticsTestResult {
 export async function runDiagnosticsDrawingTest(): Promise<DiagnosticsTestResult> {
   return jsonOrThrow(await fetch(`${BASE}/diagnostics/test-drawing`, { ...opts, method: "POST" }));
 }
+
+export interface DiagnosticsSchemaColumnDrift {
+  name: string;
+  expectedType: string;
+  actualType: string | null;
+}
+
+export interface DiagnosticsSchemaTableDrift {
+  table: string;
+  exists: boolean;
+  missingColumns: DiagnosticsSchemaColumnDrift[];
+  extraColumns: string[];
+}
+
+export interface DiagnosticsSchemaDrift {
+  ok: boolean;
+  ranAt: string;
+  durationMs: number;
+  totalTables: number;
+  driftedTables: number;
+  tables: DiagnosticsSchemaTableDrift[];
+  error: string | null;
+}
+
+export async function runDiagnosticsSchemaDrift(): Promise<DiagnosticsSchemaDrift> {
+  return jsonOrThrow(await fetch(`${BASE}/diagnostics/schema-drift`, opts));
+}
