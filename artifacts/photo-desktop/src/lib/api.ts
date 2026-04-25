@@ -595,3 +595,29 @@ export async function fetchDiagnosticsErrors(): Promise<DiagnosticsError[]> {
 export async function clearDiagnosticsErrors(): Promise<void> {
   await jsonOrThrow(await fetch(`${BASE}/diagnostics/errors`, { ...opts, method: "DELETE" }));
 }
+
+export interface DiagnosticsTableCheck {
+  label: string;
+  table: string;
+  ok: boolean;
+  count: number | null;
+  error: string | null;
+}
+
+export interface DiagnosticsHealth {
+  ok: boolean;
+  ranAt: string;
+  durationMs: number;
+  dbConnected: boolean;
+  dbError: string | null;
+  serverTime: string | null;
+  postgresVersion: string | null;
+  tables: DiagnosticsTableCheck[];
+  sessions: { total: number | null; active: number | null; expired: number | null; error: string | null };
+  adminCount: number | null;
+  adminError: string | null;
+}
+
+export async function runDiagnosticsHealthcheck(): Promise<DiagnosticsHealth> {
+  return jsonOrThrow(await fetch(`${BASE}/diagnostics/healthcheck`, opts));
+}
