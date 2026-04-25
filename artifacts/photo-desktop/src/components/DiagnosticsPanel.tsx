@@ -5,6 +5,7 @@ import {
   runDiagnosticsHealthcheck,
   runDiagnosticsDrawingTest,
   runDiagnosticsSchemaDrift,
+  runDiagnosticsHealSchema,
   type DiagnosticsError,
   type DiagnosticsHealth,
   type DiagnosticsTestResult,
@@ -31,6 +32,8 @@ export function DiagnosticsPanel() {
   const [schema, setSchema] = useState<DiagnosticsSchemaDrift | null>(null);
   const [schemaLoading, setSchemaLoading] = useState(false);
   const [schemaErr, setSchemaErr] = useState<string | null>(null);
+  const [healLoading, setHealLoading] = useState(false);
+  const [healMsg, setHealMsg] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -85,6 +88,29 @@ export function DiagnosticsPanel() {
       setSchemaErr(e?.message || "Failed");
     } finally {
       setSchemaLoading(false);
+    }
+  }, []);
+
+  const runHeal = useCallback(async () => {
+    setHealLoading(true);
+    setHealMsg(null);
+    setSchemaErr(null);
+    try {
+      const r = await runDiagnosticsHealSchema();
+      setHealMsg(`Healed in ${r.durationMs}ms — re-checking…`);
+      // Immediately re-run drift detection so the panel reflects what
+      // the bootstrap actually fixed (or what it couldn't reach).
+      const next = await runDiagnosticsSchemaDrift();
+      setSchema(next);
+      setHealMsg(
+        next.ok
+          ? `Healed in ${r.durationMs}ms — schema is now in sync.`
+          : `Healed in ${r.durationMs}ms — ${next.driftedTables} table(s) still drifted (likely not yet covered by ensure-schema).`,
+      );
+    } catch (e: any) {
+      setSchemaErr(e?.message || "Heal failed");
+    } finally {
+      setHealLoading(false);
     }
   }, []);
 
@@ -227,6 +253,9 @@ export function DiagnosticsPanel() {
           loading={schemaLoading}
           err={schemaErr}
           onRun={() => void runSchema()}
+          onHeal={() => void runHeal()}
+          healLoading={healLoading}
+          healMsg={healMsg}
         />
       )}
     </div>
@@ -449,17 +478,40 @@ function SchemaDriftTab({
   loading,
   err,
   onRun,
+  onHeal,
+  healLoading,
+  healMsg,
 }: {
   result: DiagnosticsSchemaDrift | null;
   loading: boolean;
   err: string | null;
   onRun: () => void;
+  onHeal: () => void;
+  healLoading: boolean;
+  healMsg: string | null;
 }) {
+  // Heal is only meaningful once we know there's drift to fix. Disabling
+  // the button before any check prevents an idle bootstrap call.
+  const canHeal = !!result && !result.ok && !loading && !healLoading;
   return (
     <>
       <div className="flex items-center gap-1 p-1 border-b border-gray-400">
-        <button className="win98-button px-2 py-0.5" onClick={onRun} disabled={loading}>
+        <button className="win98-button px-2 py-0.5" onClick={onRun} disabled={loading || healLoading}>
           {loading ? "Checking…" : "Check Schema Drift"}
+        </button>
+        <button
+          className="win98-button px-2 py-0.5"
+          onClick={onHeal}
+          disabled={!canHeal}
+          title={
+            !result
+              ? "Run a check first"
+              : result.ok
+                ? "Schema is already in sync"
+                : "Re-run the idempotent ensure-schema bootstrap"
+          }
+        >
+          {healLoading ? "Healing…" : "Heal Now"}
         </button>
         {result && (
           <span className="ml-2 text-[10px] text-gray-700">
@@ -475,6 +527,12 @@ function SchemaDriftTab({
         )}
       </div>
 
+      {healMsg && (
+        <div className="px-1 py-1 text-[11px] text-blue-900 bg-blue-50 border-b border-gray-400">
+          {healMsg}
+        </div>
+      )}
+
       {err && <div className="text-red-700 px-1 py-1">{err}</div>}
 
       <div className="flex-1 overflow-auto win98-inset bg-white p-2">
@@ -482,7 +540,8 @@ function SchemaDriftTab({
           <div className="text-gray-600">
             Click <b>Check Schema Drift</b> to compare every Drizzle-defined table against the live Postgres
             database. Missing tables and missing columns are flagged so you can confirm the self-healing
-            <code> ensure-schema</code> bootstrap covers everything the code expects.
+            <code> ensure-schema</code> bootstrap covers everything the code expects. If drift is found,
+            click <b>Heal Now</b> to re-run the bootstrap on the live DB without restarting the server.
           </div>
         )}
 

@@ -668,3 +668,13 @@ export interface DiagnosticsSchemaDrift {
 export async function runDiagnosticsSchemaDrift(): Promise<DiagnosticsSchemaDrift> {
   return jsonOrThrow(await fetch(`${BASE}/diagnostics/schema-drift`, opts));
 }
+
+export interface DiagnosticsHealResult {
+  ok: boolean;
+  ranAt: string;
+  durationMs: number;
+}
+
+export async function runDiagnosticsHealSchema(): Promise<DiagnosticsHealResult> {
+  return jsonOrThrow(await fetch(`${BASE}/diagnostics/heal-schema`, { ...opts, method: "POST" }));
+}

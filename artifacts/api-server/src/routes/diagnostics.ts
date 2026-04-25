@@ -4,6 +4,7 @@ import { getTableConfig, type PgTable } from "drizzle-orm/pg-core";
 import { db, pool, drawingsTable } from "@workspace/db";
 import * as schema from "@workspace/db";
 import { requireAdmin } from "../lib/auth";
+import { ensureSchema } from "../lib/ensure-schema";
 import { listErrors, clearErrors, describeError } from "../lib/error-buffer";
 import { isBanned, audit } from "./social";
 
@@ -424,6 +425,25 @@ router.get("/diagnostics/schema-drift", requireAdmin, async (_req, res, next) =>
     result.error = e instanceof Error ? e.message : String(e);
     result.ok = false;
     result.durationMs = Date.now() - start;
+    next(e);
+  }
+});
+
+// Manually re-run the same idempotent schema bootstrap that runs on
+// server start. Useful for healing a stale prod DB without bouncing the
+// process — e.g. after seeing drift in the report above. Safe because
+// every statement uses IF NOT EXISTS, so this is a near-instant no-op
+// when nothing is missing.
+router.post("/diagnostics/heal-schema", requireAdmin, async (_req, res, next) => {
+  const start = Date.now();
+  try {
+    await ensureSchema();
+    res.json({
+      ok: true,
+      ranAt: new Date().toISOString(),
+      durationMs: Date.now() - start,
+    });
+  } catch (e) {
     next(e);
   }
 });
