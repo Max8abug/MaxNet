@@ -2,7 +2,7 @@ import { Router, type IRouter } from "express";
 import { eq } from "drizzle-orm";
 import { db, pool, drawingsTable } from "@workspace/db";
 import { requireAdmin } from "../lib/auth";
-import { listErrors, clearErrors } from "../lib/error-buffer";
+import { listErrors, clearErrors, describeError } from "../lib/error-buffer";
 import { isBanned, audit } from "./social";
 
 const router: IRouter = Router();
@@ -195,13 +195,17 @@ router.post("/diagnostics/test-drawing", requireAdmin, async (req, res, next) =>
       const detail = await fn();
       steps.push({ name, ok: true, skipped: false, durationMs: Date.now() - start, detail, error: null });
     } catch (e) {
+      // Use describeError so wrapped errors (drizzle's "Failed query"
+      // wrapper around a Postgres error) reveal the underlying cause and
+      // pg metadata like `code`, `column`, `table`.
+      const d = describeError(e);
       steps.push({
         name,
         ok: false,
         skipped: false,
         durationMs: Date.now() - start,
         detail: null,
-        error: e instanceof Error ? `${e.message}${e.stack ? `\n${e.stack}` : ""}` : String(e),
+        error: `${d.message}${d.stack ? `\n${d.stack}` : ""}`,
       });
     }
   };

@@ -46,3 +46,54 @@ export function listErrors(): ErrorEntry[] {
 export function clearErrors(): void {
   buffer.length = 0;
 }
+
+/**
+ * Serialise an error including its `cause` chain. Drizzle wraps Postgres
+ * errors so the outer message is just "Failed query: ..." while the actual
+ * "column does not exist" / "violates not-null" / etc. lives on
+ * `error.cause`. Without unwrapping we lose the only useful piece of
+ * information.
+ */
+export function describeError(err: unknown): { message: string; stack: string | null } {
+  const messages: string[] = [];
+  const stacks: string[] = [];
+  let cur: unknown = err;
+  let depth = 0;
+  // Cap depth so a self-referential cause can't loop forever.
+  while (cur != null && depth < 5) {
+    if (cur instanceof Error) {
+      messages.push(cur.message);
+      if (cur.stack) stacks.push(cur.stack);
+      cur = (cur as { cause?: unknown }).cause;
+    } else {
+      messages.push(String(cur));
+      cur = null;
+    }
+    depth++;
+  }
+  // Also pull a few common Postgres error fields if present on the root
+  // error or any cause — `code`, `detail`, `hint`, `constraint`, `column`,
+  // `table` are extremely useful for diagnosing schema mismatches.
+  const pgFields: string[] = [];
+  cur = err;
+  depth = 0;
+  while (cur != null && depth < 5) {
+    if (typeof cur === "object") {
+      const o = cur as Record<string, unknown>;
+      for (const f of ["code", "detail", "hint", "constraint", "column", "table", "schema", "routine"]) {
+        const v = o[f];
+        if (v != null && v !== "") pgFields.push(`${f}=${String(v)}`);
+      }
+      cur = (o as { cause?: unknown }).cause;
+    } else {
+      cur = null;
+    }
+    depth++;
+  }
+  let message = messages.join(" | caused by: ");
+  if (pgFields.length) message += `\n[pg: ${Array.from(new Set(pgFields)).join(", ")}]`;
+  return {
+    message: message || "Unknown error",
+    stack: stacks.length ? stacks.join("\n--- caused by ---\n") : null,
+  };
+}

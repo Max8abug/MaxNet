@@ -4,7 +4,7 @@ import pinoHttp from "pino-http";
 import router from "./routes";
 import { logger } from "./lib/logger";
 import { sessionMiddleware } from "./lib/auth";
-import { recordError } from "./lib/error-buffer";
+import { recordError, describeError } from "./lib/error-buffer";
 
 const app: Express = express();
 app.set("trust proxy", 1);
@@ -47,12 +47,15 @@ const errorHandler: ErrorRequestHandler = (err, req, res, _next) => {
   );
   // Capture into the in-memory ring buffer so admins can review recent
   // failures via the diagnostics window without needing access to raw
-  // container logs.
+  // container logs. We unwrap `error.cause` chains so wrapped Postgres
+  // errors (drizzle's outer "Failed query: ..." wrapper) reveal the actual
+  // underlying problem rather than just the wrapper.
+  const described = describeError(err);
   recordError({
     method: req.method,
     url: req.url?.split("?")[0] ?? "",
-    message: err instanceof Error ? err.message : String(err),
-    stack: err instanceof Error && err.stack ? err.stack : null,
+    message: described.message,
+    stack: described.stack,
     user: req.session?.username ?? null,
   });
   if (res.headersSent) return;
@@ -68,7 +71,7 @@ const errorHandler: ErrorRequestHandler = (err, req, res, _next) => {
   const exposeDetail = !isProduction || isAdminRequester;
   res.status(500).json({
     error: "Internal server error",
-    detail: exposeDetail ? (err instanceof Error ? err.message : String(err)) : undefined,
+    detail: exposeDetail ? described.message : undefined,
   });
 };
 app.use(errorHandler);
