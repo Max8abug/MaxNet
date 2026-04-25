@@ -46,11 +46,18 @@ const errorHandler: ErrorRequestHandler = (err, req, res, _next) => {
   );
   if (res.headersSent) return;
   const isProduction = process.env["NODE_ENV"] === "production";
+  // We surface the raw error message under `detail` in two cases:
+  //   1. We're not in production (local dev) — speeds up debugging.
+  //   2. The requester is signed in as an admin — gives the site owner
+  //      a usable error popup on the live site without leaking internals
+  //      to anonymous visitors. This is essential when the production
+  //      host is outside Replit and we have no way to read its server
+  //      logs from the workspace.
+  const isAdminRequester = !!req.session?.isAdmin;
+  const exposeDetail = !isProduction || isAdminRequester;
   res.status(500).json({
     error: "Internal server error",
-    // In production we still hide the raw message from end users, but in
-    // development surfacing it shaves a round-trip off most debugging.
-    detail: isProduction ? undefined : (err instanceof Error ? err.message : String(err)),
+    detail: exposeDetail ? (err instanceof Error ? err.message : String(err)) : undefined,
   });
 };
 app.use(errorHandler);
