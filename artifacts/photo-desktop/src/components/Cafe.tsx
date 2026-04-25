@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
-  fetchCafeState, moveCafe, sayCafe, reactCafe, setCafeTheme, leaveCafe,
+  fetchCafeState, moveCafe, sayCafe, reactCafe, pokeCafe, setCafeTheme, leaveCafe,
   fetchCafeRooms, createCafeRoom, deleteCafeRoom,
   fetchCafeObjects, createCafeObject, updateCafeObject, deleteCafeObject,
   fetchCafeAvatar, saveCafeAvatar,
-  type CafePresence, type CafeReaction, type CafeRoom, type CafeObject, type CafeObjectAction,
+  type CafePresence, type CafeReaction, type CafePoke, type CafeRoom, type CafeObject, type CafeObjectAction,
 } from "../lib/api";
 import { useAuth, hasPermission } from "../lib/auth-store";
 import { useDesktopStore } from "../store";
@@ -614,6 +614,15 @@ export function Cafe() {
   const [chat, setChat] = useState<{ author: string; body: string; createdAt: string }[]>([]);
   const [theme, setTheme] = useState("cafe");
   const [reactions, setReactions] = useState<CafeReaction[]>([]);
+  const [pokes, setPokes] = useState<CafePoke[]>([]);
+  // Set of poke "ids" (from + expiresAt) we have already turned into a chime
+  // / notification, so a poke that lingers across two or three poll cycles
+  // doesn't beep once per cycle. Lives in a ref because the chime side-effect
+  // shouldn't trigger a re-render on its own.
+  const seenPokes = useRef<Set<string>>(new Set());
+  // Map of usernames currently animating a "shake" because they were just
+  // poked. Keyed by username, value is the timestamp the shake should end at.
+  const [shakes, setShakes] = useState<Record<string, number>>({});
   // Force a re-render every ~250ms while any reaction is active so we can
   // drop expired bubbles even between server polls. Cheap because the array
   // is almost always 0–2 items.
@@ -686,7 +695,7 @@ export function Cafe() {
 
   useEffect(() => {
     let alive = true;
-    const tick = async () => { try { const s = await fetchCafeState(); if (!alive) return; setPresence(s.presence); setChat(s.chat); setTheme(s.theme); setReactions(s.reactions || []); } catch {} };
+    const tick = async () => { try { const s = await fetchCafeState(); if (!alive) return; setPresence(s.presence); setChat(s.chat); setTheme(s.theme); setReactions(s.reactions || []); setPokes(s.pokes || []); } catch {} };
     void tick();
     const t = setInterval(tick, 1500);
     return () => { alive = false; clearInterval(t); };
@@ -721,6 +730,94 @@ export function Cafe() {
           if (now - v < 1500) out[k] = v; else changed = true;
         }
         return changed ? out : w;
+      });
+    }, 200);
+    return () => clearInterval(t);
+  }, []);
+
+  // React to incoming pokes. We turn each fresh poke targeting the current
+  // user into:
+  //   1. a short two-note audio chime, generated on the fly with the Web
+  //      Audio API so we don't have to ship a sound file. Browsers gate
+  //      AudioContext behind a user gesture, so this only succeeds after
+  //      the user has interacted with the page once (which they have, by
+  //      definition, if they joined the cafe).
+  //   2. a desktop notification, but only if the user has previously granted
+  //      Notification permission. We never prompt automatically — the prompt
+  //      is requested the first time *they* try to poke someone else.
+  // Pokes targeting other users (i.e. someone poking my friend) just trigger
+  // a shake animation on the recipient's character, no sound on my end.
+  useEffect(() => {
+    if (!pokes.length) return;
+    const now = Date.now();
+    const next: Record<string, number> = { ...shakes };
+    let shakesChanged = false;
+    for (const pk of pokes) {
+      const id = `${pk.from}->${pk.to}@${pk.expiresAt}`;
+      if (seenPokes.current.has(id)) continue;
+      seenPokes.current.add(id);
+      // Always show the shake for the recipient — visible to everyone in
+      // the cafe, not just the poker, so the social signal lands.
+      next[pk.to] = now + 1200;
+      shakesChanged = true;
+      // Sound + notification only when *I* am the one being woken up.
+      if (user && pk.to === user.username) {
+        try {
+          const Ctx = (window as any).AudioContext || (window as any).webkitAudioContext;
+          if (Ctx) {
+            const ctx = new Ctx();
+            const play = (freq: number, start: number, dur: number) => {
+              const osc = ctx.createOscillator();
+              const gain = ctx.createGain();
+              osc.type = "sine";
+              osc.frequency.value = freq;
+              gain.gain.setValueAtTime(0, ctx.currentTime + start);
+              gain.gain.linearRampToValueAtTime(0.18, ctx.currentTime + start + 0.02);
+              gain.gain.linearRampToValueAtTime(0, ctx.currentTime + start + dur);
+              osc.connect(gain).connect(ctx.destination);
+              osc.start(ctx.currentTime + start);
+              osc.stop(ctx.currentTime + start + dur + 0.05);
+            };
+            play(660, 0, 0.18);
+            play(990, 0.16, 0.22);
+            setTimeout(() => { try { ctx.close(); } catch {} }, 700);
+          }
+        } catch {}
+        try {
+          if (typeof Notification !== "undefined" && Notification.permission === "granted" && document.hidden) {
+            new Notification("Someone wants you in the cafe!", {
+              body: `${pk.from} is poking you 👋`,
+              tag: `cafe-poke-${pk.from}`,
+            });
+          }
+        } catch {}
+      }
+    }
+    if (shakesChanged) setShakes(next);
+    // Trim seen-set occasionally so it doesn't grow unbounded over a long
+    // session. Keep only ids whose expiresAt is still in the future +30s.
+    if (seenPokes.current.size > 200) {
+      const fresh = new Set<string>();
+      for (const id of seenPokes.current) {
+        const exp = Number(id.split("@")[1]);
+        if (exp + 30_000 > now) fresh.add(id);
+      }
+      seenPokes.current = fresh;
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pokes, user]);
+
+  // Expire shake entries.
+  useEffect(() => {
+    const t = setInterval(() => {
+      const now = Date.now();
+      setShakes(s => {
+        const out: Record<string, number> = {};
+        let changed = false;
+        for (const [k, v] of Object.entries(s)) {
+          if (v > now) out[k] = v; else changed = true;
+        }
+        return changed ? out : s;
       });
     }, 200);
     return () => clearInterval(t);
@@ -971,6 +1068,11 @@ export function Cafe() {
                   : "left 1500ms ease-out, top 1500ms ease-out",
               }}
             >
+              {/* Inner shake wrapper. Lives inside the position-transform
+                  div so its own transform can run without overwriting the
+                  -50%/-100% offset that anchors the character to its
+                  scene coordinate. */}
+              <div className={`flex flex-col items-center ${shakes[p.username] ? "cafe-poke-shake" : ""}`}>
               {myReaction && (
                 <div
                   key={`react-${myReaction.from}-${myReaction.expiresAt}`}
@@ -995,6 +1097,7 @@ export function Cafe() {
                 onClick={!isMe ? (e) => { e.stopPropagation(); setProfilePeer(p.username); } : undefined}
               >
                 <CharacterCell color={av.color} hat={av.hat || "none"} accessoryUrl={av.accessory || null} />
+              </div>
               </div>
             </div>
           );
@@ -1087,6 +1190,10 @@ export function Cafe() {
       {profilePeer && (() => {
         const p = presence.find(pp => pp.username === profilePeer);
         const av: any = p?.avatar || {};
+        // Only let the user "wake up" someone the server has flagged AFK.
+        // Showing the button on an active user would just produce a 409
+        // from the API and a confused UX.
+        const peerIsAfk = !!p?.afk;
         return (
           <div
             className="absolute inset-0 z-[50] flex items-start justify-center pt-4"
@@ -1098,7 +1205,10 @@ export function Cafe() {
               onPointerDown={(e) => e.stopPropagation()}
             >
               <div className="w-full flex items-center justify-between gap-2">
-                <div className="font-bold text-xs truncate">{profilePeer}</div>
+                <div className="font-bold text-xs truncate flex items-center gap-1">
+                  {profilePeer}
+                  {peerIsAfk && <span title="Away from keyboard" className="text-[11px]">💤</span>}
+                </div>
                 <button className="win98-button px-1.5 leading-none text-xs" onClick={() => setProfilePeer(null)}>x</button>
               </div>
               <div className="relative" style={{ width: ACCESSORY_W, height: ACCESSORY_H }}>
@@ -1120,6 +1230,28 @@ export function Cafe() {
                   >{emoji}</button>
                 ))}
               </div>
+              {peerIsAfk && (
+                <button
+                  className="win98-button w-full px-2 text-xs flex items-center justify-center gap-1"
+                  title="Send them a chime + notification"
+                  onClick={() => {
+                    // Lazy-prompt for Notification permission the first time
+                    // someone uses this feature. We never ask on page load —
+                    // a cold permission prompt would feel intrusive.
+                    try {
+                      if (typeof Notification !== "undefined" && Notification.permission === "default") {
+                        void Notification.requestPermission();
+                      }
+                    } catch {}
+                    pokeCafe(profilePeer).catch((e: any) => {
+                      // Surface only the unexpected errors. Rate-limit and
+                      // "not AFK" responses are recoverable noise.
+                      const msg = String(e?.message || "");
+                      if (msg && !/Slow down|not AFK/i.test(msg)) alert(msg);
+                    });
+                  }}
+                >🔔 Wake them up</button>
+              )}
               <div className="flex gap-1 w-full">
                 <button
                   className="win98-button px-2 flex-1 text-xs"

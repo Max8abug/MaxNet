@@ -160,3 +160,19 @@
 .cafe-presence-pulse {
   animation: cafePresencePulse 1800ms ease-out infinite;
 }
+
+/* Quick side-to-side wobble used when an AFK character gets poked. Short
+ * enough to read as "hey wake up" without becoming annoying. Composes with
+ * the position transition and the leg-wobble walk via separate transforms
+ * on a parent wrapper, so it never fights translate(-50%, -100%). */
+@keyframes cafePokeShake {
+  0%, 100% { transform: translateX(0); }
+  15%      { transform: translateX(-4px) rotate(-3deg); }
+  35%      { transform: translateX(4px)  rotate(3deg); }
+  55%      { transform: translateX(-3px) rotate(-2deg); }
+  75%      { transform: translateX(3px)  rotate(2deg); }
+}
+.cafe-poke-shake {
+  animation: cafePokeShake 600ms ease-in-out 2;
+  transform-origin: 50% 100%;
+}

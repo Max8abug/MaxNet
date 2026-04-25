@@ -27,6 +27,23 @@ function pruneReactions(now: number) {
   }
 }
 
+// Pokes are how an active user can grab the attention of someone who's been
+// flagged AFK. Each poke is a short-lived in-memory record consumed by the
+// recipient's next /cafe/state poll, where the client turns it into an audio
+// chime, an optional desktop notification and a quick shake animation on the
+// AFK character. We rate-limit per (from -> to) pair so a single sender can't
+// machine-gun a friend with notifications.
+type CafePoke = { from: string; to: string; expiresAt: number };
+const POKES: CafePoke[] = [];
+const POKE_TTL_MS = 6000;
+const POKE_RATE_LIMIT_MS = 3000;
+const POKE_LAST: Map<string, number> = new Map();
+function prunePokes(now: number) {
+  for (let i = POKES.length - 1; i >= 0; i--) {
+    if (POKES[i].expiresAt <= now) POKES.splice(i, 1);
+  }
+}
+
 // AFK detection. We track the last time each user did something deliberate —
 // moved to a new spot, said something, or sent a reaction — separate from
 // `cafePresenceTable.lastSeen`, which is also bumped by the silent 2-second
@@ -65,7 +82,8 @@ router.get("/cafe/state", async (_req, res) => {
   const chat = await db.select().from(cafeChatTable).orderBy(desc(cafeChatTable.createdAt)).limit(40);
   const [settings] = await db.select().from(cafeSettingsTable).limit(1);
   pruneReactions(now);
-  res.json({ presence, chat: chat.reverse(), theme: settings?.theme || "cafe", reactions: REACTIONS });
+  prunePokes(now);
+  res.json({ presence, chat: chat.reverse(), theme: settings?.theme || "cafe", reactions: REACTIONS, pokes: POKES });
 });
 
 router.post("/cafe/move", requireAuth, async (req, res) => {
@@ -146,6 +164,39 @@ router.post("/cafe/react", requireAuth, async (req, res) => {
   REACTION_LAST.set(me, now);
   pruneReactions(now);
   REACTIONS.push({ from: me, to: target, emoji, expiresAt: now + REACTION_TTL_MS });
+  markActive(me);
+  res.json({ ok: true });
+});
+
+router.post("/cafe/poke", requireAuth, async (req, res) => {
+  const me = req.session.username!;
+  const { target } = req.body ?? {};
+  if (typeof target !== "string" || !target) { res.status(400).json({ error: "target required" }); return; }
+  if (target === me) { res.status(400).json({ error: "Cannot poke yourself" }); return; }
+  if (await isBanned(me)) { res.status(403).json({ error: "Banned" }); return; }
+  const now = Date.now();
+  // Per (sender, target) cooldown so a determined poker can still nudge a few
+  // different friends in quick succession but cannot blast the same person.
+  const key = `${me}->${target}`;
+  const last = POKE_LAST.get(key) || 0;
+  if (now - last < POKE_RATE_LIMIT_MS) { res.status(429).json({ error: "Slow down" }); return; }
+  // Target must currently be in the cafe — pinging someone who isn't here
+  // would just sit in the queue unseen.
+  const cutoff = new Date(now - 30_000);
+  const [t] = await db.select().from(cafePresenceTable).where(eq(cafePresenceTable.username, target)).limit(1);
+  if (!t || new Date(t.lastSeen).getTime() < cutoff.getTime()) {
+    res.status(404).json({ error: "Target not in cafe" }); return;
+  }
+  // Pokes are explicitly meant to wake up AFK people. If the target is
+  // already active there's nothing to wake up, and we'd just be spamming a
+  // notification. Block the request rather than silently swallowing it so
+  // the client can hide the button when it isn't useful.
+  if (!isAfk(target, now)) { res.status(409).json({ error: "Target is not AFK" }); return; }
+  POKE_LAST.set(key, now);
+  prunePokes(now);
+  POKES.push({ from: me, to: target, expiresAt: now + POKE_TTL_MS });
+  // Sending a poke is itself activity, so the sender doesn't fall into AFK
+  // immediately after using this feature.
   markActive(me);
   res.json({ ok: true });
 });
