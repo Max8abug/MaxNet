@@ -621,3 +621,23 @@ export interface DiagnosticsHealth {
 export async function runDiagnosticsHealthcheck(): Promise<DiagnosticsHealth> {
   return jsonOrThrow(await fetch(`${BASE}/diagnostics/healthcheck`, opts));
 }
+
+export interface DiagnosticsTestStep {
+  name: string;
+  ok: boolean;
+  skipped: boolean;
+  durationMs: number;
+  detail: string | null;
+  error: string | null;
+}
+
+export interface DiagnosticsTestResult {
+  ok: boolean;
+  ranAt: string;
+  author: string;
+  steps: DiagnosticsTestStep[];
+}
+
+export async function runDiagnosticsDrawingTest(): Promise<DiagnosticsTestResult> {
+  return jsonOrThrow(await fetch(`${BASE}/diagnostics/test-drawing`, { ...opts, method: "POST" }));
+}

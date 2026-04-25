@@ -3,12 +3,14 @@ import {
   fetchDiagnosticsErrors,
   clearDiagnosticsErrors,
   runDiagnosticsHealthcheck,
+  runDiagnosticsDrawingTest,
   type DiagnosticsError,
   type DiagnosticsHealth,
+  type DiagnosticsTestResult,
 } from "../lib/api";
 import { useAuth } from "../lib/auth-store";
 
-type Tab = "errors" | "health";
+type Tab = "errors" | "health" | "drawing";
 
 export function DiagnosticsPanel() {
   const user = useAuth((s) => s.user);
@@ -21,6 +23,9 @@ export function DiagnosticsPanel() {
   const [health, setHealth] = useState<DiagnosticsHealth | null>(null);
   const [healthLoading, setHealthLoading] = useState(false);
   const [healthErr, setHealthErr] = useState<string | null>(null);
+  const [drawTest, setDrawTest] = useState<DiagnosticsTestResult | null>(null);
+  const [drawLoading, setDrawLoading] = useState(false);
+  const [drawErr, setDrawErr] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -51,6 +56,18 @@ export function DiagnosticsPanel() {
       setHealthErr(e?.message || "Failed");
     } finally {
       setHealthLoading(false);
+    }
+  }, []);
+
+  const runDrawing = useCallback(async () => {
+    setDrawLoading(true);
+    setDrawErr(null);
+    try {
+      setDrawTest(await runDiagnosticsDrawingTest());
+    } catch (e: any) {
+      setDrawErr(e?.message || "Failed");
+    } finally {
+      setDrawLoading(false);
     }
   }, []);
 
@@ -91,6 +108,12 @@ export function DiagnosticsPanel() {
           onClick={() => setTab("health")}
         >
           Health Check
+        </button>
+        <button
+          className={`px-3 py-1 border border-b-0 ${tab === "drawing" ? "bg-white border-gray-500 font-bold" : "bg-gray-300 border-gray-400"}`}
+          onClick={() => setTab("drawing")}
+        >
+          Drawing Test
         </button>
       </div>
 
@@ -162,6 +185,15 @@ export function DiagnosticsPanel() {
           loading={healthLoading}
           err={healthErr}
           onRun={() => void runHealth()}
+        />
+      )}
+
+      {tab === "drawing" && (
+        <DrawingTestTab
+          result={drawTest}
+          loading={drawLoading}
+          err={drawErr}
+          onRun={() => void runDrawing()}
         />
       )}
     </div>
@@ -297,5 +329,84 @@ function Row({ label, value, ok }: { label: string; value: string; ok?: boolean 
         {value}
       </span>
     </div>
+  );
+}
+
+function DrawingTestTab({
+  result,
+  loading,
+  err,
+  onRun,
+}: {
+  result: DiagnosticsTestResult | null;
+  loading: boolean;
+  err: string | null;
+  onRun: () => void;
+}) {
+  return (
+    <>
+      <div className="flex items-center gap-1 p-1 border-b border-gray-400">
+        <button className="win98-button px-2 py-0.5" onClick={onRun} disabled={loading}>
+          {loading ? "Running…" : "Run Drawing Test"}
+        </button>
+        {result && (
+          <span className="ml-2 text-[10px] text-gray-700">
+            ran at {new Date(result.ranAt).toLocaleString()} · as "{result.author}"
+          </span>
+        )}
+        {result && (
+          <span
+            className={`ml-auto px-2 py-0.5 text-[10px] font-bold ${result.ok ? "bg-green-200 text-green-900" : "bg-red-200 text-red-900"}`}
+          >
+            {result.ok ? "ALL OK" : "FAILED"}
+          </span>
+        )}
+      </div>
+
+      {err && <div className="text-red-700 px-1 py-1">{err}</div>}
+
+      <div className="flex-1 overflow-auto win98-inset bg-white p-2">
+        {!result && !loading && !err && (
+          <div className="text-gray-600">
+            Click <b>Run Drawing Test</b> to simulate a full drawing-pad submit end-to-end as the admin user.
+            It mirrors every step of the real <code>POST /drawings</code> route — auth, validation, ban check,
+            insert, audit log, read-back — and reports exactly which step fails. The test row is automatically
+            cleaned up so it won't appear in the public gallery.
+          </div>
+        )}
+
+        {result && (
+          <div className="flex flex-col gap-1">
+            {result.steps.map((s, i) => (
+              <div
+                key={i}
+                className={`border p-1 ${s.skipped ? "border-gray-300 bg-gray-50 opacity-60" : s.ok ? "border-green-400 bg-green-50" : "border-red-500 bg-red-50"}`}
+              >
+                <div className="flex items-center gap-2">
+                  <span className="font-bold w-4 text-center">
+                    {s.skipped ? "—" : s.ok ? "✓" : "✗"}
+                  </span>
+                  <span className="font-bold flex-1">{s.name}</span>
+                  {!s.skipped && (
+                    <span className="text-[10px] text-gray-600">{s.durationMs}ms</span>
+                  )}
+                </div>
+                {s.detail && (
+                  <div className="pl-6 text-[10px] text-gray-700">{s.detail}</div>
+                )}
+                {s.error && (
+                  <pre className="pl-6 text-[10px] text-red-800 whitespace-pre-wrap break-all mt-1">
+                    {s.error}
+                  </pre>
+                )}
+                {s.skipped && (
+                  <div className="pl-6 text-[10px] text-gray-500 italic">skipped (earlier step failed)</div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </>
   );
 }

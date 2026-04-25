@@ -1,7 +1,9 @@
 import { Router, type IRouter } from "express";
-import { pool } from "@workspace/db";
+import { eq } from "drizzle-orm";
+import { db, pool, drawingsTable } from "@workspace/db";
 import { requireAdmin } from "../lib/auth";
 import { listErrors, clearErrors } from "../lib/error-buffer";
+import { isBanned, audit } from "./social";
 
 const router: IRouter = Router();
 
@@ -156,6 +158,122 @@ router.get("/diagnostics/healthcheck", requireAdmin, async (_req, res, next) => 
 
     result.durationMs = Date.now() - start;
     res.json(result);
+  } catch (e) {
+    next(e);
+  }
+});
+
+// 1x1 transparent PNG used by the drawing-pad self-test below. Tiny so it
+// stays well under the 600 KB cap enforced by the real submit route.
+const TEST_PNG_DATA_URL =
+  "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg==";
+
+interface TestStep {
+  name: string;
+  ok: boolean;
+  skipped: boolean;
+  durationMs: number;
+  detail: string | null;
+  error: string | null;
+}
+
+router.post("/diagnostics/test-drawing", requireAdmin, async (req, res, next) => {
+  const author = req.session.username || "admin";
+  const steps: TestStep[] = [];
+  let createdId: number | null = null;
+
+  // Helper: run one labelled step. If a previous step failed we still record
+  // the step but mark it skipped, so the report stays in order.
+  const run = async (name: string, fn: () => Promise<string | null>) => {
+    const prevFailed = steps.some(s => !s.ok && !s.skipped);
+    const start = Date.now();
+    if (prevFailed) {
+      steps.push({ name, ok: false, skipped: true, durationMs: 0, detail: null, error: null });
+      return;
+    }
+    try {
+      const detail = await fn();
+      steps.push({ name, ok: true, skipped: false, durationMs: Date.now() - start, detail, error: null });
+    } catch (e) {
+      steps.push({
+        name,
+        ok: false,
+        skipped: false,
+        durationMs: Date.now() - start,
+        detail: null,
+        error: e instanceof Error ? `${e.message}${e.stack ? `\n${e.stack}` : ""}` : String(e),
+      });
+    }
+  };
+
+  try {
+    // Mirrors the real POST /drawings flow step-by-step so we can pinpoint
+    // exactly which call fails on the live database.
+
+    await run("Auth (admin session)", async () => {
+      return `signed in as "${author}"`;
+    });
+
+    await run("Validate test data URL", async () => {
+      if (!TEST_PNG_DATA_URL.startsWith("data:image/")) throw new Error("bad prefix");
+      if (TEST_PNG_DATA_URL.length > 600_000) throw new Error("too large");
+      return `${TEST_PNG_DATA_URL.length} bytes`;
+    });
+
+    await run("Check banned_users", async () => {
+      const banned = await isBanned(author);
+      if (banned) throw new Error(`user "${author}" appears in banned_users`);
+      return "not banned";
+    });
+
+    await run("INSERT into drawings", async () => {
+      const [row] = await db
+        .insert(drawingsTable)
+        .values({ dataUrl: TEST_PNG_DATA_URL, author })
+        .returning();
+      createdId = row.id;
+      return `inserted id=${row.id}`;
+    });
+
+    await run("Write to chat_audit_log", async () => {
+      await audit("drawing", "diagnostics-test", author, "", `id=${createdId}`);
+      return "audit row written";
+    });
+
+    await run("SELECT row back from drawings", async () => {
+      if (createdId == null) throw new Error("no id from prior step");
+      const [row] = await db
+        .select()
+        .from(drawingsTable)
+        .where(eq(drawingsTable.id, createdId))
+        .limit(1);
+      if (!row) throw new Error("inserted row not found on read-back");
+      return `read back id=${row.id}, author=${row.author}`;
+    });
+
+    await run("Cleanup test row", async () => {
+      if (createdId == null) return "nothing to clean up";
+      await db.delete(drawingsTable).where(eq(drawingsTable.id, createdId));
+      return `deleted id=${createdId}`;
+    });
+
+    // Best-effort cleanup if any step failed AFTER the insert — we don't
+    // want a stray test drawing showing up in the public gallery just
+    // because audit or read-back blew up.
+    if (createdId != null && steps.some(s => !s.ok && !s.skipped)) {
+      try {
+        await db.delete(drawingsTable).where(eq(drawingsTable.id, createdId));
+      } catch {
+        // swallow — the report already lists the original failure
+      }
+    }
+
+    res.json({
+      ok: steps.every(s => s.ok),
+      ranAt: new Date().toISOString(),
+      author,
+      steps,
+    });
   } catch (e) {
     next(e);
   }
