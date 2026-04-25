@@ -21,20 +21,30 @@ const databaseUrl = process.env["DATABASE_URL"];
 if (!databaseUrl) throw new Error("DATABASE_URL required");
 
 const secret = process.env["SESSION_SECRET"] || "dev-insecure-secret";
+const isProduction = process.env["NODE_ENV"] === "production";
 
 export const sessionMiddleware: RequestHandler = session({
   store: new PgSession({
     conObject: { connectionString: databaseUrl },
     tableName: "session",
-    createTableIfMissing: false,
+    // The session table is part of our Drizzle schema, but a freshly
+    // provisioned production database may not have had `drizzle-kit push`
+    // run against it before the first request arrives. Letting the session
+    // store create the table on demand prevents every login attempt from
+    // throwing "relation \"session\" does not exist" and returning HTTP 500.
+    createTableIfMissing: true,
   }),
   secret,
   resave: false,
   saveUninitialized: false,
+  // In production we serve over HTTPS behind a reverse proxy, so the cookie
+  // must be marked Secure or browsers will silently drop it on cross-site
+  // requests. In development we run plain HTTP on localhost, so Secure must
+  // be off or the browser refuses to store the cookie at all.
   cookie: {
     httpOnly: true,
     sameSite: "lax",
-    secure: false,
+    secure: isProduction,
     maxAge: 1000 * 60 * 60 * 24 * 30,
   },
 });

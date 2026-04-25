@@ -940,6 +940,11 @@ export function Cafe() {
           const speech = recentSpeech.findLast?.(c => c.author === p.username);
           const x = isMe ? pos.x : p.x, y = isMe ? pos.y : p.y;
           const isWalking = !!walking[p.username];
+          // Server flags a remote user AFK after ~2 minutes of no real
+          // activity (move / chat / reaction). We hide the badge for the
+          // local user — they know perfectly well whether they stepped away
+          // and don't need their own character labelled.
+          const showAfk = !isMe && p.afk;
           // Pick the most recent live reaction targeted at this user. We
           // key it by `from + expiresAt` so a fresh reaction restarts the CSS
           // animation even when it replaces an in-flight one.
@@ -977,7 +982,12 @@ export function Cafe() {
               {speech && (Date.now() - new Date(speech.createdAt).getTime() < 8000) && (
                 <div className="bg-white border border-black px-1 mb-1 max-w-[120px] text-[10px] rounded">{speech.body}</div>
               )}
-              <div className="text-white text-[10px] font-bold" style={{ textShadow: "1px 1px 2px black" }}>{p.username}</div>
+              <div className="text-white text-[10px] font-bold flex items-center gap-1" style={{ textShadow: "1px 1px 2px black" }}>
+                {p.username}
+                {showAfk && (
+                  <span title="Away from keyboard" className="text-[10px] opacity-90" style={{ filter: "drop-shadow(0 1px 1px rgba(0,0,0,0.7))" }}>💤</span>
+                )}
+              </div>
               <div
                 className={`relative ${isWalking ? "cafe-walk" : ""} ${!isMe ? "cursor-pointer" : ""}`}
                 style={{ width: ACCESSORY_W, height: ACCESSORY_H }}

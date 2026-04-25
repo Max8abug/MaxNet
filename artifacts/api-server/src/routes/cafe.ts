@@ -27,6 +27,30 @@ function pruneReactions(now: number) {
   }
 }
 
+// AFK detection. We track the last time each user did something deliberate —
+// moved to a new spot, said something, or sent a reaction — separate from
+// `cafePresenceTable.lastSeen`, which is also bumped by the silent 2-second
+// heartbeat the client sends to keep its presence row warm. Without this
+// distinction, a user who walked off without quitting would show as active
+// forever simply because their tab is open.
+//
+// Stored in process memory (resets on server restart) which is fine: after a
+// deploy everyone briefly looks active again, and the AFK flag will reappear
+// once they pass the threshold of real inactivity.
+const LAST_ACTIVE: Map<string, number> = new Map();
+const AFK_THRESHOLD_MS = 2 * 60 * 1000;
+function markActive(username: string) {
+  LAST_ACTIVE.set(username, Date.now());
+}
+function isAfk(username: string, now: number): boolean {
+  const last = LAST_ACTIVE.get(username);
+  // No record yet means we have not observed the user since the server
+  // started — treat them as active so freshly-arrived users are not
+  // immediately tagged AFK before they have a chance to do anything.
+  if (last === undefined) return false;
+  return now - last > AFK_THRESHOLD_MS;
+}
+
 async function ensureSettings() {
   const [s] = await db.select().from(cafeSettingsTable).limit(1);
   if (!s) await db.insert(cafeSettingsTable).values({ theme: "cafe" });
@@ -36,7 +60,8 @@ router.get("/cafe/state", async (_req, res) => {
   await ensureSettings();
   const now = Date.now();
   const cutoff = new Date(now - 30_000);
-  const presence = await db.select().from(cafePresenceTable).where(sql`${cafePresenceTable.lastSeen} > ${cutoff}`);
+  const rawPresence = await db.select().from(cafePresenceTable).where(sql`${cafePresenceTable.lastSeen} > ${cutoff}`);
+  const presence = rawPresence.map(p => ({ ...p, afk: isAfk(p.username, now) }));
   const chat = await db.select().from(cafeChatTable).orderBy(desc(cafeChatTable.createdAt)).limit(40);
   const [settings] = await db.select().from(cafeSettingsTable).limit(1);
   pruneReactions(now);
@@ -55,8 +80,16 @@ router.post("/cafe/move", requireAuth, async (req, res) => {
   }
   const [existing] = await db.select().from(cafePresenceTable).where(eq(cafePresenceTable.username, me)).limit(1);
   if (existing) {
+    // Only count this as "real activity" if the user actually moved to a
+    // new spot. The client also fires this endpoint on a 2-second heartbeat
+    // with the same coordinates; treating those as activity would mean
+    // nobody ever appears AFK as long as their tab stays open.
+    if (existing.x !== cleanX || existing.y !== cleanY) markActive(me);
     await db.update(cafePresenceTable).set({ x: cleanX, y: cleanY, avatar: cleanAvatar, lastSeen: new Date() }).where(eq(cafePresenceTable.username, me));
   } else {
+    // First time we've seen this user since the server started — mark them
+    // active so they don't show up as AFK the instant they join.
+    markActive(me);
     await db.insert(cafePresenceTable).values({ username: me, x: cleanX, y: cleanY, avatar: cleanAvatar });
   }
   res.json({ ok: true });
@@ -68,6 +101,7 @@ router.post("/cafe/say", requireAuth, async (req, res) => {
   if (typeof body !== "string" || !body.trim()) { res.status(400).json({ error: "body required" }); return; }
   if (await isBanned(me)) { res.status(403).json({ error: "Banned" }); return; }
   await db.insert(cafeChatTable).values({ author: me, body: body.trim().slice(0, 200) });
+  markActive(me);
   res.json({ ok: true });
 });
 
@@ -112,6 +146,7 @@ router.post("/cafe/react", requireAuth, async (req, res) => {
   REACTION_LAST.set(me, now);
   pruneReactions(now);
   REACTIONS.push({ from: me, to: target, emoji, expiresAt: now + REACTION_TTL_MS });
+  markActive(me);
   res.json({ ok: true });
 });
 

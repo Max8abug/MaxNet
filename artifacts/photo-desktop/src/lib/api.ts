@@ -467,7 +467,7 @@ export async function clearUserPage(username: string): Promise<void> {
 }
 
 // ----- Cafe -----
-export interface CafePresence { username: string; x: number; y: number; avatar: any; lastSeen: string; }
+export interface CafePresence { username: string; x: number; y: number; avatar: any; lastSeen: string; afk?: boolean; }
 export interface CafeChatMsg { id: number; author: string; body: string; createdAt: string; }
 export interface CafeReaction { from: string; to: string; emoji: string; expiresAt: number; }
 export interface CafeState { presence: CafePresence[]; chat: CafeChatMsg[]; theme: string; reactions: CafeReaction[]; }

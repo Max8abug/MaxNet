@@ -23,76 +23,87 @@ router.get("/auth/me", async (req, res) => {
   });
 });
 
-router.post("/auth/signup", async (req, res) => {
-  const { username, password } = req.body ?? {};
-  if (typeof username !== "string" || typeof password !== "string") {
-    res.status(400).json({ error: "username and password required" });
-    return;
+router.post("/auth/signup", async (req, res, next) => {
+  try {
+    const { username, password } = req.body ?? {};
+    if (typeof username !== "string" || typeof password !== "string") {
+      res.status(400).json({ error: "username and password required" });
+      return;
+    }
+    const u = username.trim();
+    if (u.length < 2 || u.length > 32) {
+      res.status(400).json({ error: "Username must be 2-32 chars" });
+      return;
+    }
+    if (password.length < 4 || password.length > 128) {
+      res.status(400).json({ error: "Password must be 4-128 chars" });
+      return;
+    }
+    const ip = getClientIp(req);
+    if (await isIpBanned(ip)) {
+      res.status(403).json({ error: "Your network is banned from creating accounts on this site." });
+      return;
+    }
+    const existing = await findUserByUsername(u);
+    if (existing) {
+      res.status(409).json({ error: "Username taken" });
+      return;
+    }
+    const passwordHash = await hashPassword(password);
+    const isAdmin = isAdminUsername(u);
+    const [created] = await db
+      .insert(usersTable)
+      .values({ username: u, passwordHash, isAdmin })
+      .returning();
+    req.session.userId = created.id;
+    req.session.username = created.username;
+    req.session.isAdmin = created.isAdmin;
+    void recordUserIp(created.username, ip);
+    res.json({ user: { id: created.id, username: created.username, isAdmin: created.isAdmin } });
+  } catch (err) {
+    // Forward to the central error handler so the underlying cause (DB
+    // outage, missing column, session-store failure, etc.) is logged with a
+    // full stack trace instead of disappearing into a generic HTTP 500.
+    next(err);
   }
-  const u = username.trim();
-  if (u.length < 2 || u.length > 32) {
-    res.status(400).json({ error: "Username must be 2-32 chars" });
-    return;
-  }
-  if (password.length < 4 || password.length > 128) {
-    res.status(400).json({ error: "Password must be 4-128 chars" });
-    return;
-  }
-  const ip = getClientIp(req);
-  if (await isIpBanned(ip)) {
-    res.status(403).json({ error: "Your network is banned from creating accounts on this site." });
-    return;
-  }
-  const existing = await findUserByUsername(u);
-  if (existing) {
-    res.status(409).json({ error: "Username taken" });
-    return;
-  }
-  const passwordHash = await hashPassword(password);
-  const isAdmin = isAdminUsername(u);
-  const [created] = await db
-    .insert(usersTable)
-    .values({ username: u, passwordHash, isAdmin })
-    .returning();
-  req.session.userId = created.id;
-  req.session.username = created.username;
-  req.session.isAdmin = created.isAdmin;
-  void recordUserIp(created.username, ip);
-  res.json({ user: { id: created.id, username: created.username, isAdmin: created.isAdmin } });
 });
 
-router.post("/auth/login", async (req, res) => {
-  const { username, password } = req.body ?? {};
-  if (typeof username !== "string" || typeof password !== "string") {
-    res.status(400).json({ error: "username and password required" });
-    return;
+router.post("/auth/login", async (req, res, next) => {
+  try {
+    const { username, password } = req.body ?? {};
+    if (typeof username !== "string" || typeof password !== "string") {
+      res.status(400).json({ error: "username and password required" });
+      return;
+    }
+    const ip = getClientIp(req);
+    const user = await findUserByUsername(username.trim());
+    if (!user) {
+      res.status(401).json({ error: "Invalid credentials" });
+      return;
+    }
+    // The site owner can always log in even if their network was banned by mistake.
+    if (!isAdminUsername(user.username) && await isIpBanned(ip)) {
+      res.status(403).json({ error: "Your network is banned from this site." });
+      return;
+    }
+    const ok = await verifyPassword(password, user.passwordHash);
+    if (!ok) {
+      res.status(401).json({ error: "Invalid credentials" });
+      return;
+    }
+    // Auto-promote if username matches admin name (in case flag was missed)
+    if (isAdminUsername(user.username) && !user.isAdmin) {
+      await db.update(usersTable).set({ isAdmin: true }).where(eq(usersTable.id, user.id));
+      user.isAdmin = true;
+    }
+    req.session.userId = user.id;
+    req.session.username = user.username;
+    req.session.isAdmin = user.isAdmin;
+    void recordUserIp(user.username, ip);
+    res.json({ user: { id: user.id, username: user.username, isAdmin: user.isAdmin } });
+  } catch (err) {
+    next(err);
   }
-  const ip = getClientIp(req);
-  const user = await findUserByUsername(username.trim());
-  if (!user) {
-    res.status(401).json({ error: "Invalid credentials" });
-    return;
-  }
-  // The site owner can always log in even if their network was banned by mistake.
-  if (!isAdminUsername(user.username) && await isIpBanned(ip)) {
-    res.status(403).json({ error: "Your network is banned from this site." });
-    return;
-  }
-  const ok = await verifyPassword(password, user.passwordHash);
-  if (!ok) {
-    res.status(401).json({ error: "Invalid credentials" });
-    return;
-  }
-  // Auto-promote if username matches admin name (in case flag was missed)
-  if (isAdminUsername(user.username) && !user.isAdmin) {
-    await db.update(usersTable).set({ isAdmin: true }).where(eq(usersTable.id, user.id));
-    user.isAdmin = true;
-  }
-  req.session.userId = user.id;
-  req.session.username = user.username;
-  req.session.isAdmin = user.isAdmin;
-  void recordUserIp(user.username, ip);
-  res.json({ user: { id: user.id, username: user.username, isAdmin: user.isAdmin } });
 });
 
 router.patch("/auth/profile", async (req, res) => {
