@@ -16,6 +16,7 @@ import chessRouter from "./chess";
 import siteSettingsRouter from "./site-settings";
 import ipAdminRouter from "./ip-admin";
 import newsRouter from "./news";
+import adminBackupRouter from "./admin-backup";
 import cafeRoomsRouter from "./cafe-rooms";
 import cafeObjectsRouter from "./cafe-objects";
 import diagnosticsRouter from "./diagnostics";
@@ -42,5 +43,6 @@ router.use(newsRouter);
 router.use(cafeRoomsRouter);
 router.use(cafeObjectsRouter);
 router.use(diagnosticsRouter);
+router.use(adminBackupRouter);
 
 export default router;

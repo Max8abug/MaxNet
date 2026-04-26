@@ -95,6 +95,7 @@ export function Taskbar({ page }: { page: string }) {
   ];
   if (user?.isAdmin) items.push({ label: "★ Manage Ranks", act: () => open({ type: 'ranksadmin', title: 'Ranks Admin', width: 480, height: 500 }) });
   if (user?.isAdmin) items.push({ label: "★ Site Settings", act: () => open({ type: 'sitesettings', title: 'Site Settings', width: 420, height: 400 }) });
+  if (user?.isAdmin) items.push({ label: "★ Site Backup / Restore", act: () => open({ type: 'sitebackup', title: 'Site Backup', width: 480, height: 420 }) });
   if (user?.isAdmin) items.push({ label: "★ Diagnostics", act: () => open({ type: 'diagnostics', title: 'Server Diagnostics', width: 640, height: 460 }) });
 
   const colorStyle = user ? { color: userColor(user, ranks) || undefined } : {};

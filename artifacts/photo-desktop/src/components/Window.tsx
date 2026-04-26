@@ -22,6 +22,7 @@ import { RanksAdmin } from './RanksAdmin';
 import { SiteSettingsDialog } from './SiteSettingsDialog';
 import { IpLookup } from './IpLookup';
 import { News } from './News';
+import { SiteBackup } from './SiteBackup';
 import { UserList } from './UserList';
 import { DiagnosticsPanel } from './DiagnosticsPanel';
 import { useAuth } from '../lib/auth-store';
@@ -305,6 +306,7 @@ export function Window({
         {w.type === 'sitesettings' && !isEditing && <SiteSettingsDialog />}
         {w.type === 'iplookup' && !isEditing && <IpLookup username={w.username || ''} />}
         {w.type === 'news' && !isEditing && <News />}
+        {w.type === 'sitebackup' && !isEditing && <SiteBackup />}
         {w.type === 'userlist' && !isEditing && <UserList page={page} />}
         {w.type === 'diagnostics' && !isEditing && <DiagnosticsPanel />}
         {showLogin && <LoginDialog onClose={() => setShowLogin(false)} />}
