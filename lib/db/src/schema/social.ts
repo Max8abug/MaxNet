@@ -36,6 +36,10 @@ export const usersTable = pgTable("users", {
   // Saved by the in-cafe character editor so users keep their look across sessions.
   cafeAvatar: jsonb("cafe_avatar").notNull().default({}),
   createdAt: timestamp("created_at").defaultNow().notNull(),
+  // Bumped (throttled to ~once a minute) by the auth middleware whenever a
+  // logged-in user makes a request, so the user list can show online status
+  // and a "last seen" timestamp.
+  lastSeen: timestamp("last_seen").defaultNow().notNull(),
 });
 
 export const ranksTable = pgTable("ranks", {

@@ -43,6 +43,7 @@ export async function ensureSchema(): Promise<void> {
     ALTER TABLE users ADD COLUMN IF NOT EXISTS background_url text;
     ALTER TABLE users ADD COLUMN IF NOT EXISTS background_color text;
     ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar_url text;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS last_seen timestamp NOT NULL DEFAULT now();
 
     CREATE TABLE IF NOT EXISTS drawings (
       id serial PRIMARY KEY,

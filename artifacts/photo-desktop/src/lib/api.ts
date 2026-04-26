@@ -53,7 +53,7 @@ export async function updateProfile(data: { avatarUrl?: string | null; backgroun
   }));
 }
 
-export interface PublicUser { username: string; isAdmin: boolean; avatarUrl: string | null; rank?: string | null; }
+export interface PublicUser { username: string; isAdmin: boolean; avatarUrl: string | null; rank?: string | null; lastSeen?: string | null; }
 export async function fetchUsers(): Promise<PublicUser[]> {
   return jsonOrThrow(await fetch(`${BASE}/users`, opts));
 }

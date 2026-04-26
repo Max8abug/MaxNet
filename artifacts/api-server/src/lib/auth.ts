@@ -65,6 +65,32 @@ export function isAdminUsername(username: string): boolean {
   return username === ADMIN_USERNAME;
 }
 
+// Throttled "last seen" bump: every authenticated request runs through this
+// middleware, but we only actually hit the database at most once per user per
+// PRESENCE_BUMP_MS. Anything more frequent would flood the DB on a busy site
+// with no real benefit (the user list refreshes once per minute anyway).
+const PRESENCE_BUMP_MS = 30_000;
+const lastBumpedAt = new Map<number, number>();
+
+export const trackPresence: RequestHandler = (req, _res, next) => {
+  const uid = req.session.userId;
+  if (uid) {
+    const now = Date.now();
+    const prev = lastBumpedAt.get(uid) || 0;
+    if (now - prev > PRESENCE_BUMP_MS) {
+      lastBumpedAt.set(uid, now);
+      // Fire-and-forget — don't block the request on the write. If the bump
+      // fails (e.g. transient DB hiccup) we'll just try again on the next
+      // request after the throttle window.
+      db.update(usersTable)
+        .set({ lastSeen: new Date(now) })
+        .where(eq(usersTable.id, uid))
+        .catch(() => {});
+    }
+  }
+  next();
+};
+
 export const requireAuth: RequestHandler = (req, res, next) => {
   if (!req.session.userId) {
     res.status(401).json({ error: "Login required" });

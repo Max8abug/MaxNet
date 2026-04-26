@@ -3,7 +3,7 @@ import cors from "cors";
 import pinoHttp from "pino-http";
 import router from "./routes";
 import { logger } from "./lib/logger";
-import { sessionMiddleware } from "./lib/auth";
+import { sessionMiddleware, trackPresence } from "./lib/auth";
 import { recordError, describeError } from "./lib/error-buffer";
 
 const app: Express = express();
@@ -32,6 +32,7 @@ app.use(cors({ origin: true, credentials: true }));
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 app.use(sessionMiddleware);
+app.use(trackPresence);
 
 app.use("/api", router);
 

@@ -161,6 +161,7 @@ router.get("/users/:username", async (req, res) => {
       isAdmin: user.isAdmin,
       avatarUrl: user.avatarUrl,
       rank: user.rank,
+      lastSeen: user.lastSeen,
     },
   });
 });
@@ -171,6 +172,7 @@ router.get("/users", async (_req, res) => {
     isAdmin: usersTable.isAdmin,
     avatarUrl: usersTable.avatarUrl,
     rank: usersTable.rank,
+    lastSeen: usersTable.lastSeen,
   }).from(usersTable).limit(500);
   res.json(rows);
 });
