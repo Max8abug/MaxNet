@@ -492,25 +492,77 @@ router.post("/admin/import/commit", requireAdmin, chunkJson, async (req, res) =>
 
   // Reset serial sequences so the next inserted row doesn't collide with
   // an id we just imported.
-  try {
-    await db.transaction(async (tx) => {
-      for (const t of TABLES) {
-        if (!session.liveColsByTable.has(t.name)) continue;
-        try {
-          await tx.execute(sql.raw(`
-            SELECT setval(
-              pg_get_serial_sequence('"${t.pgName}"', 'id'),
-              GREATEST((SELECT COALESCE(MAX(id), 0) FROM "${t.pgName}"), 1),
-              true
-            )
-          `));
-        } catch { /* table may not have an id sequence — ignore */ }
-      }
-    });
-  } catch (e: any) {
-    // Sequence reset failure shouldn't fail the whole import — the data
-    // is already in. Surface as a warning instead.
-    session.errors.push({ table: "<sequence-reset>", error: e?.message || "sequence reset failed" });
+  //
+  // *** This block previously wrapped every setval in a single transaction.
+  // That was a bug. Postgres's behaviour is: once any statement in a
+  // transaction raises, the WHOLE transaction is poisoned and every
+  // subsequent statement silently returns "current transaction is aborted,
+  // commands ignored until end of transaction block". The JS-side try/catch
+  // around each setval is useless against that — by the time the catch
+  // fires, the transaction is already dead. ***
+  //
+  // The TABLES list contains several tables whose primary key is text
+  // (`user_pages.username`, `cafe_presence.username`, `flappy_players.username`)
+  // — for those, `pg_get_serial_sequence(..., 'id')` returns NULL and
+  // `setval(NULL, ...)` raises. Hitting the first such table (user_pages
+  // is 4th in the list) was poisoning the txn and silently skipping every
+  // subsequent setval. Result: drawings, photos, news, dms, polls, chat,
+  // cafe rooms/objects/chat, forums, blackjack, flappy_scores, ip_bans,
+  // banned_users, guestbook all kept their post-TRUNCATE sequence value of
+  // 1, so the very next user-driven INSERT collided with an imported
+  // row's primary key. That broke most of the site after a restore.
+  //
+  // The fix:
+  //   1. Run each setval as its OWN statement (no outer transaction wrapper)
+  //      so a failure on one table cannot cascade to the others.
+  //   2. Pre-check that the table actually has an `id` column AND a non-null
+  //      serial sequence BEFORE attempting setval — that turns the
+  //      "NULL sequence" case into a clean skip instead of an exception.
+  //   3. Record per-table failures so the operator can see exactly which
+  //      sequences (if any) couldn't be reset.
+  const sequenceWarnings: { table: string; error: string }[] = [];
+  for (const t of TABLES) {
+    if (!session.liveColsByTable.has(t.name)) continue;
+    const liveCols = session.liveColsByTable.get(t.name)!;
+    if (!liveCols.has("id")) continue; // no id column = nothing to reset
+
+    try {
+      // pg_get_serial_sequence returns NULL when the column has no
+      // owned sequence (e.g. an integer PK without DEFAULT nextval()).
+      // We resolve it first so we can SKIP, not fail, when there's no
+      // sequence to reset.
+      const seqRes = await db.execute<{ seq: string | null }>(sql.raw(
+        `SELECT pg_get_serial_sequence('"${t.pgName}"', 'id') AS seq`,
+      ));
+      const seq = (seqRes.rows[0] as any)?.seq ?? null;
+      if (!seq) continue;
+
+      // GREATEST(MAX(id), 1) so even an empty table leaves the sequence
+      // in a usable state (setval to 0 would raise; to 1 means the next
+      // nextval() returns 2 — but with is_called=false we'd get 1, which
+      // is exactly what we want for an empty table; see below).
+      //
+      // For non-empty tables we want is_called=true so the next nextval()
+      // returns MAX(id)+1. For empty tables we want is_called=false so the
+      // next nextval() returns 1.
+      await db.execute(sql.raw(`
+        SELECT
+          CASE
+            WHEN (SELECT COALESCE(MAX(id), 0) FROM "${t.pgName}") = 0
+              THEN setval('${seq}', 1, false)
+            ELSE setval('${seq}', (SELECT MAX(id) FROM "${t.pgName}"), true)
+          END
+      `));
+    } catch (e: any) {
+      sequenceWarnings.push({
+        table: t.name,
+        error: `sequence reset failed: ${e?.message || "unknown"}`,
+      });
+      logger.warn({ err: e, table: t.name }, "sequence reset failed for table");
+    }
+  }
+  if (sequenceWarnings.length > 0) {
+    session.errors.push(...sequenceWarnings);
   }
 
   session.status = "committed";
@@ -671,17 +723,45 @@ router.post("/admin/import", requireAdmin, expressJson({ limit: "1024mb" }), asy
 
       // After inserting rows with fixed ids, the sequences still point to 1.
       // Bump each serial sequence to max(id)+1 so future inserts don't collide.
+      //
+      // IMPORTANT: each setval is its OWN savepoint so a NULL-sequence
+      // table (text-PK tables like user_pages, cafe_presence,
+      // flappy_players) doesn't poison the outer transaction. Without
+      // savepoints, the very first NULL-sequence raise would abort the
+      // entire transaction and roll back every INSERT we just made.
       stage = "reset sequences";
       for (const t of truncatable) {
+        const liveColsForT = await tx.execute<{ column_name: string }>(sql.raw(
+          `SELECT column_name FROM information_schema.columns
+            WHERE table_schema = 'public' AND table_name = '${t.pgName}' AND column_name = 'id'`,
+        ));
+        if (liveColsForT.rows.length === 0) continue;
         try {
+          // Wrap in a savepoint so any failure (NULL sequence, etc.) only
+          // rolls back this one statement, not the entire import.
+          await tx.execute(sql.raw(`SAVEPOINT seqreset_${t.pgName}`));
+          const seqRes = await tx.execute<{ seq: string | null }>(sql.raw(
+            `SELECT pg_get_serial_sequence('"${t.pgName}"', 'id') AS seq`,
+          ));
+          const seq = (seqRes.rows[0] as any)?.seq ?? null;
+          if (!seq) {
+            await tx.execute(sql.raw(`RELEASE SAVEPOINT seqreset_${t.pgName}`));
+            continue;
+          }
           await tx.execute(sql.raw(`
-            SELECT setval(
-              pg_get_serial_sequence('"${t.pgName}"', 'id'),
-              GREATEST((SELECT COALESCE(MAX(id), 0) FROM "${t.pgName}"), 1),
-              true
-            )
+            SELECT
+              CASE
+                WHEN (SELECT COALESCE(MAX(id), 0) FROM "${t.pgName}") = 0
+                  THEN setval('${seq}', 1, false)
+                ELSE setval('${seq}', (SELECT MAX(id) FROM "${t.pgName}"), true)
+              END
           `));
-        } catch { /* table may not have an id sequence — ignore */ }
+          await tx.execute(sql.raw(`RELEASE SAVEPOINT seqreset_${t.pgName}`));
+        } catch (e: any) {
+          // Roll back to the savepoint so the outer transaction stays alive.
+          try { await tx.execute(sql.raw(`ROLLBACK TO SAVEPOINT seqreset_${t.pgName}`)); } catch { /* ignore */ }
+          errors.push({ table: t.name, error: `sequence reset failed: ${e?.message || "unknown"}` });
+        }
       }
     });
 
