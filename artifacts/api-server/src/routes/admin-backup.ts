@@ -1,4 +1,4 @@
-import { Router, type IRouter } from "express";
+import { Router, type IRouter, json as expressJson } from "express";
 import {
   db,
   drawingsTable,
@@ -90,29 +90,137 @@ router.get("/admin/export", requireAdmin, async (_req, res) => {
     logger.warn({ err: e }, "ensureSchema failed before export — continuing anyway");
   }
 
-  const data: Record<string, any[]> = {};
+  // STREAM the JSON response instead of building one giant string in memory.
+  //
+  // Why this matters: a real production site easily holds tens of thousands
+  // of rows across drawings, photos, news posts, tracks, chat — many of
+  // which carry data: URLs that are hundreds of KB each. The previous
+  // implementation loaded every row into a single object and then handed
+  // it to `res.json()`, which calls `JSON.stringify()` on the whole tree.
+  // Two failure modes lurk there:
+  //   1. V8's max string length (~512MB on 64-bit) — once the serialized
+  //      payload crosses that, `JSON.stringify` throws "RangeError: Invalid
+  //      string length" and the route 500s with no useful detail.
+  //   2. Container memory limits on autoscale deploys — holding the full
+  //      DB AND its serialized form simultaneously can OOM-kill the worker.
+  //
+  // Streaming sidesteps both: each row is stringified independently, written
+  // to the socket, and freed. Memory stays bounded by the largest single row
+  // (which Postgres caps at well under the 512MB string limit anyway). It
+  // also flushes bytes to the proxy immediately, so request-level idle
+  // timeouts don't fire while we're still building the response.
+  res.setHeader("Content-Type", "application/json; charset=utf-8");
+  res.setHeader(
+    "Content-Disposition",
+    `attachment; filename="site-backup-${new Date().toISOString().slice(0, 10)}.json"`,
+  );
+  // Hint to any intermediary proxy not to buffer — we want bytes on the
+  // wire as soon as we write them so idle-timeouts on long exports don't
+  // fire even though the server is actively producing data.
+  res.setHeader("X-Accel-Buffering", "no");
+  res.setHeader("Cache-Control", "no-store");
+
   const tableErrors: Record<string, string> = {};
-  for (const t of TABLES) {
-    try {
-      data[t.name] = await db.select().from(t.table);
-    } catch (e: any) {
-      data[t.name] = [];
-      tableErrors[t.name] = e?.message || "select failed";
+  let aborted = false;
+  // If the client disconnects mid-stream there's no point continuing to
+  // pull rows out of Postgres — we'd just heat up the DB for nothing.
+  const onClose = () => { aborted = true; };
+  res.on("close", onClose);
+
+  // Helper that respects backpressure: when res.write returns false the
+  // kernel buffer is full and we need to wait for "drain" before queueing
+  // more bytes, otherwise memory growth on a slow client undoes the whole
+  // point of streaming.
+  const write = async (chunk: string): Promise<void> => {
+    if (aborted) throw new Error("client disconnected");
+    const ok = res.write(chunk);
+    if (ok) return;
+    await new Promise<void>((resolve) => res.once("drain", () => resolve()));
+  };
+
+  try {
+    await write(`{"version":1,"exportedAt":${JSON.stringify(new Date().toISOString())},"tables":{`);
+
+    let firstTable = true;
+    for (const t of TABLES) {
+      if (aborted) break;
+      if (!firstTable) await write(",");
+      firstTable = false;
+      await write(`${JSON.stringify(t.name)}:[`);
+
+      let rows: any[] = [];
+      try {
+        // We still pull each table in one query — Drizzle doesn't expose a
+        // cursor API on the high-level builder. For pathological tables we
+        // could swap in a paged SELECT later, but in practice the per-row
+        // streaming below is what saves us, not the read itself.
+        rows = await db.select().from(t.table);
+      } catch (e: any) {
+        tableErrors[t.name] = e?.message || "select failed";
+        rows = [];
+      }
+
+      let firstRow = true;
+      for (const row of rows) {
+        if (aborted) break;
+        let serialised: string;
+        try {
+          serialised = JSON.stringify(row);
+        } catch (e: any) {
+          // One bad row (e.g. a circular structure that somehow snuck in)
+          // shouldn't sink the whole export. Skip it and surface the
+          // problem in tableErrors so the operator sees something went
+          // wrong rather than getting a silently-incomplete backup.
+          tableErrors[t.name] =
+            (tableErrors[t.name] ? tableErrors[t.name] + "; " : "") +
+            `row serialise failed: ${e?.message || "unknown"}`;
+          continue;
+        }
+        if (!firstRow) await write(",");
+        firstRow = false;
+        await write(serialised);
+      }
+      await write("]");
     }
+
+    await write("}");
+    if (Object.keys(tableErrors).length > 0) {
+      // Emit per-table read errors as a sibling field so the diagnostics UI
+      // can warn the operator that some tables came back empty due to
+      // schema drift rather than because they were genuinely empty.
+      await write(`,"tableErrors":${JSON.stringify(tableErrors)}`);
+    }
+    await write("}");
+    res.end();
+  } catch (e: any) {
+    // We've already sent headers (Content-Type: application/json + 200), so
+    // we can't switch to a 500 — the express error handler would notice
+    // headersSent and bail anyway. The least-bad option is to log it
+    // server-side, append a sentinel marker the client can detect when
+    // parsing, and end the stream. The frontend already wraps JSON.parse
+    // in try/catch, so a truncated/corrupt body will surface as a parse
+    // error rather than a misleadingly-successful download.
+    logger.error({ err: e }, "Backup export streaming failed mid-response");
+    try {
+      // Trailing garbage guarantees JSON.parse rejects the file rather
+      // than silently accepting a half-written backup as authoritative.
+      res.end(`\n--EXPORT-FAILED--${JSON.stringify({ error: e?.message || "stream failed" })}`);
+    } catch {
+      try { res.end(); } catch { /* socket already torn down */ }
+    }
+  } finally {
+    res.off("close", onClose);
   }
-  res.setHeader("Content-Disposition", `attachment; filename="site-backup-${new Date().toISOString().slice(0, 10)}.json"`);
-  res.json({
-    version: 1,
-    exportedAt: new Date().toISOString(),
-    tables: data,
-    // Surface per-table read errors so the diagnostics UI can warn the
-    // operator that some tables came back empty due to schema drift rather
-    // than because they were genuinely empty.
-    tableErrors: Object.keys(tableErrors).length > 0 ? tableErrors : undefined,
-  });
 });
 
-router.post("/admin/import", requireAdmin, async (req, res) => {
+// The global JSON body parser in app.ts is capped at 10MB, which is sane for
+// every other endpoint but absurdly small for a full-site backup — a real
+// site routinely produces backup files in the hundreds of MB once drawings,
+// photos, and music are included. Override the parser locally so the import
+// route accepts up to 1GB without affecting the rest of the API surface.
+// We also gate on requireAdmin BEFORE parsing the body so an anonymous
+// caller can't waste server memory uploading a giant blob.
+router.post("/admin/import", requireAdmin, expressJson({ limit: "1024mb" }), async (req, res) => {
   const payload = req.body ?? {};
   if (payload.confirm !== true) {
     res.status(400).json({ error: "Refusing to import without { confirm: true } — this replaces ALL site data." });

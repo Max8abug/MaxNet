@@ -29,7 +29,17 @@ app.use(
   }),
 );
 app.use(cors({ origin: true, credentials: true }));
-app.use(express.json({ limit: "10mb" }));
+// Global JSON body parser. We deliberately exclude /api/admin/import here
+// because that route installs its own parser with a much higher limit (a
+// real site backup is hundreds of MB; the 10MB cap that protects every
+// other endpoint would cause the upload to fail before the route handler
+// even runs). Anonymous traffic still hits the 10MB cap because the route-
+// specific parser is gated behind requireAdmin.
+const globalJson = express.json({ limit: "10mb" });
+app.use((req, res, next) => {
+  if (req.path === "/api/admin/import") return next();
+  return globalJson(req, res, next);
+});
 app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 app.use(sessionMiddleware);
 app.use(trackPresence);
