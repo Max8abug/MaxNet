@@ -213,13 +213,329 @@ router.get("/admin/export", requireAdmin, async (_req, res) => {
   }
 });
 
-// The global JSON body parser in app.ts is capped at 10MB, which is sane for
-// every other endpoint but absurdly small for a full-site backup — a real
-// site routinely produces backup files in the hundreds of MB once drawings,
-// photos, and music are included. Override the parser locally so the import
-// route accepts up to 1GB without affecting the rest of the API surface.
-// We also gate on requireAdmin BEFORE parsing the body so an anonymous
-// caller can't waste server memory uploading a giant blob.
+// ---------------------------------------------------------------------------
+// Chunked import (the path the UI actually uses)
+// ---------------------------------------------------------------------------
+//
+// The original /admin/import route below took the entire backup as one big
+// JSON POST. Bumping Express's body-parser limit fixes the in-process cap,
+// but the edge proxy in front of the API server (Replit's deployment edge,
+// or the dev preview proxy) has its own request-size limit that we cannot
+// raise. Real site backups easily exceed that proxy cap, so the upload was
+// being rejected with an HTML error page before the request ever reached
+// Express — manifesting on the client as
+// "Unexpected token '<', '<html><hea'... is not valid JSON".
+//
+// The fix: split the upload into many small per-table requests. Each chunk
+// is well under any plausible proxy limit, so the upload always lands.
+// State is kept in-memory in a session map keyed by sessionId.
+//
+// Tradeoff: unlike the old monolithic route, each chunk is its own
+// transaction, so if the network drops mid-import the live DB is left
+// partially restored (the truncate from /begin still applies). This is
+// acceptable because (a) the user always has the backup file to retry,
+// and (b) the alternative was that the import never succeeded at all for
+// any non-trivially-sized backup.
+//
+// Caveat: in-memory sessions don't survive process restart and don't
+// federate across autoscale instances. For one user driving a sequential
+// upload this is almost always fine. If the operator hits a "session not
+// found" error mid-import, it's because the worker recycled — they should
+// re-run the import from the beginning.
+
+interface ImportSession {
+  id: string;
+  startedAt: number;
+  lastTouchedAt: number;
+  username: string;
+  truncatedTables: string[];
+  // Live column set per table so each /rows chunk doesn't have to re-query
+  // information_schema. Populated during /begin.
+  liveColsByTable: Map<string, Set<string>>;
+  // Drizzle JS-name → pg column-name map per table, also pre-populated.
+  jsToPgByTable: Map<string, Map<string, string>>;
+  importedTables: Set<string>;
+  tableRowCounts: Record<string, number>;
+  errors: { table: string; error: string }[];
+  totalRows: number;
+  healWarning: string | null;
+  status: "active" | "committed" | "failed";
+}
+
+const sessions = new Map<string, ImportSession>();
+const SESSION_IDLE_TIMEOUT_MS = 30 * 60 * 1000; // 30 minutes
+
+function sweepExpiredSessions(): void {
+  const now = Date.now();
+  for (const [id, s] of sessions) {
+    if (now - s.lastTouchedAt > SESSION_IDLE_TIMEOUT_MS) sessions.delete(id);
+  }
+}
+
+function newSessionId(): string {
+  // Crypto-strong random: avoids any chance of an attacker guessing an
+  // active import session id and posting rogue rows into it.
+  const bytes = new Uint8Array(16);
+  crypto.getRandomValues(bytes);
+  return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+function buildJsToPgMap(table: any): Map<string, string> {
+  const cfg: any = table[Symbol.for("drizzle:Columns")] || {};
+  const m = new Map<string, string>();
+  for (const [jsName, col] of Object.entries(cfg)) {
+    const pg = (col as any)?.name;
+    if (typeof pg === "string") m.set(jsName, pg);
+  }
+  return m;
+}
+
+// Re-hydrate JSON-stringified Date values back into Date objects so
+// drizzle's timestamp-with-timezone columns accept them. Same heuristic
+// used by the legacy import route.
+function rehydrateDates(row: Record<string, any>): Record<string, any> {
+  const out: Record<string, any> = {};
+  for (const [k, v] of Object.entries(row)) {
+    if (typeof v === "string"
+      && /(_at|At|Seen|firstSeen|lastSeen|createdAt|updatedAt)$/.test(k)
+      && /^\d{4}-\d{2}-\d{2}T/.test(v)) {
+      out[k] = new Date(v);
+    } else {
+      out[k] = v;
+    }
+  }
+  return out;
+}
+
+// Per-route JSON parser. 16MB is generous for a single chunk (the client
+// targets ~2MB) but bounded enough that one rogue chunk can't OOM the
+// process.
+const chunkJson = expressJson({ limit: "16mb" });
+
+router.post("/admin/import/begin", requireAdmin, chunkJson, async (req, res) => {
+  sweepExpiredSessions();
+  const payload = req.body ?? {};
+  if (payload.confirm !== true) {
+    res.status(400).json({ error: "Refusing to begin import without { confirm: true }." });
+    return;
+  }
+
+  // Refuse to start a second import while one is already in progress —
+  // concurrent TRUNCATEs from two operators would interleave catastrophically.
+  for (const s of sessions.values()) {
+    if (s.status === "active") {
+      res.status(409).json({
+        error: `Another import session is already active (started by ${s.username} at ${new Date(s.startedAt).toISOString()}). Wait for it to finish or expire (idle timeout 30min).`,
+      });
+      return;
+    }
+  }
+
+  let healWarning: string | null = null;
+  try {
+    await ensureSchema();
+  } catch (e: any) {
+    healWarning = e?.message || "ensureSchema failed";
+    logger.warn({ err: e }, "ensureSchema failed before chunked import begin — continuing");
+  }
+
+  const truncatedTables: string[] = [];
+  const liveColsByTable = new Map<string, Set<string>>();
+  const jsToPgByTable = new Map<string, Map<string, string>>();
+
+  try {
+    await db.transaction(async (tx) => {
+      const existing = await tx.execute<{ table_name: string }>(sql.raw(
+        `SELECT table_name FROM information_schema.tables
+          WHERE table_schema = 'public'
+            AND table_name = ANY(ARRAY[${TABLES.map((t) => `'${t.pgName}'`).join(", ")}])`,
+      ));
+      const existingNames = new Set<string>(existing.rows.map((r: any) => r.table_name));
+      const truncatable = TABLES.filter((t) => existingNames.has(t.pgName));
+      if (truncatable.length > 0) {
+        const tableList = truncatable.map((t) => `"${t.pgName}"`).join(", ");
+        await tx.execute(sql.raw(`TRUNCATE TABLE ${tableList} RESTART IDENTITY CASCADE`));
+        for (const t of truncatable) truncatedTables.push(t.name);
+      }
+
+      // Cache live column sets so per-chunk inserts don't re-query.
+      for (const t of truncatable) {
+        const colsRes = await tx.execute<{ column_name: string }>(sql.raw(
+          `SELECT column_name FROM information_schema.columns
+            WHERE table_schema = 'public' AND table_name = '${t.pgName}'`,
+        ));
+        liveColsByTable.set(t.name, new Set(colsRes.rows.map((r: any) => r.column_name)));
+        jsToPgByTable.set(t.name, buildJsToPgMap(t.table));
+      }
+    });
+  } catch (e: any) {
+    logger.error({ err: e }, "Backup import begin failed");
+    res.status(500).json({ ok: false, error: e?.message || "begin failed", healWarning });
+    return;
+  }
+
+  const session: ImportSession = {
+    id: newSessionId(),
+    startedAt: Date.now(),
+    lastTouchedAt: Date.now(),
+    username: req.session?.username ?? "unknown",
+    truncatedTables,
+    liveColsByTable,
+    jsToPgByTable,
+    importedTables: new Set(),
+    tableRowCounts: {},
+    errors: [],
+    totalRows: 0,
+    healWarning,
+    status: "active",
+  };
+  sessions.set(session.id, session);
+
+  res.json({
+    ok: true,
+    sessionId: session.id,
+    truncatedTables,
+    healWarning,
+    chunkLimitBytes: 16 * 1024 * 1024,
+  });
+});
+
+router.post("/admin/import/rows", requireAdmin, chunkJson, async (req, res) => {
+  const { sessionId, table, rows } = req.body ?? {};
+  const session = typeof sessionId === "string" ? sessions.get(sessionId) : null;
+  if (!session) {
+    res.status(404).json({ error: "Import session not found or expired. Re-run the import from the beginning." });
+    return;
+  }
+  if (session.status !== "active") {
+    res.status(409).json({ error: `Session is ${session.status}; cannot accept more rows.` });
+    return;
+  }
+  session.lastTouchedAt = Date.now();
+
+  if (typeof table !== "string" || !Array.isArray(rows)) {
+    res.status(400).json({ error: "Body must be { sessionId, table: string, rows: any[] }." });
+    return;
+  }
+  const tableEntry = TABLES.find((t) => t.name === table);
+  if (!tableEntry) {
+    res.status(400).json({ error: `Unknown table "${table}".` });
+    return;
+  }
+  const liveCols = session.liveColsByTable.get(table);
+  if (!liveCols) {
+    // Table didn't exist on the live DB at /begin time — record once and
+    // tell the client to skip future chunks for it.
+    if (!session.errors.find((e) => e.table === table)) {
+      session.errors.push({ table, error: `table "${tableEntry.pgName}" does not exist on live DB; skipping rows` });
+    }
+    res.json({ ok: true, accepted: 0, skipped: rows.length, reason: "table does not exist on live DB" });
+    return;
+  }
+
+  if (rows.length === 0) {
+    res.json({ ok: true, accepted: 0 });
+    return;
+  }
+
+  const jsToPg = session.jsToPgByTable.get(table) ?? new Map<string, string>();
+  const fixed: Record<string, any>[] = [];
+  for (const r of rows) {
+    if (!r || typeof r !== "object") continue;
+    const filtered: Record<string, any> = {};
+    for (const [k, v] of Object.entries(r)) {
+      const pg = jsToPg.get(k) || k;
+      if (!liveCols.has(pg)) continue; // drop unknown column
+      filtered[k] = v;
+    }
+    fixed.push(rehydrateDates(filtered));
+  }
+
+  try {
+    // Postgres caps bound parameters at ~65k per statement; 500 rows is a
+    // safe per-statement chunk for any reasonable column count.
+    const SUBCHUNK = 500;
+    for (let i = 0; i < fixed.length; i += SUBCHUNK) {
+      const slice = fixed.slice(i, i + SUBCHUNK);
+      await db.insert(tableEntry.table).values(slice as any);
+    }
+    session.importedTables.add(table);
+    session.tableRowCounts[table] = (session.tableRowCounts[table] ?? 0) + rows.length;
+    session.totalRows += rows.length;
+    res.json({ ok: true, accepted: rows.length, totalForTable: session.tableRowCounts[table] });
+  } catch (e: any) {
+    session.errors.push({ table, error: e?.message || "insert failed" });
+    logger.error({ err: e, table }, "Backup import chunk insert failed");
+    res.status(500).json({
+      ok: false,
+      error: e?.message || "insert failed",
+      table,
+      // Surface details to the admin so they can see e.g. constraint
+      // violations or NOT NULL errors and decide whether to abort.
+      detail: e?.detail || null,
+    });
+  }
+});
+
+router.post("/admin/import/commit", requireAdmin, chunkJson, async (req, res) => {
+  const { sessionId } = req.body ?? {};
+  const session = typeof sessionId === "string" ? sessions.get(sessionId) : null;
+  if (!session) {
+    res.status(404).json({ error: "Import session not found or expired." });
+    return;
+  }
+  if (session.status !== "active") {
+    res.status(409).json({ error: `Session is already ${session.status}.` });
+    return;
+  }
+  session.lastTouchedAt = Date.now();
+
+  // Reset serial sequences so the next inserted row doesn't collide with
+  // an id we just imported.
+  try {
+    await db.transaction(async (tx) => {
+      for (const t of TABLES) {
+        if (!session.liveColsByTable.has(t.name)) continue;
+        try {
+          await tx.execute(sql.raw(`
+            SELECT setval(
+              pg_get_serial_sequence('"${t.pgName}"', 'id'),
+              GREATEST((SELECT COALESCE(MAX(id), 0) FROM "${t.pgName}"), 1),
+              true
+            )
+          `));
+        } catch { /* table may not have an id sequence — ignore */ }
+      }
+    });
+  } catch (e: any) {
+    // Sequence reset failure shouldn't fail the whole import — the data
+    // is already in. Surface as a warning instead.
+    session.errors.push({ table: "<sequence-reset>", error: e?.message || "sequence reset failed" });
+  }
+
+  session.status = "committed";
+  const result = {
+    ok: true,
+    sessionId: session.id,
+    imported: Array.from(session.importedTables),
+    totalRows: session.totalRows,
+    tableRowCounts: session.tableRowCounts,
+    skipped: session.errors,
+    healWarning: session.healWarning,
+    truncatedTables: session.truncatedTables,
+  };
+  // Hold the session a bit longer so the client can poll status if needed,
+  // but most callers will just take this response and discard.
+  setTimeout(() => sessions.delete(session.id), 60_000);
+  res.json(result);
+});
+
+// ---------------------------------------------------------------------------
+// Legacy single-shot /admin/import — kept for backward compatibility with any
+// programmatic caller. The UI no longer uses this path; large backups should
+// use the chunked /admin/import/{begin,rows,commit} flow above.
+// ---------------------------------------------------------------------------
+
 router.post("/admin/import", requireAdmin, expressJson({ limit: "1024mb" }), async (req, res) => {
   const payload = req.body ?? {};
   if (payload.confirm !== true) {
