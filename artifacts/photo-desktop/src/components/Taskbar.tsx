@@ -57,8 +57,12 @@ export function Taskbar({ page }: { page: string }) {
   // Skip the very first poll after mount — otherwise every existing unread
   // would be replayed as a notification on every page load.
   const dmFirstLoadRef = useRef(true);
+  // Highest chat message id we've already alerted on for an @mention. Same
+  // first-load guard as DMs so old @mentions in history don't replay on reload.
+  const chatMentionMaxIdRef = useRef(0);
+  const chatFirstLoadRef = useRef(true);
   useEffect(() => {
-    if (!user) { setDmUnread(0); setChatUnread(0); dmAlertedRef.current = {}; dmFirstLoadRef.current = true; return; }
+    if (!user) { setDmUnread(0); setChatUnread(0); dmAlertedRef.current = {}; dmFirstLoadRef.current = true; chatFirstLoadRef.current = true; chatMentionMaxIdRef.current = 0; return; }
     let alive = true;
     const tick = async () => {
       try {
@@ -102,6 +106,30 @@ export function Taskbar({ page }: { page: string }) {
         } else {
           const unread = ch.filter(m => m.id > lastSeen && m.author !== user.username).length;
           setChatUnread(unread);
+        }
+
+        // @-mention notifications. Fire when a chat message newer than what
+        // we've already announced contains a word-boundary @<my-username>
+        // (case-insensitive). The first poll just records the high-water
+        // mark so historical mentions don't replay on every page load.
+        const tabHidden2 = typeof document !== "undefined" && document.visibilityState === "hidden";
+        if (chatFirstLoadRef.current) {
+          chatMentionMaxIdRef.current = newest;
+          chatFirstLoadRef.current = false;
+        } else {
+          const mentionRe = new RegExp(`(^|\\W)@${user.username.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\\\$&')}\\b`, 'i');
+          const fresh = ch.filter(m =>
+            m.id > chatMentionMaxIdRef.current &&
+            m.author !== user.username &&
+            mentionRe.test(m.body || ""),
+          );
+          if (fresh.length > 0) chatMentionMaxIdRef.current = Math.max(chatMentionMaxIdRef.current, ...fresh.map(m => m.id));
+          if (!chatOpen || tabHidden2) {
+            for (const m of fresh) {
+              pushToast({ title: `${m.author} mentioned you`, body: m.body || "", kind: "info" });
+              showBrowserNotification(`${m.author} mentioned you in chat`, m.body || "", { tag: `chat-mention:${m.author}` });
+            }
+          }
         }
       } catch {}
     };

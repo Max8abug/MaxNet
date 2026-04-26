@@ -8,10 +8,12 @@ import {
   photosTable,
   bannedUsersTable,
   chatAuditTable,
+  usersTable,
 } from "@workspace/db";
-import { desc, sql, eq } from "drizzle-orm";
+import { desc, sql, eq, inArray } from "drizzle-orm";
 import { requireAuth, requireAdmin, isAdminUsername } from "../lib/auth";
 import { getUserPermissions } from "./ranks";
+import { sendPushToUser } from "../lib/push";
 
 import type { RequestHandler } from "express";
 export const requireDeleteMessages: RequestHandler = async (req, res, next) => {
@@ -163,6 +165,34 @@ router.post("/chat", requireAuth, async (req, res) => {
     .values({ body: trimmedBody, author, imageUrl: imageUrl || null, videoUrl: videoUrl || null, replyTo: replyToId })
     .returning();
   await audit("chat", "post", author, "", trimmedBody + (imageUrl ? " [image]" : "") + (videoUrl ? " [video]" : ""));
+
+  // @-mention notifications: pull every @name from the body, map to real users
+  // (case-insensitively), and push to anyone other than the author. Best-effort
+  // — if the lookup or push fails we still return the saved message.
+  try {
+    const candidates = Array.from(new Set(
+      Array.from(trimmedBody.matchAll(/@([A-Za-z0-9_]{2,32})/g)).map((m) => m[1]!.toLowerCase())
+    ));
+    if (candidates.length > 0) {
+      const allUsers = await db
+        .select({ username: usersTable.username })
+        .from(usersTable)
+        .where(inArray(sql`lower(${usersTable.username})`, candidates));
+      const targets = allUsers
+        .map((u) => u.username)
+        .filter((u) => u.toLowerCase() !== author.toLowerCase());
+      const preview = trimmedBody.slice(0, 140);
+      for (const t of targets) {
+        void sendPushToUser(t, {
+          title: `${author} mentioned you in chat`,
+          body: preview,
+          tag: `chat-mention:${author}`,
+          url: "/",
+        }).catch(() => {});
+      }
+    }
+  } catch { /* mention dispatch is best-effort */ }
+
   res.json(row);
 });
 
