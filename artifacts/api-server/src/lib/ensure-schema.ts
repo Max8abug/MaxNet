@@ -44,6 +44,19 @@ export async function ensureSchema(): Promise<void> {
     ALTER TABLE users ADD COLUMN IF NOT EXISTS background_color text;
     ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar_url text;
     ALTER TABLE users ADD COLUMN IF NOT EXISTS last_seen timestamp NOT NULL DEFAULT now();
+    ALTER TABLE site_settings ADD COLUMN IF NOT EXISTS vapid_public_key text NOT NULL DEFAULT '';
+    ALTER TABLE site_settings ADD COLUMN IF NOT EXISTS vapid_private_key text NOT NULL DEFAULT '';
+
+    CREATE TABLE IF NOT EXISTS push_subscriptions (
+      id serial PRIMARY KEY,
+      username text NOT NULL,
+      endpoint text NOT NULL UNIQUE,
+      p256dh text NOT NULL,
+      auth text NOT NULL,
+      user_agent text NOT NULL DEFAULT '',
+      created_at timestamp NOT NULL DEFAULT now()
+    );
+    CREATE INDEX IF NOT EXISTS push_subscriptions_username_idx ON push_subscriptions (username);
 
     CREATE TABLE IF NOT EXISTS drawings (
       id serial PRIMARY KEY,

@@ -1,10 +1,18 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useDesktopStore } from '../store';
 import { useLocation } from 'wouter';
 import { useAuth, userColor } from '../lib/auth-store';
 import { LoginDialog } from './LoginDialog';
 import { ProfileDialog } from './ProfileDialog';
+import { Toaster } from './Toaster';
 import { fetchDMConversations, fetchChat, fetchCafeState } from '../lib/api';
+import {
+  enablePushNotifications,
+  registerServiceWorker,
+  pushToast,
+  showBrowserNotification,
+  notificationPermission,
+} from '../lib/notifications';
 
 export function Taskbar({ page }: { page: string }) {
   const { addWindow, isStringMode, setStringMode, resetState, windows, toggleWindowState, bringToFront } = useDesktopStore();
@@ -42,8 +50,15 @@ export function Taskbar({ page }: { page: string }) {
     const t = setInterval(tick, 8000);
     return () => { alive = false; clearInterval(t); };
   }, []);
+  // Per-conversation timestamp of the last message we've already alerted on.
+  // Lives in a ref so updates between polls don't trigger re-renders, and so
+  // the Taskbar doesn't spam toasts for messages it has already shown.
+  const dmAlertedRef = useRef<Record<string, string>>({});
+  // Skip the very first poll after mount — otherwise every existing unread
+  // would be replayed as a notification on every page load.
+  const dmFirstLoadRef = useRef(true);
   useEffect(() => {
-    if (!user) { setDmUnread(0); setChatUnread(0); return; }
+    if (!user) { setDmUnread(0); setChatUnread(0); dmAlertedRef.current = {}; dmFirstLoadRef.current = true; return; }
     let alive = true;
     const tick = async () => {
       try {
@@ -51,6 +66,30 @@ export function Taskbar({ page }: { page: string }) {
         if (!alive) return;
         const total = conv.reduce((s, c) => s + (c.unread || 0), 0);
         setDmUnread(dmsOpen ? 0 : total);
+
+        // Alert on conversations whose newest message is newer than what
+        // we've already announced. We only fire when the DM window isn't
+        // open and focused (no point notifying about a window the user is
+        // staring at), and only for incoming messages with unread > 0.
+        const tabHidden = typeof document !== "undefined" && document.visibilityState === "hidden";
+        if (dmFirstLoadRef.current) {
+          for (const c of conv) dmAlertedRef.current[c.partner] = c.lastAt || "";
+          dmFirstLoadRef.current = false;
+        } else {
+          for (const c of conv) {
+            const prev = dmAlertedRef.current[c.partner] || "";
+            if ((c.unread || 0) > 0 && c.lastAt && c.lastAt > prev) {
+              dmAlertedRef.current[c.partner] = c.lastAt;
+              if (!dmsOpen || tabHidden) {
+                pushToast({ title: `${c.partner} sent you a message`, body: c.lastBody || "", kind: "dm" });
+                showBrowserNotification(`New message from ${c.partner}`, c.lastBody || "", { tag: `dm:${c.partner}` });
+              }
+            } else if (!prev && c.lastAt) {
+              // First time we've seen this conversation — record the timestamp without alerting.
+              dmAlertedRef.current[c.partner] = c.lastAt;
+            }
+          }
+        }
       } catch {}
       try {
         const ch = await fetchChat();
@@ -70,6 +109,46 @@ export function Taskbar({ page }: { page: string }) {
     const t = setInterval(tick, 5000);
     return () => { alive = false; clearInterval(t); };
   }, [user, dmsOpen, chatOpen]);
+
+  // Service-worker registration + listening for the SW's "open DMs" message
+  // (sent when a user clicks a system push notification while the tab is
+  // already open). Only attempted once per session.
+  useEffect(() => {
+    if (!user) return;
+    void registerServiceWorker();
+    if (!("serviceWorker" in navigator)) return;
+    const handler = (ev: MessageEvent) => {
+      if (ev.data?.type === "open-dms") {
+        const existing = wins.find(w => w.type === 'dms');
+        if (existing) {
+          if ((existing.state || 'normal') === 'min') toggleWindowState(page, existing.id, 'min');
+          bringToFront(page, existing.id);
+        } else {
+          addWindow(page, { type: 'dms', title: 'Direct Messages', width: 460, height: 380 });
+        }
+      }
+    };
+    navigator.serviceWorker.addEventListener("message", handler);
+    return () => { navigator.serviceWorker.removeEventListener("message", handler); };
+  }, [user, page, wins, addWindow, toggleWindowState, bringToFront]);
+
+  async function turnOnNotifications() {
+    setStartOpen(false);
+    const r = await enablePushNotifications();
+    if (r.ok) {
+      pushToast({
+        title: "Notifications enabled",
+        body: r.reason || "You'll be alerted when someone messages you, even with the site closed.",
+      });
+    } else {
+      const cur = notificationPermission();
+      if (cur === "denied") {
+        alert("Notifications are blocked for this site. Re-enable them in your browser's site settings, then try again.");
+      } else {
+        alert(r.reason || "Could not enable notifications.");
+      }
+    }
+  }
 
   const open = (data: any) => { addWindow(page, data); setStartOpen(false); };
   const items: { label: string; act: () => void }[] = [
@@ -93,6 +172,7 @@ export function Taskbar({ page }: { page: string }) {
     { label: "Add Text Note", act: () => open({ type: 'text', title: 'Notes', content: 'Write something here...', width: 300, height: 200 }) },
     { label: "Add Link Shortcut", act: () => open({ type: 'link', title: 'Shortcut', linkLabel: 'Go to About', linkTarget: '/about', width: 200, height: 150 }) },
   ];
+  if (user) items.push({ label: "🔔 Enable Notifications", act: () => void turnOnNotifications() });
   if (user?.isAdmin) items.push({ label: "★ Manage Ranks", act: () => open({ type: 'ranksadmin', title: 'Ranks Admin', width: 480, height: 500 }) });
   if (user?.isAdmin) items.push({ label: "★ Site Settings", act: () => open({ type: 'sitesettings', title: 'Site Settings', width: 420, height: 400 }) });
   if (user?.isAdmin) items.push({ label: "★ Site Backup / Restore", act: () => open({ type: 'sitebackup', title: 'Site Backup', width: 480, height: 420 }) });
@@ -247,6 +327,7 @@ export function Taskbar({ page }: { page: string }) {
 
       {loginOpen && <LoginDialog onClose={() => setLoginOpen(false)} />}
       {profileOpen && <ProfileDialog onClose={() => setProfileOpen(false)} />}
+      <Toaster onClick={openDms} />
     </div>
   );
 }

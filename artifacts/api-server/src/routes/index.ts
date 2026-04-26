@@ -17,6 +17,7 @@ import siteSettingsRouter from "./site-settings";
 import ipAdminRouter from "./ip-admin";
 import newsRouter from "./news";
 import adminBackupRouter from "./admin-backup";
+import pushRouter from "./push";
 import cafeRoomsRouter from "./cafe-rooms";
 import cafeObjectsRouter from "./cafe-objects";
 import diagnosticsRouter from "./diagnostics";
@@ -44,5 +45,6 @@ router.use(cafeRoomsRouter);
 router.use(cafeObjectsRouter);
 router.use(diagnosticsRouter);
 router.use(adminBackupRouter);
+router.use(pushRouter);
 
 export default router;

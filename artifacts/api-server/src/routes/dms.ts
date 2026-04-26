@@ -4,6 +4,7 @@ import { and, eq, or, desc, isNull, sql } from "drizzle-orm";
 import { requireAuth, isAdminUsername } from "../lib/auth";
 import { isBanned, audit } from "./social";
 import { getUserPermissions } from "./ranks";
+import { sendPushToUser } from "../lib/push";
 
 const router: IRouter = Router();
 
@@ -46,8 +47,17 @@ router.post("/dms/:other", requireAuth, async (req, res) => {
   if (typeof body !== "string" || !body.trim()) { res.status(400).json({ error: "body required" }); return; }
   if (await isBanned(me)) { res.status(403).json({ error: "You are banned." }); return; }
   if (!(await canReceiveDMs(other))) { res.status(403).json({ error: "User does not accept DMs" }); return; }
-  const [row] = await db.insert(dmsTable).values({ fromUser: me, toUser: other, body: body.trim().slice(0, 1000) }).returning();
-  await audit("dm", "send", me, other, body.trim().slice(0, 200));
+  const trimmed = body.trim().slice(0, 1000);
+  const [row] = await db.insert(dmsTable).values({ fromUser: me, toUser: other, body: trimmed }).returning();
+  await audit("dm", "send", me, other, trimmed.slice(0, 200));
+  // Fire a browser push to the recipient so they're alerted even if the
+  // site tab is closed. Best-effort — failures here never block the send.
+  void sendPushToUser(other, {
+    title: `New message from ${me}`,
+    body: trimmed.slice(0, 140),
+    tag: `dm:${me}`,
+    url: "/",
+  }).catch(() => {});
   res.json(row);
 });
 

@@ -214,11 +214,29 @@ export const newsPostsTable = pgTable("news_posts", {
 });
 
 // Site-wide settings (singleton row, id=1) — owner-configurable branding such as the start-menu logo.
+// vapidPublicKey/vapidPrivateKey are auto-generated on first server startup and persisted here so
+// browser push subscriptions remain valid across restarts.
 export const siteSettingsTable = pgTable("site_settings", {
   id: serial("id").primaryKey(),
   logoDataUrl: text("logo_data_url").notNull().default(""),
   siteName: text("site_name").notNull().default("Portfolio 98"),
+  vapidPublicKey: text("vapid_public_key").notNull().default(""),
+  vapidPrivateKey: text("vapid_private_key").notNull().default(""),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+// Web Push subscriptions — one row per (user, browser/device). Used to send
+// browser-level notifications (via the Push API + Service Worker) when the
+// user has the site closed but the browser is still running. The endpoint
+// uniquely identifies the subscription on the push service.
+export const pushSubscriptionsTable = pgTable("push_subscriptions", {
+  id: serial("id").primaryKey(),
+  username: text("username").notNull(),
+  endpoint: text("endpoint").notNull().unique(),
+  p256dh: text("p256dh").notNull(),
+  auth: text("auth").notNull(),
+  userAgent: text("user_agent").notNull().default(""),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
 // Generalized moderation audit log across chat, guestbook, drawings, forum
