@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { fetchDMContacts, fetchDMConversations, fetchDMs, sendDM, type DMContact, type DMConversation, type DMMessage } from "../lib/api";
+import { fetchDMContacts, fetchDMConversations, fetchDMs, markDMsRead, sendDM, type DMContact, type DMConversation, type DMMessage } from "../lib/api";
 import { useAuth, hasPermission } from "../lib/auth-store";
 import { Avatar } from "./Avatar";
 
@@ -44,13 +44,18 @@ export function DMs({ initialPeer }: { initialPeer?: string } = {}) {
     return () => clearInterval(t);
   }, []);
 
-  // Active thread polling (faster cadence so chats feel live).
+  // Active thread polling (faster cadence so chats feel live). Whenever we
+  // pull new messages for the open thread we also tell the server we've seen
+  // them, so unread badges and the taskbar dot drain immediately instead of
+  // accumulating across sessions.
   useEffect(() => {
     if (!other) return;
     const tick = async () => {
-      try { setMsgs(await fetchDMs(other)); }
-      catch {}
-      // Opening a conversation should clear its unread count in the inbox.
+      try {
+        const m = await fetchDMs(other);
+        setMsgs(m);
+        await markDMsRead(other);
+      } catch {}
       void loadConversations();
     };
     void tick();

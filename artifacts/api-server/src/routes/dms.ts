@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { db, dmsTable, usersTable } from "@workspace/db";
-import { and, eq, or, desc } from "drizzle-orm";
+import { and, eq, or, desc, isNull, sql } from "drizzle-orm";
 import { requireAuth, isAdminUsername } from "../lib/auth";
 import { isBanned, audit } from "./social";
 import { getUserPermissions } from "./ranks";
@@ -49,6 +49,23 @@ router.post("/dms/:other", requireAuth, async (req, res) => {
   const [row] = await db.insert(dmsTable).values({ fromUser: me, toUser: other, body: body.trim().slice(0, 1000) }).returning();
   await audit("dm", "send", me, other, body.trim().slice(0, 200));
   res.json(row);
+});
+
+// Mark every incoming DM from `other` as read. Called by the client whenever
+// it opens or polls a conversation that is currently visible — that way the
+// inbox unread badge and the taskbar notification dot clear immediately
+// instead of piling up forever.
+router.post("/dms/:other/read", requireAuth, async (req, res) => {
+  const me = req.session.username!;
+  const other = String(req.params.other);
+  await db.update(dmsTable)
+    .set({ readAt: sql`NOW()` })
+    .where(and(
+      eq(dmsTable.toUser, me),
+      eq(dmsTable.fromUser, other),
+      isNull(dmsTable.readAt),
+    ));
+  res.json({ ok: true });
 });
 
 router.get("/dms", requireAuth, async (req, res) => {

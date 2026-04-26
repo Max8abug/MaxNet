@@ -418,6 +418,9 @@ export interface DMConversation { partner: string; lastBody: string; lastAt: str
 export async function fetchDMContacts(): Promise<DMContact[]> { return jsonOrThrow(await fetch(`${BASE}/dms/contacts`, opts)); }
 export async function fetchDMConversations(): Promise<DMConversation[]> { return jsonOrThrow(await fetch(`${BASE}/dms`, opts)); }
 export async function fetchDMs(other: string): Promise<DMMessage[]> { return jsonOrThrow(await fetch(`${BASE}/dms/${encodeURIComponent(other)}`, opts)); }
+export async function markDMsRead(other: string): Promise<void> {
+  await fetch(`${BASE}/dms/${encodeURIComponent(other)}/read`, { ...opts, method: "POST" });
+}
 export async function sendDM(other: string, body: string): Promise<DMMessage> {
   return jsonOrThrow(await fetch(`${BASE}/dms/${encodeURIComponent(other)}`, { ...opts, method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ body }) }));
 }
