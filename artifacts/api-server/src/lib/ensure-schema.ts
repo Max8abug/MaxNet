@@ -44,8 +44,11 @@ export async function ensureSchema(): Promise<void> {
     ALTER TABLE users ADD COLUMN IF NOT EXISTS background_color text;
     ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar_url text;
     ALTER TABLE users ADD COLUMN IF NOT EXISTS last_seen timestamp NOT NULL DEFAULT now();
-    ALTER TABLE site_settings ADD COLUMN IF NOT EXISTS vapid_public_key text NOT NULL DEFAULT '';
-    ALTER TABLE site_settings ADD COLUMN IF NOT EXISTS vapid_private_key text NOT NULL DEFAULT '';
+    -- NOTE: VAPID columns for site_settings are added further below, AFTER
+    -- the CREATE TABLE IF NOT EXISTS site_settings statement. Adding them
+    -- here would crash with relation site_settings does not exist on a
+    -- fresh DB because this bootstrap runs as a single transaction and the
+    -- table does not exist at this point.
 
     CREATE TABLE IF NOT EXISTS push_subscriptions (
       id serial PRIMARY KEY,
@@ -259,6 +262,8 @@ export async function ensureSchema(): Promise<void> {
     );
     ALTER TABLE site_settings ADD COLUMN IF NOT EXISTS site_name text NOT NULL DEFAULT 'Portfolio 98';
     ALTER TABLE site_settings ADD COLUMN IF NOT EXISTS updated_at timestamp NOT NULL DEFAULT now();
+    ALTER TABLE site_settings ADD COLUMN IF NOT EXISTS vapid_public_key text NOT NULL DEFAULT '';
+    ALTER TABLE site_settings ADD COLUMN IF NOT EXISTS vapid_private_key text NOT NULL DEFAULT '';
 
     CREATE TABLE IF NOT EXISTS chat_audit_log (
       id serial PRIMARY KEY,

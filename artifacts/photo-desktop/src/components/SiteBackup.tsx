@@ -10,13 +10,22 @@ export function SiteBackup() {
   const [err, setErr] = useState<string | null>(null);
   const [summary, setSummary] = useState<{ tableCount: number; rowCount: number; exportedAt?: string } | null>(null);
   const [pendingPayload, setPendingPayload] = useState<any>(null);
+  // Detail blocks shown after an import attempt — separate from `msg`/`err`
+  // so a partially-successful restore can show both the success summary and
+  // the per-table problems that were skipped.
+  const [importReport, setImportReport] = useState<{
+    healWarning?: string | null;
+    skipped?: { table: string; error: string }[];
+    tableRowCounts?: Record<string, number>;
+    stage?: string;
+  } | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
   if (!me?.isAdmin) {
     return <div className="p-3 text-sm text-red-700">Only the site owner can use the backup tool.</div>;
   }
 
-  function clearMessages() { setMsg(null); setErr(null); }
+  function clearMessages() { setMsg(null); setErr(null); setImportReport(null); }
 
   async function exportNow() {
     clearMessages();
@@ -71,8 +80,23 @@ export function SiteBackup() {
         body: JSON.stringify({ confirm: true, data: pendingPayload }),
       });
       const j = await r.json();
-      if (!r.ok) throw new Error(j?.error || `Import failed: ${r.status}`);
+      if (!r.ok) {
+        // Surface the per-stage detail the new server returns so the user
+        // can see *what* failed (e.g. TRUNCATE vs INSERT into users) and
+        // whether ensureSchema warned about anything beforehand.
+        setImportReport({
+          healWarning: j?.healWarning,
+          skipped: j?.errors,
+          stage: j?.stage,
+        });
+        throw new Error(j?.error || `Import failed: ${r.status}`);
+      }
       setMsg(`Restore complete. Imported ${j.totalRows} rows across ${j.imported.length} tables. The site may need a refresh to show the new data.`);
+      setImportReport({
+        healWarning: j?.healWarning,
+        skipped: j?.skipped,
+        tableRowCounts: j?.tableRowCounts,
+      });
       setPendingPayload(null); setSummary(null);
     } catch (e: any) {
       setErr(e?.message || "Failed to import");
@@ -127,6 +151,32 @@ export function SiteBackup() {
 
       {err && <div className="text-red-700 text-xs win98-inset bg-white p-2">{err}</div>}
       {msg && <div className="text-green-700 text-xs win98-inset bg-white p-2">{msg}</div>}
+
+      {importReport && (importReport.healWarning || (importReport.skipped && importReport.skipped.length > 0) || importReport.stage) && (
+        <div className="win98-inset bg-white p-2 text-[11px] flex flex-col gap-1">
+          <div className="font-bold">Import details</div>
+          {importReport.stage && (
+            <div><span className="text-gray-700">stopped at stage:</span> <span className="font-mono">{importReport.stage}</span></div>
+          )}
+          {importReport.healWarning && (
+            <div className="text-yellow-800">
+              <span className="font-bold">Schema heal warning:</span> {importReport.healWarning}
+            </div>
+          )}
+          {importReport.skipped && importReport.skipped.length > 0 && (
+            <div>
+              <div className="font-bold text-red-800">Skipped / failed tables</div>
+              <ul className="pl-3 list-disc">
+                {importReport.skipped.map((s) => (
+                  <li key={s.table}>
+                    <span className="font-mono">{s.table}</span>: <span className="text-red-700">{s.error}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }

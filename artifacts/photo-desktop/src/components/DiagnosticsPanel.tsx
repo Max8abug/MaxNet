@@ -12,8 +12,9 @@ import {
   type DiagnosticsSchemaDrift,
 } from "../lib/api";
 import { useAuth } from "../lib/auth-store";
+import { SiteBackup } from "./SiteBackup";
 
-type Tab = "errors" | "health" | "drawing" | "schema";
+type Tab = "errors" | "health" | "drawing" | "schema" | "backup";
 
 export function DiagnosticsPanel() {
   const user = useAuth((s) => s.user);
@@ -165,6 +166,13 @@ export function DiagnosticsPanel() {
           Schema Drift
           {schema && schema.driftedTables > 0 && ` (${schema.driftedTables})`}
         </button>
+        <button
+          className={`px-3 py-1 border border-b-0 ${tab === "backup" ? "bg-white border-gray-500 font-bold" : "bg-gray-300 border-gray-400"}`}
+          onClick={() => setTab("backup")}
+          title="Export the entire site database to a file, or restore from one. The restore step heals the schema first to survive missing-column drift."
+        >
+          Backup / Restore
+        </button>
       </div>
 
       {tab === "errors" && (
@@ -257,6 +265,17 @@ export function DiagnosticsPanel() {
           healLoading={healLoading}
           healMsg={healMsg}
         />
+      )}
+
+      {tab === "backup" && (
+        // Reuse the existing SiteBackup component as-is. It now talks to the
+        // hardened import endpoint that runs ensureSchema first and reports
+        // per-table failures, so showing it inside the diagnostics window
+        // gives operators a single place to: see the drift, heal it, then
+        // restore — without juggling two windows.
+        <div className="flex-1 overflow-auto bg-[#ece9d8]">
+          <SiteBackup />
+        </div>
       )}
     </div>
   );
