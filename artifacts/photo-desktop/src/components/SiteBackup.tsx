@@ -110,7 +110,7 @@ export function SiteBackup() {
       }
       const tableCount = Object.keys(tables).length;
       const rowCount = Object.values(tables).reduce((s: number, rows: any) => s + (Array.isArray(rows) ? rows.length : 0), 0);
-      setSummary({ tableCount, rowCount, exportedAt: parsed.exportedAt });
+      setSummary({ tableCount, rowCount, exportedAt: (parsed as any).exportedAt });
       setPendingPayload(parsed);
     } catch (e: any) {
       setErr(e?.message || "Could not read backup file");
