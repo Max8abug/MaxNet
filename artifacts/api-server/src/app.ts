@@ -1,5 +1,7 @@
 import express, { type Express, type ErrorRequestHandler } from "express";
 import cors from "cors";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import pinoHttp from "pino-http";
 import router from "./routes";
 import { logger } from "./lib/logger";
@@ -45,6 +47,21 @@ app.use(sessionMiddleware);
 app.use(trackPresence);
 
 app.use("/api", router);
+
+// Self-host mode: serve the built Vite frontend as a SPA from the same process.
+// Activated by SERVE_STATIC=1. The frontend build dir is expected at
+// <repo_root>/artifacts/photo-desktop/dist/public (produced by `pnpm run build`).
+if (process.env["SERVE_STATIC"] === "1") {
+  const __dirname = path.dirname(fileURLToPath(import.meta.url));
+  // When running the production bundle the cwd is the repo root; when running
+  // from dist/, __dirname is dist/ so we walk up two levels to the repo root.
+  const repoRoot = path.resolve(__dirname, "../../..");
+  const staticDir = path.resolve(repoRoot, "artifacts/photo-desktop/dist/public");
+  app.use(express.static(staticDir));
+  app.get("*", (_req, res) => {
+    res.sendFile(path.join(staticDir, "index.html"));
+  });
+}
 
 // Centralised error handler. Without this Express returns a bare HTML 500 with
 // no logging, so a single uncaught DB error in production looks identical to a
