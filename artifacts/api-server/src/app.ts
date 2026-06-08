@@ -58,7 +58,7 @@ if (process.env["SERVE_STATIC"] === "1") {
   const repoRoot = path.resolve(__dirname, "../../..");
   const staticDir = path.resolve(repoRoot, "artifacts/photo-desktop/dist/public");
   app.use(express.static(staticDir));
-  app.get("*", (_req, res) => {
+  app.get("*splat", (_req, res) => {
     res.sendFile(path.join(staticDir, "index.html"));
   });
 }
