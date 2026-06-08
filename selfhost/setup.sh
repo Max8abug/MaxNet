@@ -87,6 +87,9 @@ SESSION_SECRET=${SESSION_SECRET}
 PORT=3000
 SERVE_STATIC=1
 NODE_ENV=production
+# Set to "true" ONLY when serving over HTTPS (nginx + Certbot).
+# Leave false for plain HTTP — a Secure cookie over HTTP silently breaks login.
+COOKIE_SECURE=false
 ENVEOF
   echo "  ✓ Wrote $ENV_FILE"
 else

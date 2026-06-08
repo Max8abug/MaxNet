@@ -21,7 +21,13 @@ const databaseUrl = process.env["DATABASE_URL"];
 if (!databaseUrl) throw new Error("DATABASE_URL required");
 
 const secret = process.env["SESSION_SECRET"] || "dev-insecure-secret";
-const isProduction = process.env["NODE_ENV"] === "production";
+
+// COOKIE_SECURE must be set to "true" explicitly — only when the site is
+// served over HTTPS. Tying this to NODE_ENV was wrong: self-hosted setups
+// run NODE_ENV=production over plain HTTP, and a Secure cookie on HTTP is
+// silently dropped by every browser, making logins appear to succeed while
+// the session is never actually stored.
+const cookieSecure = process.env["COOKIE_SECURE"] === "true";
 
 export const sessionMiddleware: RequestHandler = session({
   store: new PgSession({
@@ -41,14 +47,12 @@ export const sessionMiddleware: RequestHandler = session({
   secret,
   resave: false,
   saveUninitialized: false,
-  // In production we serve over HTTPS behind a reverse proxy, so the cookie
-  // must be marked Secure or browsers will silently drop it on cross-site
-  // requests. In development we run plain HTTP on localhost, so Secure must
-  // be off or the browser refuses to store the cookie at all.
+  // Only set Secure=true when explicitly configured AND you're serving HTTPS.
+  // Plain HTTP + Secure=true = browser silently drops every session cookie.
   cookie: {
     httpOnly: true,
     sameSite: "lax",
-    secure: isProduction,
+    secure: cookieSecure,
     maxAge: 1000 * 60 * 60 * 24 * 30,
   },
 });
