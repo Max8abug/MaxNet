@@ -108,8 +108,7 @@ echo "  Building API server..."
 pnpm --filter @workspace/api-server run build 2>&1 | tail -5
 
 echo "  Building frontend..."
-# Frontend build needs BASE_PATH to be "/" for self-hosted single-origin mode
-BASE_PATH="/" pnpm --filter @workspace/photo-desktop run build 2>&1 | tail -5
+PORT=5000 BASE_PATH="/" pnpm --filter @workspace/photo-desktop run build 2>&1 | tail -5
 
 echo ""
 echo "============================================================"

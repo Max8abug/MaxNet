@@ -18,7 +18,7 @@ echo "Building API server..."
 pnpm --filter @workspace/api-server run build
 
 echo "Building frontend..."
-BASE_PATH="/" pnpm --filter @workspace/photo-desktop run build
+PORT=5000 BASE_PATH="/" pnpm --filter @workspace/photo-desktop run build
 
 echo "Starting services..."
 "$REPO_DIR/selfhost/start.sh"

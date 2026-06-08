@@ -74,7 +74,7 @@ log "Building API server..."
 pnpm --filter @workspace/api-server run build 2>&1 | tee -a "$LOG_DIR/update.log"
 
 log "Building frontend..."
-BASE_PATH="/" pnpm --filter @workspace/photo-desktop run build 2>&1 | tee -a "$LOG_DIR/update.log"
+PORT=5000 BASE_PATH="/" pnpm --filter @workspace/photo-desktop run build 2>&1 | tee -a "$LOG_DIR/update.log"
 
 # ── 7. Restart ───────────────────────────────────────────────
 log "Starting services..."
