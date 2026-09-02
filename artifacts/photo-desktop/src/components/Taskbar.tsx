@@ -14,6 +14,7 @@ import {
   showBrowserNotification,
   notificationPermission,
 } from '../lib/notifications';
+import { formatLocalTime } from '../lib/dates';
 
 export function Taskbar({ page }: { page: string }) {
   const { addWindow, isStringMode, setStringMode, resetState, windows, toggleWindowState, bringToFront } = useDesktopStore();
@@ -363,7 +364,7 @@ export function Taskbar({ page }: { page: string }) {
       )}
 
       <div className="win98-inset h-8 px-3 flex items-center text-xs">
-        {new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+        {formatLocalTime(new Date())}
       </div>
 
       {loginOpen && <LoginDialog onClose={() => setLoginOpen(false)} />}

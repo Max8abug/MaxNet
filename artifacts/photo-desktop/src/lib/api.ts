@@ -235,6 +235,25 @@ export async function deleteChatMessage(id: number): Promise<void> {
   await jsonOrThrow(await fetch(`${BASE}/chat/${id}`, { ...opts, method: "DELETE" }));
 }
 
+export async function downloadChatArchive(): Promise<{ blob: Blob; filename: string }> {
+  const response = await fetch(`${BASE}/chat/export`, opts);
+  if (!response.ok) {
+    let message = `HTTP ${response.status}`;
+    try {
+      const payload = await response.json();
+      if (payload?.error) message = payload.error;
+    } catch {}
+    throw new Error(message);
+  }
+
+  const disposition = response.headers.get("content-disposition") || "";
+  const match = disposition.match(/filename="([^"]+)"/i);
+  return {
+    blob: await response.blob(),
+    filename: match?.[1] || `chat-archive-${new Date().toISOString().slice(0, 10)}.zip`,
+  };
+}
+
 export interface ChatAuditEntry {
   id: number;
   action: string;
