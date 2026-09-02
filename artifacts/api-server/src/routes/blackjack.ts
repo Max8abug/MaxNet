@@ -242,11 +242,11 @@ router.post("/blackjack/reset", requireAuth, async (req, res) => {
     res.status(403).json({ error: "Log in to clear the table." });
     return;
   }
-  // Reset hands and phase but keep players seated so the next round can start.
-  const players = state.players;
+  // This is intentionally a full table clear, not just a round reset.
+  // Keeping player records here leaves disconnected clients as ghost seats and
+  // can make the shared table impossible to recover from.
   Object.assign(state, emptyState());
-  state.players = players.map((p) => ({ ...p, hand: [], status: "playing" as const }));
-  state.log.push(`Table was reset by ${me}.`);
+  state.log.push(`Table was cleared by ${me}; all players were kicked.`);
   await saveState(id, state);
   res.json(publicState(state));
 });

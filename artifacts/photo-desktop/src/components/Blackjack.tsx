@@ -59,7 +59,9 @@ export function Blackjack({ onRequestLogin }: Props) {
   const stuckSeconds = Math.floor(turnElapsed / 1000);
   // A logged-in player can always use the emergency clear action. The old
   // 60-second gate could never be reached when a stale table had no timer.
-  const canResetNow = !!user && !!s && (isMod || s.phase === "playing" || s.phase === "dealer" || s.phase === "done");
+  // A waiting table can still be bricked by stale seated players, so the
+  // emergency clear must remain available whenever anyone is seated.
+  const canResetNow = !!user && !!s && (isMod || s.players.length > 0 || s.phase !== "waiting");
 
   return (
     <div className="w-full h-full flex flex-col text-sm bg-[#0a5d2c] text-white p-2 gap-2">
@@ -127,8 +129,8 @@ export function Blackjack({ onRequestLogin }: Props) {
           <button className="win98-button text-black px-3 py-1 text-xs" disabled={busy} onClick={() => call(bjSkip)} title="Skip the current AFK player (auto-stand)">Skip Player</button>
         )}
         {canResetNow && (
-          <button className="win98-button text-black px-3 py-1 text-xs ml-auto" disabled={busy} onClick={() => { if (confirm("Clear the table? This ends the current round and keeps players seated.")) void call(bjReset); }} title={isMod ? "Clear the table (mod)" : "Clear the current round"}>
-            Clear / Reset
+          <button className="win98-button text-black px-3 py-1 text-xs ml-auto" disabled={busy} onClick={() => { if (confirm("Clear the table and kick every seated player? This ends the current round and removes all seats.")) void call(bjReset); }} title="Clear the table and kick all seated players">
+            Clear Table
           </button>
         )}
       </div>
