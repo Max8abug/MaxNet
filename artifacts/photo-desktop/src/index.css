@@ -188,6 +188,12 @@
   box-shadow: inset 1px 1px #8b96a3, inset -1px -1px #10151b, 1px 1px 0 0 #05070a;
 }
 
+.dark .win98-titlebar,
+.dark .win98-titlebar.inactive {
+  background: linear-gradient(90deg, #351044 0%, #6d185f 52%, #b52a78 100%);
+  color: #fff;
+}
+
 .dark .win98-button {
   background-color: hsl(var(--card));
   border-top-color: #8b96a3;

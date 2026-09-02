@@ -1,5 +1,6 @@
 import { useRef, useState } from "react";
 import { useAuth } from "../lib/auth-store";
+import { formatLocalDate } from "../lib/dates";
 
 const BASE = "/api";
 
@@ -319,7 +320,7 @@ export function SiteBackup() {
         {summary && (
           <div className="mt-2 text-[11px] text-gray-800 win98-inset bg-white p-1">
             Loaded backup with <b>{summary.tableCount}</b> tables and <b>{summary.rowCount}</b> total rows
-            {summary.exportedAt ? <> (exported {new Date(summary.exportedAt).toLocaleString()})</> : null}.
+            {summary.exportedAt ? <> (exported {formatLocalDate(summary.exportedAt)})</> : null}.
             Click <b>Restore</b> to apply, or pick a different file.
           </div>
         )}

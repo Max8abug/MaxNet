@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { type ChatAuditEntry } from "../lib/api";
+import { formatLocalDate } from "../lib/dates";
 
 const BASE = "/api";
 
@@ -35,7 +36,7 @@ export function ModAuditPanel({ area }: { area: string }) {
       {entries.length === 0 ? <div className="text-gray-500">No activity.</div> :
         entries.map((e) => (
           <div key={e.id} className="border-b border-dashed border-gray-300 py-0.5 break-words">
-            <span className="text-gray-500">{new Date(e.createdAt).toLocaleString()}</span>{" "}
+            <span className="text-gray-500">{formatLocalDate(e.createdAt)}</span>{" "}
             <span className={tagColor(e.action)}>[{e.action}]</span>{" "}
             <span className="font-bold">{e.actor}</span>
             {e.target && <> → <span className="font-bold">{e.target}</span></>}

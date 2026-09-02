@@ -4,6 +4,7 @@ import { useLocation } from 'wouter';
 import { useAuth, userColor } from '../lib/auth-store';
 import { LoginDialog } from './LoginDialog';
 import { ProfileDialog } from './ProfileDialog';
+import { useThemeMode } from '../lib/theme';
 import { Toaster } from './Toaster';
 import { fetchDMConversations, fetchChat, fetchCafeState } from '../lib/api';
 import {
@@ -21,6 +22,7 @@ export function Taskbar({ page }: { page: string }) {
   const [profileOpen, setProfileOpen] = useState(false);
   const [, setLocation] = useLocation();
   const { user, ranks, refresh, refreshRanks, logout, siteSettings, refreshSiteSettings } = useAuth();
+  const { darkMode } = useThemeMode();
   const wins = windows[page] || [];
   const [dmUnread, setDmUnread] = useState(0);
   const [chatUnread, setChatUnread] = useState(0);
@@ -160,6 +162,14 @@ export function Taskbar({ page }: { page: string }) {
     return () => { navigator.serviceWorker.removeEventListener("message", handler); };
   }, [user, page, wins, addWindow, toggleWindowState, bringToFront]);
 
+  // If a visitor allowed browser notifications before logging in, link the
+  // existing browser subscription to their account as soon as authentication
+  // becomes available. No permission prompt is triggered here.
+  useEffect(() => {
+    if (!user || notificationPermission() !== "granted") return;
+    void enablePushNotifications();
+  }, [user]);
+
   async function turnOnNotifications() {
     setStartOpen(false);
     const r = await enablePushNotifications();
@@ -208,6 +218,9 @@ export function Taskbar({ page }: { page: string }) {
 
   const colorStyle = user ? { color: userColor(user, ranks) || undefined } : {};
   const totalUnread = dmUnread + chatUnread;
+  const startMenuLogo = darkMode
+    ? (siteSettings.darkLogoDataUrl || siteSettings.logoDataUrl)
+    : siteSettings.logoDataUrl;
 
   function Badge({ count, tone = 'red' }: { count: number; tone?: 'red' | 'green' }) {
     if (!count) return null;
@@ -256,8 +269,8 @@ export function Taskbar({ page }: { page: string }) {
           className={`win98-button h-8 px-2 mr-2 flex items-center gap-2 font-bold ${startOpen ? 'border-t-black border-l-black border-r-white border-b-white shadow-[inset_1px_1px_#808080]' : ''}`}
           onClick={() => setStartOpen(!startOpen)}
         >
-          {siteSettings.logoDataUrl
-            ? <img src={siteSettings.logoDataUrl} alt="logo" className="w-5 h-5 object-contain" />
+          {startMenuLogo
+            ? <img src={startMenuLogo} alt="logo" className="w-5 h-5 object-contain" />
             : <div className="w-5 h-5 bg-gradient-to-br from-blue-600 to-green-500 shadow-inner" />}
           Start
           <Badge count={totalUnread} />

@@ -113,7 +113,7 @@ export async function submitDrawing(dataUrl: string, author: string): Promise<Dr
     body: JSON.stringify({ dataUrl, author }),
   }));
 }
-export interface SiteSettings { logoDataUrl: string; siteName: string; }
+export interface SiteSettings { logoDataUrl: string; darkLogoDataUrl: string; siteName: string; }
 export async function fetchSiteSettings(): Promise<SiteSettings> {
   return jsonOrThrow(await fetch(`${BASE}/site-settings`, opts));
 }

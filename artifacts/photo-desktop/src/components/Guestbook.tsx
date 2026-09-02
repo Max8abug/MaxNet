@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { fetchGuestbook, postGuestbook, deleteGuestbookEntry, type GuestbookEntry } from "../lib/api";
 import { useAuth, hasPermission } from "../lib/auth-store";
 import { ModAuditPanel } from "./ModAuditPanel";
+import { formatLocalDate } from "../lib/dates";
 
 type Tab = "view" | "audit";
 
@@ -57,7 +58,7 @@ export function Guestbook() {
                       &ldquo;{e.body}&rdquo;
                     </div>
                     <div className="text-[11px] text-gray-600 mt-0.5">
-                      — {e.author}, {new Date(e.createdAt).toLocaleDateString()}
+                      — {e.author}, {formatLocalDate(e.createdAt, { dateStyle: "short" })}
                     </div>
                     {canDelete && (
                       <button className="win98-button absolute top-0 right-0 px-1 text-[10px] opacity-0 group-hover:opacity-100" onClick={() => remove(e.id)}>x</button>

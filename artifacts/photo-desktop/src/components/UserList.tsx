@@ -3,6 +3,7 @@ import { fetchUsers, addBan, adminDeleteUser, clearUserPage, type PublicUser } f
 import { useAuth } from "../lib/auth-store";
 import { useDesktopStore } from "../store";
 import { Avatar } from "./Avatar";
+import { formatLocalDate, parseServerDate } from "../lib/dates";
 
 // "Online right now" window — must agree with the auth-side throttle
 // (PRESENCE_BUMP_MS = 30s) plus a generous grace period for the time between
@@ -11,10 +12,10 @@ const ONLINE_WINDOW_MS = 90_000;
 
 function presenceState(lastSeen: string | null | undefined): { online: boolean; label: string; tooltip: string } {
   if (!lastSeen) return { online: false, label: "never seen", tooltip: "This user has never been active." };
-  const t = new Date(lastSeen).getTime();
+  const t = parseServerDate(lastSeen).getTime();
   if (Number.isNaN(t)) return { online: false, label: "unknown", tooltip: "" };
   const ago = Date.now() - t;
-  const tooltip = `Last seen ${new Date(t).toLocaleString()}`;
+  const tooltip = `Last seen ${formatLocalDate(lastSeen)}`;
   if (ago < ONLINE_WINDOW_MS) return { online: true, label: "online now", tooltip };
   const mins = Math.floor(ago / 60_000);
   if (mins < 60) return { online: false, label: `${mins}m ago`, tooltip };
@@ -22,7 +23,7 @@ function presenceState(lastSeen: string | null | undefined): { online: boolean; 
   if (hrs < 24) return { online: false, label: `${hrs}h ago`, tooltip };
   const days = Math.floor(hrs / 24);
   if (days < 30) return { online: false, label: `${days}d ago`, tooltip };
-  return { online: false, label: new Date(t).toLocaleDateString(), tooltip };
+  return { online: false, label: formatLocalDate(lastSeen, { dateStyle: "short" }), tooltip };
 }
 
 export function UserList({ page }: { page: string }) {
@@ -50,7 +51,7 @@ export function UserList({ page }: { page: string }) {
 
   // Sort: online users first (by recency), then offline users by recency.
   const sorted = useMemo(() => {
-    const score = (u: PublicUser) => u.lastSeen ? new Date(u.lastSeen).getTime() : 0;
+    const score = (u: PublicUser) => u.lastSeen ? parseServerDate(u.lastSeen).getTime() : 0;
     return [...users].sort((a, b) => score(b) - score(a));
   }, [users]);
   const onlineCount = sorted.filter((u) => presenceState(u.lastSeen).online).length;

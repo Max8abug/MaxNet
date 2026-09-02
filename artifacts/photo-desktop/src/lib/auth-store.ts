@@ -19,7 +19,7 @@ export const useAuth = create<AuthState>((set, get) => ({
   user: null,
   loading: true,
   ranks: [],
-  siteSettings: { logoDataUrl: "", siteName: "Portfolio 98" },
+  siteSettings: { logoDataUrl: "", darkLogoDataUrl: "", siteName: "Portfolio 98" },
   refresh: async () => {
     try { const u = await getMe(); set({ user: u, loading: false }); }
     catch { set({ user: null, loading: false }); }

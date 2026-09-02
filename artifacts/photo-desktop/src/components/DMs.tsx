@@ -2,12 +2,14 @@ import { useEffect, useRef, useState } from "react";
 import { fetchDMContacts, fetchDMConversations, fetchDMs, markDMsRead, sendDM, type DMContact, type DMConversation, type DMMessage } from "../lib/api";
 import { useAuth, hasPermission } from "../lib/auth-store";
 import { Avatar } from "./Avatar";
+import { parseServerDate } from "../lib/dates";
 
 function fmtTime(iso: string): string {
   if (!iso) return "";
   try {
-    const d = new Date(iso);
+    const d = parseServerDate(iso);
     const now = new Date();
+    if (Number.isNaN(d.getTime())) return iso;
     const sameDay = d.toDateString() === now.toDateString();
     if (sameDay) return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
     const ms = now.getTime() - d.getTime();

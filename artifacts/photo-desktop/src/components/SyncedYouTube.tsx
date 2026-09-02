@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { fetchChat, getYouTubeSync, postChat, type ChatMessage, setYouTubeSync } from "../lib/api";
 import { useAuth } from "../lib/auth-store";
-import { formatLocalTime } from "../lib/dates";
+import { formatLocalTime, parseServerDate } from "../lib/dates";
 
 function parseYouTubeId(input: string): string | null {
   if (!input) return null;
@@ -39,7 +39,7 @@ export function SyncedYouTube({ onRequestLogin }: Props) {
   async function refresh() {
     try {
       const s = await getYouTubeSync();
-      const serverMs = new Date(s.serverNow).getTime();
+      const serverMs = parseServerDate(s.serverNow).getTime();
       offsetRef.current = serverMs - Date.now();
       setState((prev) => {
         if (prev && prev.videoId === s.videoId && prev.startedAt === s.startedAt && prev.setBy === s.setBy) return prev;
@@ -79,7 +79,7 @@ export function SyncedYouTube({ onRequestLogin }: Props) {
   // Compute initial elapsed once when videoId/startedAt changes; src is stable after that.
   const src = useMemo(() => {
     if (!state?.videoId) return null;
-    const startMs = new Date(state.startedAt).getTime();
+    const startMs = parseServerDate(state.startedAt).getTime();
     const elapsed = Math.max(0, Math.floor(((Date.now() + offsetRef.current) - startMs) / 1000));
     return `https://www.youtube.com/embed/${state.videoId}?autoplay=1&start=${elapsed}&rel=0`;
     // eslint-disable-next-line react-hooks/exhaustive-deps

@@ -1,10 +1,9 @@
 import { useEffect, useState } from "react";
 import { addIpBan, banAccountAndAllIps, fetchIpBans, fetchUserIps, removeIpBan, type IpBan, type UserIpReport } from "../lib/api";
 import { useAuth } from "../lib/auth-store";
+import { formatLocalDate } from "../lib/dates";
 
-function fmt(d: string) {
-  try { return new Date(d).toLocaleString(); } catch { return d; }
-}
+function fmt(d: string) { return formatLocalDate(d); }
 
 export function IpLookup({ username }: { username: string }) {
   const me = useAuth((s) => s.user);

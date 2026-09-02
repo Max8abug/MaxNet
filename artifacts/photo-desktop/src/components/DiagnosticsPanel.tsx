@@ -13,6 +13,7 @@ import {
 } from "../lib/api";
 import { useAuth } from "../lib/auth-store";
 import { SiteBackup } from "./SiteBackup";
+import { formatLocalDate } from "../lib/dates";
 
 type Tab = "errors" | "health" | "drawing" | "schema" | "backup";
 
@@ -132,10 +133,7 @@ export function DiagnosticsPanel() {
   }
 
   function fmtTime(iso: string): string {
-    try {
-      const d = new Date(iso);
-      return d.toLocaleString();
-    } catch { return iso; }
+    return formatLocalDate(iso);
   }
 
   return (
@@ -300,7 +298,7 @@ function HealthTab({
         </button>
         {health && (
           <span className="ml-2 text-[10px] text-gray-700">
-            ran at {new Date(health.ranAt).toLocaleString()} · {health.durationMs}ms
+            ran at {formatLocalDate(health.ranAt)} · {health.durationMs}ms
           </span>
         )}
         {health && (
@@ -432,7 +430,7 @@ function DrawingTestTab({
         </button>
         {result && (
           <span className="ml-2 text-[10px] text-gray-700">
-            ran at {new Date(result.ranAt).toLocaleString()} · as "{result.author}"
+            ran at {formatLocalDate(result.ranAt)} · as "{result.author}"
           </span>
         )}
         {result && (
@@ -534,7 +532,7 @@ function SchemaDriftTab({
         </button>
         {result && (
           <span className="ml-2 text-[10px] text-gray-700">
-            ran at {new Date(result.ranAt).toLocaleString()} · {result.durationMs}ms · {result.totalTables} tables
+            ran at {formatLocalDate(result.ranAt)} · {result.durationMs}ms · {result.totalTables} tables
           </span>
         )}
         {result && (

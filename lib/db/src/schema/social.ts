@@ -227,6 +227,7 @@ export const newsCommentsTable = pgTable("news_comments", {
 export const siteSettingsTable = pgTable("site_settings", {
   id: serial("id").primaryKey(),
   logoDataUrl: text("logo_data_url").notNull().default(""),
+  darkLogoDataUrl: text("dark_logo_data_url").notNull().default(""),
   siteName: text("site_name").notNull().default("Portfolio 98"),
   vapidPublicKey: text("vapid_public_key").notNull().default(""),
   vapidPrivateKey: text("vapid_private_key").notNull().default(""),

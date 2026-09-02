@@ -266,9 +266,11 @@ export async function ensureSchema(): Promise<void> {
     CREATE TABLE IF NOT EXISTS site_settings (
       id serial PRIMARY KEY,
       logo_data_url text NOT NULL DEFAULT '',
+      dark_logo_data_url text NOT NULL DEFAULT '',
       site_name text NOT NULL DEFAULT 'Portfolio 98',
       updated_at timestamp NOT NULL DEFAULT now()
     );
+    ALTER TABLE site_settings ADD COLUMN IF NOT EXISTS dark_logo_data_url text NOT NULL DEFAULT '';
     ALTER TABLE site_settings ADD COLUMN IF NOT EXISTS site_name text NOT NULL DEFAULT 'Portfolio 98';
     ALTER TABLE site_settings ADD COLUMN IF NOT EXISTS updated_at timestamp NOT NULL DEFAULT now();
     ALTER TABLE site_settings ADD COLUMN IF NOT EXISTS vapid_public_key text NOT NULL DEFAULT '';

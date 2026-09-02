@@ -8,6 +8,7 @@ import {
 } from "../lib/api";
 import { useAuth, hasPermission } from "../lib/auth-store";
 import { useDesktopStore } from "../store";
+import { parseServerDate } from "../lib/dates";
 
 const THEMES: Record<string, { bg: string; floor: string; label: string }> = {
   cafe: { bg: "#3a2418", floor: "#7a4f31", label: "☕ Cafe" },
@@ -1081,7 +1082,7 @@ export function Cafe() {
                   title={`from ${myReaction.from}`}
                 >{myReaction.emoji}</div>
               )}
-              {speech && (Date.now() - new Date(speech.createdAt).getTime() < 8000) && (
+              {speech && (Date.now() - parseServerDate(speech.createdAt).getTime() < 8000) && (
                 <div className="bg-white border border-black px-1 mb-1 max-w-[120px] text-[10px] rounded">{speech.body}</div>
               )}
               <div className="text-white text-[10px] font-bold flex items-center gap-1" style={{ textShadow: "1px 1px 2px black" }}>

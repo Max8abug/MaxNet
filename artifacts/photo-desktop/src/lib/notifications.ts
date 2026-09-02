@@ -141,12 +141,15 @@ export async function enablePushNotifications(): Promise<{ ok: boolean; reason?:
   }
 
   try {
-    await fetch(`${BASE}/push/subscribe`, {
+    const response = await fetch(`${BASE}/push/subscribe`, {
       method: "POST",
       credentials: "include",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ subscription: sub.toJSON() }),
     });
+    if (!response.ok) {
+      return { ok: false, reason: "Log in before enabling personal push notifications." };
+    }
   } catch {
     return { ok: false, reason: "Could not save the subscription on the server." };
   }

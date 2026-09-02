@@ -40,13 +40,19 @@ export function SiteSettingsDialog() {
   const user = useAuth((s) => s.user);
   const [siteName, setSiteName] = useState(settings.siteName);
   const [preview, setPreview] = useState(settings.logoDataUrl);
+  const [darkPreview, setDarkPreview] = useState(settings.darkLogoDataUrl);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+  const darkFileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => { void refreshSiteSettings(); }, [refreshSiteSettings]);
-  useEffect(() => { setSiteName(settings.siteName); setPreview(settings.logoDataUrl); }, [settings.siteName, settings.logoDataUrl]);
+  useEffect(() => {
+    setSiteName(settings.siteName);
+    setPreview(settings.logoDataUrl);
+    setDarkPreview(settings.darkLogoDataUrl);
+  }, [settings.siteName, settings.logoDataUrl, settings.darkLogoDataUrl]);
 
   if (!user?.isAdmin) {
     return <div className="p-3 text-sm text-red-700">Only the site owner can change these settings.</div>;
@@ -60,10 +66,18 @@ export function SiteSettingsDialog() {
     } catch { setErr("Could not read that image. Try a PNG or JPG."); }
   }
 
+  async function pickDarkLogo(file: File) {
+    setErr(null); setMsg(null);
+    try {
+      const data = await fileToLogoDataUrl(file, 96);
+      setDarkPreview(data);
+    } catch { setErr("Could not read that image. Try a PNG or JPG."); }
+  }
+
   async function save() {
     setBusy(true); setErr(null); setMsg(null);
     try {
-      await updateSiteSettings({ logoDataUrl: preview, siteName });
+      await updateSiteSettings({ logoDataUrl: preview, darkLogoDataUrl: darkPreview, siteName });
       await refreshSiteSettings();
       setMsg("Saved! The new logo will appear for all visitors.");
     } catch (e: any) { setErr(e?.message || "Failed to save"); }
@@ -77,6 +91,17 @@ export function SiteSettingsDialog() {
       await updateSiteSettings({ logoDataUrl: "" });
       await refreshSiteSettings();
       setMsg("Logo reset to the default.");
+    } catch (e: any) { setErr(e?.message || "Failed to clear"); }
+    finally { setBusy(false); }
+  }
+
+  async function clearDarkLogo() {
+    setDarkPreview("");
+    setBusy(true); setErr(null); setMsg(null);
+    try {
+      await updateSiteSettings({ darkLogoDataUrl: "" });
+      await refreshSiteSettings();
+      setMsg("Dark-mode logo reset. Dark mode will fall back to the regular logo.");
     } catch (e: any) { setErr(e?.message || "Failed to clear"); }
     finally { setBusy(false); }
   }
@@ -106,6 +131,33 @@ export function SiteSettingsDialog() {
             />
             <button className="win98-button px-2 py-0.5" disabled={busy} onClick={() => fileRef.current?.click()}>Choose Image…</button>
             <button className="win98-button px-2 py-0.5 text-red-700" disabled={busy || !preview} onClick={clearLogo}>Reset to default</button>
+          </div>
+        </div>
+      </div>
+
+      <div className="border-t border-gray-400 pt-2">
+        <div className="font-bold mb-1">Dark Mode Start Menu Logo</div>
+        <div className="text-[11px] text-gray-700 mb-2">
+          Optional alternate logo used while dark mode is enabled. If empty, the regular logo is used.
+        </div>
+        <div className="flex items-center gap-3">
+          <div className="win98-inset bg-[#171b22] w-12 h-12 flex items-center justify-center overflow-hidden">
+            {darkPreview ? (
+              <img src={darkPreview} alt="dark mode logo preview" className="w-10 h-10 object-contain" />
+            ) : (
+              <div className="w-8 h-8 bg-gradient-to-br from-purple-700 to-pink-500 shadow-inner" />
+            )}
+          </div>
+          <div className="flex flex-col gap-1">
+            <input
+              ref={darkFileRef}
+              type="file"
+              accept="image/png,image/jpeg,image/gif,image/webp,image/svg+xml"
+              className="hidden"
+              onChange={(e) => { const f = e.target.files?.[0]; if (f) void pickDarkLogo(f); e.target.value = ""; }}
+            />
+            <button className="win98-button px-2 py-0.5" disabled={busy} onClick={() => darkFileRef.current?.click()}>Choose Dark Logo…</button>
+            <button className="win98-button px-2 py-0.5 text-red-700" disabled={busy || !darkPreview} onClick={clearDarkLogo}>Reset dark logo</button>
           </div>
         </div>
       </div>

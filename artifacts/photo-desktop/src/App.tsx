@@ -5,6 +5,7 @@ import { Taskbar } from "@/components/Taskbar";
 import { pingVisit } from "@/lib/api";
 import { useDesktopStore } from "@/store";
 import { ThemeProvider } from "@/lib/theme";
+import { NotificationPrompt } from "@/components/NotificationPrompt";
 
 function AppLayout() {
   const [location] = useLocation();
@@ -27,6 +28,7 @@ function AppLayout() {
     <div className="w-screen h-[100dvh] relative overflow-hidden bg-background select-none">
       <Desktop page={page} />
       <Taskbar page={page} />
+      <NotificationPrompt />
     </div>
   );
 }
