@@ -16,12 +16,24 @@ router.get("/forum/threads", async (_req, res) => {
       lastActivityAt: forumThreadsTable.lastActivityAt,
       createdAt: forumThreadsTable.createdAt,
       hasPassword: sql<boolean>`${forumThreadsTable.passwordHash} is not null`,
-      postCount: sql<number>`(select count(*) from ${forumPostsTable} where ${forumPostsTable.threadId} = ${forumThreadsTable.id})`,
     })
     .from(forumThreadsTable)
     .orderBy(desc(forumThreadsTable.pinned), desc(forumThreadsTable.lastActivityAt), desc(forumThreadsTable.createdAt))
     .limit(200);
-  res.json(rows.map((row) => ({ ...row, postCount: Number(row.postCount) })));
+
+  // Count posts independently and join the result in memory. This avoids
+  // relying on a correlated SQL expression whose outer-table reference can be
+  // miscompiled by different Drizzle/Postgres versions.
+  const counts = await db
+    .select({
+      threadId: forumPostsTable.threadId,
+      postCount: sql<number>`count(*)`,
+    })
+    .from(forumPostsTable)
+    .groupBy(forumPostsTable.threadId);
+  const countByThread = new Map(counts.map((row) => [row.threadId, Number(row.postCount)]));
+
+  res.json(rows.map((row) => ({ ...row, postCount: countByThread.get(row.id) ?? 0 })));
 });
 
 router.post("/forum/threads", requireAuth, async (req, res) => {

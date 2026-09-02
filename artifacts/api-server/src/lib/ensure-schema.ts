@@ -311,6 +311,7 @@ export async function ensureSchema(): Promise<void> {
       created_at timestamp NOT NULL DEFAULT now()
     );
     ALTER TABLE forum_posts ADD COLUMN IF NOT EXISTS image_url text;
+    CREATE INDEX IF NOT EXISTS forum_posts_thread_id_idx ON forum_posts (thread_id);
     -- Existing threads predate last_activity_at. Rebuild it from their real
     -- posts so activity sorting does not treat every legacy thread as equally
     -- new after the column is first added.
