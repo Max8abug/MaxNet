@@ -101,7 +101,7 @@ export function SiteSettingsDialog() {
     try {
       await updateSiteSettings({ darkLogoDataUrl: "" });
       await refreshSiteSettings();
-      setMsg("Dark-mode logo reset. Dark mode will fall back to the regular logo.");
+      setMsg("Dark-mode logo reset. Dark mode will use the default mark.");
     } catch (e: any) { setErr(e?.message || "Failed to clear"); }
     finally { setBusy(false); }
   }
@@ -138,7 +138,7 @@ export function SiteSettingsDialog() {
       <div className="border-t border-gray-400 pt-2">
         <div className="font-bold mb-1">Dark Mode Start Menu Logo</div>
         <div className="text-[11px] text-gray-700 mb-2">
-          Optional alternate logo used while dark mode is enabled. If empty, the regular logo is used.
+          Optional alternate logo used while dark mode is enabled. If empty, dark mode uses the default mark instead of the light-mode logo.
         </div>
         <div className="flex items-center gap-3">
           <div className="win98-inset bg-[#171b22] w-12 h-12 flex items-center justify-center overflow-hidden">

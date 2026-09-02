@@ -221,9 +221,10 @@ export function Taskbar({ page }: { page: string }) {
 
   const colorStyle = user ? { color: userColor(user, ranks) || undefined } : {};
   const totalUnread = dmUnread + chatUnread;
-  const startMenuLogo = darkMode
-    ? (siteSettings.darkLogoDataUrl || siteSettings.logoDataUrl)
-    : siteSettings.logoDataUrl;
+  // Keep the light logo out of dark mode. When no alternate logo is configured,
+  // the neutral default mark below is safer than displaying a low-contrast
+  // light-mode asset on the dark taskbar.
+  const startMenuLogo = darkMode ? siteSettings.darkLogoDataUrl : siteSettings.logoDataUrl;
 
   function Badge({ count, tone = 'red' }: { count: number; tone?: 'red' | 'green' }) {
     if (!count) return null;
