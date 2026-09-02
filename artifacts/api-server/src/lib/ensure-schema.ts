@@ -254,6 +254,15 @@ export async function ensureSchema(): Promise<void> {
     ALTER TABLE news_posts ADD COLUMN IF NOT EXISTS title text NOT NULL DEFAULT '';
     ALTER TABLE news_posts ADD COLUMN IF NOT EXISTS body text NOT NULL DEFAULT '';
 
+    CREATE TABLE IF NOT EXISTS news_comments (
+      id serial PRIMARY KEY,
+      news_post_id integer NOT NULL,
+      author text NOT NULL,
+      body text NOT NULL,
+      created_at timestamp NOT NULL DEFAULT now()
+    );
+    CREATE INDEX IF NOT EXISTS news_comments_post_idx ON news_comments (news_post_id);
+
     CREATE TABLE IF NOT EXISTS site_settings (
       id serial PRIMARY KEY,
       logo_data_url text NOT NULL DEFAULT '',
@@ -281,9 +290,13 @@ export async function ensureSchema(): Promise<void> {
       title text NOT NULL,
       author text NOT NULL,
       password_hash text,
+      pinned boolean NOT NULL DEFAULT false,
+      last_activity_at timestamp NOT NULL DEFAULT now(),
       created_at timestamp NOT NULL DEFAULT now()
     );
     ALTER TABLE forum_threads ADD COLUMN IF NOT EXISTS password_hash text;
+    ALTER TABLE forum_threads ADD COLUMN IF NOT EXISTS pinned boolean NOT NULL DEFAULT false;
+    ALTER TABLE forum_threads ADD COLUMN IF NOT EXISTS last_activity_at timestamp NOT NULL DEFAULT now();
 
     CREATE TABLE IF NOT EXISTS forum_posts (
       id serial PRIMARY KEY,
@@ -294,6 +307,14 @@ export async function ensureSchema(): Promise<void> {
       created_at timestamp NOT NULL DEFAULT now()
     );
     ALTER TABLE forum_posts ADD COLUMN IF NOT EXISTS image_url text;
+    -- Existing threads predate last_activity_at. Rebuild it from their real
+    -- posts so activity sorting does not treat every legacy thread as equally
+    -- new after the column is first added.
+    UPDATE forum_threads AS t
+    SET last_activity_at = COALESCE(
+      (SELECT MAX(p.created_at) FROM forum_posts AS p WHERE p.thread_id = t.id),
+      t.created_at
+    );
 
     CREATE TABLE IF NOT EXISTS youtube_sync (
       id serial PRIMARY KEY,

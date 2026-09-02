@@ -1,7 +1,7 @@
 import { Router, type IRouter } from "express";
 import { db, forumThreadsTable, forumPostsTable } from "@workspace/db";
 import { desc, eq, sql } from "drizzle-orm";
-import { requireAuth, hashPassword, verifyPassword } from "../lib/auth";
+import { requireAuth, requireAdmin, hashPassword, verifyPassword } from "../lib/auth";
 import { isBanned, audit, requireDeleteMessages } from "./social";
 
 const router: IRouter = Router();
@@ -12,14 +12,16 @@ router.get("/forum/threads", async (_req, res) => {
       id: forumThreadsTable.id,
       title: forumThreadsTable.title,
       author: forumThreadsTable.author,
+      pinned: forumThreadsTable.pinned,
+      lastActivityAt: forumThreadsTable.lastActivityAt,
       createdAt: forumThreadsTable.createdAt,
       hasPassword: sql<boolean>`${forumThreadsTable.passwordHash} is not null`,
       postCount: sql<number>`(select count(*) from ${forumPostsTable} where ${forumPostsTable.threadId} = ${forumThreadsTable.id})`,
     })
     .from(forumThreadsTable)
-    .orderBy(desc(forumThreadsTable.createdAt))
+    .orderBy(desc(forumThreadsTable.pinned), desc(forumThreadsTable.lastActivityAt), desc(forumThreadsTable.createdAt))
     .limit(200);
-  res.json(rows);
+  res.json(rows.map((row) => ({ ...row, postCount: Number(row.postCount) })));
 });
 
 router.post("/forum/threads", requireAuth, async (req, res) => {
@@ -37,8 +39,20 @@ router.post("/forum/threads", requireAuth, async (req, res) => {
   const passwordHash = (typeof password === "string" && password.length >= 1) ? await hashPassword(password) : null;
   const [thread] = await db.insert(forumThreadsTable).values({ title: title.trim().slice(0, 120), author, passwordHash }).returning();
   await db.insert(forumPostsTable).values({ threadId: thread.id, author, body: body.trim() });
+  await db.update(forumThreadsTable).set({ lastActivityAt: new Date() }).where(eq(forumThreadsTable.id, thread.id));
   await audit("forum", "thread", author, "", title.trim().slice(0, 120));
   res.json({ ...thread, passwordHash: undefined, hasPassword: !!passwordHash });
+});
+
+router.patch("/forum/threads/:id/pin", requireAdmin, async (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id)) { res.status(400).json({ error: "bad id" }); return; }
+  const [existing] = await db.select().from(forumThreadsTable).where(eq(forumThreadsTable.id, id)).limit(1);
+  if (!existing) { res.status(404).json({ error: "not found" }); return; }
+  const pinned = req.body?.pinned === true;
+  const [updated] = await db.update(forumThreadsTable).set({ pinned }).where(eq(forumThreadsTable.id, id)).returning();
+  await audit("forum", pinned ? "pin-thread" : "unpin-thread", req.session.username || "admin", existing.author, existing.title);
+  res.json({ ...updated, passwordHash: undefined, hasPassword: !!updated.passwordHash });
 });
 
 router.post("/forum/threads/:id/unlock", async (req, res) => {
@@ -64,7 +78,7 @@ router.get("/forum/threads/:id", async (req, res) => {
     res.status(403).json({ error: "password required", needsPassword: true, thread: { id: thread.id, title: thread.title, author: thread.author, hasPassword: true, createdAt: thread.createdAt } });
     return;
   }
-  const posts = await db.select().from(forumPostsTable).where(eq(forumPostsTable.threadId, id)).orderBy(forumPostsTable.createdAt);
+  const posts = await db.select().from(forumPostsTable).where(eq(forumPostsTable.threadId, id)).orderBy(forumPostsTable.createdAt, forumPostsTable.id);
   res.json({ thread: { ...thread, passwordHash: undefined, hasPassword: !!thread.passwordHash }, posts });
 });
 
@@ -87,6 +101,7 @@ router.post("/forum/threads/:id/posts", requireAuth, async (req, res) => {
     return;
   }
   const [post] = await db.insert(forumPostsTable).values({ threadId: id, author, body: trimmed, imageUrl: imageUrl || null }).returning();
+  await db.update(forumThreadsTable).set({ lastActivityAt: new Date() }).where(eq(forumThreadsTable.id, id));
   await audit("forum", "post", author, "", trimmed + (imageUrl ? " [image]" : ""));
   res.json(post);
 });

@@ -213,6 +213,14 @@ export const newsPostsTable = pgTable("news_posts", {
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 
+export const newsCommentsTable = pgTable("news_comments", {
+  id: serial("id").primaryKey(),
+  newsPostId: integer("news_post_id").notNull(),
+  author: text("author").notNull(),
+  body: text("body").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
 // Site-wide settings (singleton row, id=1) — owner-configurable branding such as the start-menu logo.
 // vapidPublicKey/vapidPrivateKey are auto-generated on first server startup and persisted here so
 // browser push subscriptions remain valid across restarts.
@@ -256,6 +264,8 @@ export const forumThreadsTable = pgTable("forum_threads", {
   title: text("title").notNull(),
   author: text("author").notNull(),
   passwordHash: text("password_hash"),
+  pinned: boolean("pinned").notNull().default(false),
+  lastActivityAt: timestamp("last_activity_at").defaultNow().notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 

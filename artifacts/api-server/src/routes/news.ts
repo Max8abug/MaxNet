@@ -1,9 +1,10 @@
 import { Router, type IRouter } from "express";
 import type { RequestHandler } from "express";
-import { db, newsPostsTable } from "@workspace/db";
+import { db, newsPostsTable, newsCommentsTable } from "@workspace/db";
 import { desc, eq } from "drizzle-orm";
 import { requireAuth } from "../lib/auth";
 import { getUserPermissions } from "./ranks";
+import { isBanned, audit } from "./social";
 
 const router: IRouter = Router();
 
@@ -38,6 +39,47 @@ function sanitizeImages(input: unknown): string[] {
 router.get("/news", async (_req, res) => {
   const rows = await db.select().from(newsPostsTable).orderBy(desc(newsPostsTable.createdAt)).limit(100);
   res.json(rows);
+});
+
+router.get("/news/:id/comments", async (req, res) => {
+  const postId = Number(req.params.id);
+  if (!Number.isInteger(postId)) { res.status(400).json({ error: "bad id" }); return; }
+  const comments = await db
+    .select()
+    .from(newsCommentsTable)
+    .where(eq(newsCommentsTable.newsPostId, postId))
+    .orderBy(newsCommentsTable.createdAt);
+  res.json(comments);
+});
+
+router.post("/news/:id/comments", requireAuth, async (req, res) => {
+  const postId = Number(req.params.id);
+  if (!Number.isInteger(postId)) { res.status(400).json({ error: "bad id" }); return; }
+  const [post] = await db.select({ id: newsPostsTable.id }).from(newsPostsTable).where(eq(newsPostsTable.id, postId)).limit(1);
+  if (!post) { res.status(404).json({ error: "News post not found" }); return; }
+  const body = typeof req.body?.body === "string" ? req.body.body.trim().slice(0, 2000) : "";
+  if (!body) { res.status(400).json({ error: "Comment cannot be empty" }); return; }
+  const author = req.session.username!;
+  if (await isBanned(author)) {
+    await audit("news", "blocked-comment", author, String(postId), body.slice(0, 200));
+    res.status(403).json({ error: "You are banned." });
+    return;
+  }
+  const [comment] = await db.insert(newsCommentsTable).values({ newsPostId: postId, author, body }).returning();
+  res.json(comment);
+});
+
+router.delete("/news/comments/:id", requireAuth, async (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id)) { res.status(400).json({ error: "bad id" }); return; }
+  const [comment] = await db.select().from(newsCommentsTable).where(eq(newsCommentsTable.id, id)).limit(1);
+  if (!comment) { res.status(404).json({ error: "Comment not found" }); return; }
+  if (comment.author !== req.session.username && !req.session.isAdmin) {
+    res.status(403).json({ error: "Only the author or an admin can delete this comment" });
+    return;
+  }
+  await db.delete(newsCommentsTable).where(eq(newsCommentsTable.id, id));
+  res.json({ ok: true });
 });
 
 router.post("/news", requireNewsPost, async (req, res) => {

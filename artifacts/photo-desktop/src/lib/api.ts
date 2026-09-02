@@ -126,6 +126,7 @@ export async function updateSiteSettings(data: Partial<SiteSettings>): Promise<S
 }
 
 export interface NewsPost { id: number; author: string; title: string; body: string; images: string[]; createdAt: string; updatedAt: string; }
+export interface NewsComment { id: number; newsPostId: number; author: string; body: string; createdAt: string; }
 export async function fetchNews(): Promise<NewsPost[]> {
   return jsonOrThrow(await fetch(`${BASE}/news`, opts));
 }
@@ -145,6 +146,18 @@ export async function updateNews(id: number, data: { title?: string; body?: stri
 }
 export async function deleteNews(id: number): Promise<void> {
   await jsonOrThrow(await fetch(`${BASE}/news/${id}`, { ...opts, method: "DELETE" }));
+}
+export async function fetchNewsComments(postId: number): Promise<NewsComment[]> {
+  return jsonOrThrow(await fetch(`${BASE}/news/${postId}/comments`, opts));
+}
+export async function postNewsComment(postId: number, body: string): Promise<NewsComment> {
+  return jsonOrThrow(await fetch(`${BASE}/news/${postId}/comments`, {
+    ...opts, method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ body }),
+  }));
+}
+export async function deleteNewsComment(id: number): Promise<void> {
+  await jsonOrThrow(await fetch(`${BASE}/news/comments/${id}`, { ...opts, method: "DELETE" }));
 }
 
 export interface IpRecord {
@@ -298,7 +311,7 @@ export async function pingVisit(): Promise<number> {
 }
 
 // ----- Forum -----
-export interface ForumThread { id: number; title: string; author: string; createdAt: string; postCount: number; hasPassword?: boolean; }
+export interface ForumThread { id: number; title: string; author: string; createdAt: string; lastActivityAt?: string; pinned?: boolean; postCount: number; hasPassword?: boolean; }
 export interface ForumPost { id: number; threadId: number; author: string; body: string; imageUrl?: string | null; createdAt: string; }
 export async function fetchThreads(): Promise<ForumThread[]> {
   return jsonOrThrow(await fetch(`${BASE}/forum/threads`, opts));
@@ -332,6 +345,12 @@ export async function deleteForumPost(id: number): Promise<void> {
 }
 export async function deleteForumThread(id: number): Promise<void> {
   await jsonOrThrow(await fetch(`${BASE}/forum/threads/${id}`, { ...opts, method: "DELETE" }));
+}
+export async function pinForumThread(id: number, pinned: boolean): Promise<ForumThread> {
+  return jsonOrThrow(await fetch(`${BASE}/forum/threads/${id}/pin`, {
+    ...opts, method: "PATCH", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ pinned }),
+  }));
 }
 
 // ----- Synced YouTube -----

@@ -109,7 +109,7 @@ export function SiteBackup() {
         throw new Error("This file doesn't look like a site backup (missing `tables`).");
       }
       const tableCount = Object.keys(tables).length;
-      const rowCount = Object.values(tables).reduce((s: number, rows: any) => s + (Array.isArray(rows) ? rows.length : 0), 0);
+      const rowCount = (Object.values(tables) as unknown[]).reduce<number>((s, rows) => s + (Array.isArray(rows) ? rows.length : 0), 0);
       setSummary({ tableCount, rowCount, exportedAt: (parsed as any).exportedAt });
       setPendingPayload(parsed);
     } catch (e: any) {

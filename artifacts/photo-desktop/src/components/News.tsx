@@ -1,7 +1,11 @@
 import { useEffect, useRef, useState } from "react";
-import { createNews, deleteNews, fetchNews, updateNews, type NewsPost } from "../lib/api";
+import {
+  createNews, deleteNews, fetchNews, updateNews, fetchNewsComments,
+  postNewsComment, deleteNewsComment, type NewsPost, type NewsComment,
+} from "../lib/api";
 import { hasPermission, useAuth } from "../lib/auth-store";
 import { Avatar } from "./Avatar";
+import { formatLocalDate } from "../lib/dates";
 
 // Downscale uploaded images so news posts stay light. Square images aren't
 // required — the longest side is capped so portrait/landscape both work.
@@ -32,7 +36,7 @@ function fileToInlineImage(file: File, maxSize = 1000): Promise<string> {
   });
 }
 
-function fmt(d: string) { try { return new Date(d).toLocaleString(); } catch { return d; } }
+function fmt(d: string) { return formatLocalDate(d); }
 
 export function News() {
   const me = useAuth((s) => s.user);
@@ -49,6 +53,10 @@ export function News() {
   const [images, setImages] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
+  const [expandedComments, setExpandedComments] = useState<Record<number, boolean>>({});
+  const [comments, setComments] = useState<Record<number, NewsComment[]>>({});
+  const [commentDrafts, setCommentDrafts] = useState<Record<number, string>>({});
+  const [commentBusy, setCommentBusy] = useState<number | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
   async function load() {
@@ -95,6 +103,39 @@ export function News() {
     setBody(p.body);
     setImages(p.images || []);
     setErr(null);
+  }
+
+  async function toggleComments(postId: number) {
+    const willOpen = !expandedComments[postId];
+    setExpandedComments((current) => ({ ...current, [postId]: willOpen }));
+    if (willOpen && !comments[postId]) {
+      try {
+        const loaded = await fetchNewsComments(postId);
+        setComments((current) => ({ ...current, [postId]: loaded }));
+      } catch (e: any) {
+        setErr(e?.message || "Failed to load comments");
+      }
+    }
+  }
+
+  async function submitComment(postId: number) {
+    if (!me) return;
+    const body = (commentDrafts[postId] || "").trim();
+    if (!body) return;
+    setCommentBusy(postId); setErr(null);
+    try {
+      const comment = await postNewsComment(postId, body);
+      setComments((current) => ({ ...current, [postId]: [...(current[postId] || []), comment] }));
+      setCommentDrafts((current) => ({ ...current, [postId]: "" }));
+    } catch (e: any) { setErr(e?.message || "Failed to post comment"); }
+    finally { setCommentBusy(null); }
+  }
+
+  async function removeComment(postId: number, commentId: number) {
+    try {
+      await deleteNewsComment(commentId);
+      setComments((current) => ({ ...current, [postId]: (current[postId] || []).filter((c) => c.id !== commentId) }));
+    } catch (e: any) { setErr(e?.message || "Failed to delete comment"); }
   }
 
   async function remove(p: NewsPost) {
@@ -195,6 +236,48 @@ export function News() {
                   ))}
                 </div>
               )}
+              <div className="mt-2 border-t border-gray-300 pt-1">
+                <button className="win98-button px-2 py-0.5 text-[10px]" onClick={() => void toggleComments(p.id)}>
+                  {expandedComments[p.id] ? "Hide comments" : `Show comments${comments[p.id]?.length ? ` (${comments[p.id].length})` : ""}`}
+                </button>
+                {expandedComments[p.id] && (
+                  <div className="mt-1 win98-inset bg-[#f5f5f5] p-1">
+                    {(comments[p.id] || []).length === 0 ? (
+                      <div className="text-[10px] text-gray-500 mb-1">No comments yet.</div>
+                    ) : (
+                      <div className="flex flex-col gap-1 mb-1">
+                        {(comments[p.id] || []).map((comment) => (
+                          <div key={comment.id} className="flex items-start gap-1 text-[11px]">
+                            <Avatar username={comment.author} size={20} />
+                            <div className="flex-1 min-w-0">
+                              <div><span className="font-bold">{comment.author}</span> <span className="text-gray-500 text-[10px]">{fmt(comment.createdAt)}</span></div>
+                              <div className="whitespace-pre-wrap break-words">{comment.body}</div>
+                            </div>
+                            {me && (me.isAdmin || me.username === comment.author) && (
+                              <button className="win98-button px-1 text-[10px]" onClick={() => void removeComment(p.id, comment.id)}>x</button>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    {me ? (
+                      <div className="flex gap-1">
+                        <input
+                          className="win98-inset px-1 text-[11px] flex-1"
+                          placeholder="Write a comment…"
+                          value={commentDrafts[p.id] || ""}
+                          onChange={(e) => setCommentDrafts((current) => ({ ...current, [p.id]: e.target.value }))}
+                          onKeyDown={(e) => { if (e.key === "Enter") void submitComment(p.id); }}
+                          maxLength={2000}
+                        />
+                        <button className="win98-button px-2 text-[10px]" disabled={commentBusy === p.id} onClick={() => void submitComment(p.id)}>Post</button>
+                      </div>
+                    ) : (
+                      <div className="text-[10px] text-gray-600">Log in to comment.</div>
+                    )}
+                  </div>
+                )}
+              </div>
             </article>
           );
         })}

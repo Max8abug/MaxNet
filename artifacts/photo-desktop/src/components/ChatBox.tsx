@@ -8,6 +8,7 @@ import { useAuth, userColor, hasPermission } from "../lib/auth-store";
 import { Avatar, getCachedAvatar, getCachedUser } from "./Avatar";
 import { showFullscreen } from "./ImageViewer";
 import { pushToast } from "./Toast";
+import { formatLocalTime, formatLocalDate } from "../lib/dates";
 
 interface Props { onRequestLogin?: () => void; }
 type Tab = "chat" | "audit" | "bans";
@@ -171,7 +172,7 @@ export function ChatBox({ onRequestLogin }: Props) {
                     <div className="flex-1 break-words">
                       <div className="flex items-baseline gap-1">
                         <span className="font-bold" style={{ color: authorColor(m.author) }}>{m.author}</span>
-                        <span className="text-[10px] text-gray-500">{new Date(m.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
+                        <span className="text-[10px] text-gray-500">{formatLocalTime(m.createdAt)}</span>
                         {canReply && (
                           <button className="win98-button px-1 text-[10px] opacity-0 group-hover:opacity-100" onClick={(e) => { e.stopPropagation(); setReplyTo(m); setText(`@${m.author} `); }}>reply</button>
                         )}
@@ -247,7 +248,7 @@ export function ChatBox({ onRequestLogin }: Props) {
           {audit.length === 0 ? <div className="text-gray-500">No activity yet.</div> :
             audit.map((e) => (
               <div key={e.id} className="border-b border-dashed border-gray-300 py-0.5 break-words">
-                <span className="text-gray-500">{new Date(e.createdAt).toLocaleString()}</span>{" "}
+                <span className="text-gray-500">{formatLocalDate(e.createdAt)}</span>{" "}
                 <span className={tagColor(e.action)}>[{e.action}]</span>{" "}
                 <span className="font-bold">{e.actor}</span>
                 {e.target && <> → <span className="font-bold">{e.target}</span></>}
@@ -266,7 +267,7 @@ export function ChatBox({ onRequestLogin }: Props) {
                   <div className="flex-1">
                     <span className="font-bold">{b.username}</span>
                     {b.reason && <span className="text-gray-600"> — {b.reason}</span>}
-                    <div className="text-[10px] text-gray-500">banned by {b.bannedBy} on {new Date(b.createdAt).toLocaleDateString()}</div>
+                    <div className="text-[10px] text-gray-500">banned by {b.bannedBy} on {formatLocalDate(b.createdAt, { dateStyle: "short" })}</div>
                   </div>
                   <button className="win98-button px-1 text-[10px]" onClick={() => unban(b.username)}>unban</button>
                 </div>

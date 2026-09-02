@@ -235,15 +235,14 @@ router.post("/blackjack/reset", requireAuth, async (req, res) => {
   const me = req.session.username!;
   const perms = await getUserPermissions(me);
   const isMod = isAdminUsername(me) || perms.includes("deleteMessages");
-  const seated = state.players.some((p) => p.username === me);
-  // Anyone seated can reset if game has been stuck > 60s, or any mod anytime.
-  const stale = (state.phase === "playing" || state.phase === "dealer") &&
-    Date.now() - (state.turnStartedAt || 0) > 60_000;
-  if (!isMod && !(seated && stale)) {
-    res.status(403).json({ error: "Only mods can reset, or a seated player after the table is stuck for 60s." });
+  // Reset is an emergency escape hatch for a shared table. Requiring a stale
+  // turn made a missing/old turnStartedAt impossible to recover from, which
+  // could leave a player permanently trapped in an active round.
+  if (!isMod && !req.session.userId) {
+    res.status(403).json({ error: "Log in to clear the table." });
     return;
   }
-  // Reset hands and phase but keep players seated.
+  // Reset hands and phase but keep players seated so the next round can start.
   const players = state.players;
   Object.assign(state, emptyState());
   state.players = players.map((p) => ({ ...p, hand: [], status: "playing" as const }));

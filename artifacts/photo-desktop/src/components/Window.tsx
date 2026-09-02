@@ -276,7 +276,7 @@ export function Window({
           </div>
         )}
 
-        {w.type === 'youtube' && !isEditing && <SyncedYouTube />}
+        {w.type === 'youtube' && !isEditing && <SyncedYouTube onRequestLogin={() => setShowLogin(true)} />}
         {w.type === 'link' && !isEditing && (
           <div className="w-full h-full flex flex-col items-center justify-center p-4">
             <button className="win98-button text-lg px-8 py-4 bg-gray-300 w-full"

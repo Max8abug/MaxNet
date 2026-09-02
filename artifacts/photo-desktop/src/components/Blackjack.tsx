@@ -56,7 +56,9 @@ export function Blackjack({ onRequestLogin }: Props) {
   const skipReadyIn = Math.max(0, Math.ceil((20_000 - turnElapsed) / 1000));
   const canSkipNow = s?.phase === "playing" && (myTurn || isMod || (joined && skipReadyIn === 0));
   const stuckSeconds = Math.floor(turnElapsed / 1000);
-  const canResetNow = isMod || (joined && (s?.phase === "playing" || s?.phase === "dealer") && stuckSeconds >= 60);
+  // A logged-in player can always use the emergency clear action. The old
+  // 60-second gate could never be reached when a stale table had no timer.
+  const canResetNow = !!user && !!s && (isMod || s.phase === "playing" || s.phase === "dealer" || s.phase === "done");
 
   return (
     <div className="w-full h-full flex flex-col text-sm bg-[#0a5d2c] text-white p-2 gap-2">
@@ -124,7 +126,7 @@ export function Blackjack({ onRequestLogin }: Props) {
           <button className="win98-button text-black px-3 py-1 text-xs" disabled={busy} onClick={() => call(bjSkip)} title="Skip the current AFK player (auto-stand)">Skip Player</button>
         )}
         {canResetNow && (
-          <button className="win98-button text-black px-3 py-1 text-xs ml-auto" disabled={busy} onClick={() => { if (confirm("Reset the table? This clears the current hand but keeps players seated.")) void call(bjReset); }} title={isMod ? "Reset the table (mod)" : "Reset the stuck table"}>
+          <button className="win98-button text-black px-3 py-1 text-xs ml-auto" disabled={busy} onClick={() => { if (confirm("Clear the table? This ends the current round and keeps players seated.")) void call(bjReset); }} title={isMod ? "Clear the table (mod)" : "Clear the current round"}>
             Clear / Reset
           </button>
         )}

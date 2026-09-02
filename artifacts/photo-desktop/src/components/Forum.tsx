@@ -1,12 +1,13 @@
 import { useEffect, useRef, useState } from "react";
 import {
   fetchThreads, fetchThreadOrLock, createThreadWithOpts, postReply,
-  deleteForumPost, deleteForumThread, unlockThread,
+  deleteForumPost, deleteForumThread, unlockThread, pinForumThread,
   type ForumThread, type ForumPost,
 } from "../lib/api";
 import { useAuth, hasPermission, userColor } from "../lib/auth-store";
 import { Avatar, getCachedAvatar } from "./Avatar";
 import { showFullscreen } from "./ImageViewer";
+import { formatLocalDate } from "../lib/dates";
 
 interface Props { onRequestLogin?: () => void; }
 
@@ -102,6 +103,14 @@ export function Forum({ onRequestLogin }: Props) {
     if (!confirm("Delete this entire thread?")) return;
     try { await deleteForumThread(id); setOpenId(null); await refreshList(); } catch {}
   }
+  async function togglePin(t: ForumThread) {
+    try {
+      await pinForumThread(t.id, !t.pinned);
+      await refreshList();
+    } catch (e: any) {
+      setErr(e?.message || "Only admins can pin threads");
+    }
+  }
 
   async function tryUnlock() {
     if (!lockPrompt) return;
@@ -141,7 +150,7 @@ export function Forum({ onRequestLogin }: Props) {
               <div className="flex-1">
                 <div className="flex items-center gap-1 text-[11px]">
                   <span className="font-bold" style={{ color: userColor({ username: p.author }, ranks) || (p.author === "Max8abug" ? "#cc0000" : undefined) }}>{p.author}</span>
-                  <span className="text-gray-500">{new Date(p.createdAt).toLocaleString()}</span>
+                  <span className="text-gray-500">{formatLocalDate(p.createdAt)}</span>
                   {canDelete && p.author !== "Max8abug" && (
                     <button className="win98-button px-1 text-[10px] ml-auto opacity-0 group-hover:opacity-100" onClick={() => delPost(p.id)}>delete</button>
                   )}
@@ -173,8 +182,9 @@ export function Forum({ onRequestLogin }: Props) {
 
   return (
     <div className="w-full h-full flex flex-col text-sm">
-      <div className="flex gap-1 mb-1 shrink-0">
+      <div className="flex gap-1 mb-1 shrink-0 items-center">
         <div className="font-bold flex-1">Forum</div>
+        <span className="text-[10px] text-gray-600">sorted by activity</span>
         {user
           ? <button className="win98-button px-2 py-0.5 text-xs" onClick={() => setComposing((v) => !v)}>{composing ? "Cancel" : "+ New Thread"}</button>
           : <button className="win98-button px-2 py-0.5 text-xs" onClick={onRequestLogin}>Log in to post</button>}
@@ -197,11 +207,21 @@ export function Forum({ onRequestLogin }: Props) {
               className="w-full text-left px-2 py-1 border-b border-gray-200 hover:bg-[#000080] hover:text-white flex items-center gap-2">
               <Avatar username={t.author} size={36} />
               <div className="flex-1 min-w-0">
-                <div className="font-bold text-xs truncate">{t.hasPassword && "🔒 "}{t.title}</div>
+                <div className="font-bold text-xs truncate">{t.pinned && "📌 "}{t.hasPassword && "🔒 "}{t.title}</div>
                 <div className="text-[10px] opacity-70">
-                  by {t.author} · {t.postCount} post{t.postCount === 1 ? "" : "s"} · {new Date(t.createdAt).toLocaleDateString()}
+                  by {t.author} · {t.postCount} post{t.postCount === 1 ? "" : "s"} · active {formatLocalDate(t.lastActivityAt || t.createdAt, { dateStyle: "short" })}
                 </div>
               </div>
+              {isAdmin && (
+                <span
+                  role="button"
+                  tabIndex={0}
+                  className="win98-button px-1 text-[10px] shrink-0"
+                  onClick={(e) => { e.stopPropagation(); void togglePin(t); }}
+                  onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); e.stopPropagation(); void togglePin(t); } }}
+                  title={t.pinned ? "Unpin thread" : "Pin thread"}
+                >{t.pinned ? "unpin" : "pin"}</span>
+              )}
             </button>
           ))
         )}
