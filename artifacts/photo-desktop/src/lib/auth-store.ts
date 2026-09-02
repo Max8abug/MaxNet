@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { fetchRanks, fetchSiteSettings, getMe, login as apiLogin, signup as apiSignup, logout as apiLogout, updateProfile as apiUpdateProfile, type AuthUser, type Rank, type SiteSettings } from "./api";
+import { setTimeZone } from "./time-settings";
 
 interface AuthState {
   user: AuthUser | null;
@@ -12,7 +13,7 @@ interface AuthState {
   login: (u: string, p: string) => Promise<void>;
   signup: (u: string, p: string) => Promise<void>;
   logout: () => Promise<void>;
-  updateProfile: (data: { avatarUrl?: string | null; backgroundUrl?: string | null; backgroundColor?: string | null }) => Promise<void>;
+  updateProfile: (data: { avatarUrl?: string | null; backgroundUrl?: string | null; backgroundColor?: string | null; timeZone?: string | null }) => Promise<void>;
 }
 
 export const useAuth = create<AuthState>((set, get) => ({
@@ -21,8 +22,14 @@ export const useAuth = create<AuthState>((set, get) => ({
   ranks: [],
   siteSettings: { logoDataUrl: "", darkLogoDataUrl: "", siteName: "Portfolio 98" },
   refresh: async () => {
-    try { const u = await getMe(); set({ user: u, loading: false }); }
-    catch { set({ user: null, loading: false }); }
+      try {
+        const u = await getMe();
+        setTimeZone(u?.timeZone);
+        set({ user: u, loading: false });
+      } catch {
+        setTimeZone(null);
+        set({ user: null, loading: false });
+      }
   },
   refreshRanks: async () => {
     try { const r = await fetchRanks(); set({ ranks: r }); } catch {}

@@ -43,14 +43,20 @@ export interface AuthUser {
   backgroundUrl?: string | null;
   backgroundColor?: string | null;
   rank?: string | null;
+  timeZone?: string | null;
 }
 
-export async function updateProfile(data: { avatarUrl?: string | null; backgroundUrl?: string | null; backgroundColor?: string | null }): Promise<void> {
+export async function updateProfile(data: { avatarUrl?: string | null; backgroundUrl?: string | null; backgroundColor?: string | null; timeZone?: string | null }): Promise<void> {
   await jsonOrThrow(await fetch(`${BASE}/auth/profile`, {
     ...opts, method: "PATCH",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(data),
   }));
+}
+
+export async function fetchServerTime(): Promise<string> {
+  const j = await jsonOrThrow(await fetch(`${BASE}/time`, { ...opts, cache: "no-store" }));
+  return j.serverNow;
 }
 
 export interface PublicUser { username: string; isAdmin: boolean; avatarUrl: string | null; rank?: string | null; lastSeen?: string | null; }

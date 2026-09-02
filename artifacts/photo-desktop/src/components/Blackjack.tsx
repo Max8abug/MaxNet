@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { bjState, bjJoin, bjLeave, bjDeal, bjHit, bjStand, bjSkip, bjReset, type BJState } from "../lib/api";
 import { useAuth, hasPermission } from "../lib/auth-store";
 import { Avatar } from "./Avatar";
+import { getServerNowMs } from "../lib/server-clock";
 
 interface Props { onRequestLogin?: () => void; }
 
@@ -26,7 +27,7 @@ export function Blackjack({ onRequestLogin }: Props) {
   const [s, setS] = useState<BJState | null>(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
-  const [now, setNow] = useState(Date.now());
+  const [now, setNow] = useState(getServerNowMs());
   const user = useAuth((u) => u.user);
   const ranks = useAuth((u) => u.ranks);
   const refreshRanks = useAuth((u) => u.refreshRanks);
@@ -38,7 +39,7 @@ export function Blackjack({ onRequestLogin }: Props) {
   useEffect(() => { void refreshRanks(); }, [refreshRanks]);
   useEffect(() => { void refresh(); const t = setInterval(refresh, 2500); return () => clearInterval(t); }, []);
   // Tick every second so the AFK countdown updates smoothly.
-  useEffect(() => { const t = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(t); }, []);
+  useEffect(() => { const t = setInterval(() => setNow(getServerNowMs()), 1000); return () => clearInterval(t); }, []);
 
   async function call(fn: () => Promise<BJState>) {
     if (!user) { onRequestLogin?.(); return; }

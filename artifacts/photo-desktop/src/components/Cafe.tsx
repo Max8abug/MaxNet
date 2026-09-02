@@ -9,6 +9,7 @@ import {
 import { useAuth, hasPermission } from "../lib/auth-store";
 import { useDesktopStore } from "../store";
 import { parseServerDate } from "../lib/dates";
+import { getServerNow, getServerNowMs } from "../lib/server-clock";
 
 const THEMES: Record<string, { bg: string; floor: string; label: string }> = {
   cafe: { bg: "#3a2418", floor: "#7a4f31", label: "☕ Cafe" },
@@ -704,7 +705,7 @@ export function Cafe() {
 
   // Detect movement of remote players to drive their wobble.
   useEffect(() => {
-    const now = Date.now();
+    const now = getServerNowMs();
     let any = false;
     const next: Record<string, number> = { ...walking };
     for (const p of presence) {
@@ -723,7 +724,7 @@ export function Cafe() {
   // the entire glide instead of stopping a quarter of the way through.
   useEffect(() => {
     const t = setInterval(() => {
-      const now = Date.now();
+      const now = getServerNowMs();
       setWalking(w => {
         const out: Record<string, number> = {};
         let changed = false;
@@ -750,7 +751,7 @@ export function Cafe() {
   // a shake animation on the recipient's character, no sound on my end.
   useEffect(() => {
     if (!pokes.length) return;
-    const now = Date.now();
+    const now = getServerNowMs();
     const next: Record<string, number> = { ...shakes };
     let shakesChanged = false;
     for (const pk of pokes) {
@@ -811,7 +812,7 @@ export function Cafe() {
   // Expire shake entries.
   useEffect(() => {
     const t = setInterval(() => {
-      const now = Date.now();
+      const now = getServerNowMs();
       setShakes(s => {
         const out: Record<string, number> = {};
         let changed = false;
@@ -866,7 +867,7 @@ export function Cafe() {
       if (!dx && !dy) return;
       e.preventDefault();
       setPos(p => ({ x: Math.max(20, Math.min(W - 20, p.x + dx)), y: Math.max(40, Math.min(H - 20, p.y + dy)) }));
-      if (user) setWalking(w => ({ ...w, [user.username]: Date.now() }));
+      if (user) setWalking(w => ({ ...w, [user.username]: getServerNowMs() }));
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -896,7 +897,7 @@ export function Cafe() {
         changeTheme(target);
         // Reset the local position to a sensible spawn so the user can see they teleported.
         setPos({ x: 200 + Math.floor(Math.random() * 200), y: 250 });
-        if (joined && user) setWalking(w => ({ ...w, [user.username]: Date.now() }));
+        if (joined && user) setWalking(w => ({ ...w, [user.username]: getServerNowMs() }));
         return;
       }
       case "message":
@@ -922,7 +923,7 @@ export function Cafe() {
     }
     if (!joined) return;
     setPos({ x, y });
-    setWalking(w => ({ ...w, [user.username]: Date.now() }));
+    setWalking(w => ({ ...w, [user.username]: getServerNowMs() }));
   }
 
   const customRoom = rooms.find(r => r.slug === theme);
@@ -937,7 +938,7 @@ export function Cafe() {
   const presenceForScene = useMemo(() => {
     if (!user || !joined) return presence.filter(p => p.username !== user?.username);
     if (presence.some(p => p.username === user.username)) return presence;
-    return [...presence, { username: user.username, x: pos.x, y: pos.y, avatar: body, lastSeen: new Date().toISOString() } as any];
+    return [...presence, { username: user.username, x: pos.x, y: pos.y, avatar: body, lastSeen: getServerNow().toISOString() } as any];
   }, [presence, user, joined, pos.x, pos.y, body]);
 
   return (
@@ -1046,7 +1047,7 @@ export function Cafe() {
           // Pick the most recent live reaction targeted at this user. We
           // key it by `from + expiresAt` so a fresh reaction restarts the CSS
           // animation even when it replaces an in-flight one.
-          const now = Date.now();
+          const now = getServerNowMs();
           const myReaction = reactions
             .filter(r => r.to === p.username && r.expiresAt > now)
             .sort((a, b) => b.expiresAt - a.expiresAt)[0];
@@ -1082,7 +1083,7 @@ export function Cafe() {
                   title={`from ${myReaction.from}`}
                 >{myReaction.emoji}</div>
               )}
-              {speech && (Date.now() - parseServerDate(speech.createdAt).getTime() < 8000) && (
+              {speech && (getServerNowMs() - parseServerDate(speech.createdAt).getTime() < 8000) && (
                 <div className="bg-white border border-black px-1 mb-1 max-w-[120px] text-[10px] rounded">{speech.body}</div>
               )}
               <div className="text-white text-[10px] font-bold flex items-center gap-1" style={{ textShadow: "1px 1px 2px black" }}>

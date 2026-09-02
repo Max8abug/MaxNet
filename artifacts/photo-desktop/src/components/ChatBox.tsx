@@ -243,8 +243,6 @@ export function ChatBox({ onRequestLogin }: Props) {
                     <a
                       className="win98-button px-2 text-xs"
                       href="/api/chat/export"
-                      target="_blank"
-                      rel="noopener noreferrer"
                       onClick={() => {
                         setExporting(true);
                         setErr(null);

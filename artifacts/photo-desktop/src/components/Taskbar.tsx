@@ -15,6 +15,7 @@ import {
   notificationPermission,
 } from '../lib/notifications';
 import { formatLocalTime } from '../lib/dates';
+import { useServerNow } from '../lib/server-clock';
 
 export function Taskbar({ page }: { page: string }) {
   const { addWindow, isStringMode, setStringMode, resetState, windows, toggleWindowState, bringToFront } = useDesktopStore();
@@ -24,6 +25,7 @@ export function Taskbar({ page }: { page: string }) {
   const [, setLocation] = useLocation();
   const { user, ranks, refresh, refreshRanks, logout, siteSettings, refreshSiteSettings } = useAuth();
   const { darkMode } = useThemeMode();
+  const serverNow = useServerNow();
   const wins = windows[page] || [];
   const [dmUnread, setDmUnread] = useState(0);
   const [chatUnread, setChatUnread] = useState(0);
@@ -364,7 +366,7 @@ export function Taskbar({ page }: { page: string }) {
       )}
 
       <div className="win98-inset h-8 px-3 flex items-center text-xs">
-        {formatLocalTime(new Date())}
+        {formatLocalTime(serverNow)}
       </div>
 
       {loginOpen && <LoginDialog onClose={() => setLoginOpen(false)} />}

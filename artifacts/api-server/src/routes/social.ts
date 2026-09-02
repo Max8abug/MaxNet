@@ -251,6 +251,7 @@ router.get("/chat/export", requireAdmin, async (_req, res) => {
   const archiveDate = new Date();
   const timestamp = dosTimestamp(archiveDate);
   const entries: ZipEntry[] = [];
+  const chunks: Buffer[] = [];
   let offset = 0;
   let aborted = false;
   const onClose = () => { aborted = true; };
@@ -258,8 +259,7 @@ router.get("/chat/export", requireAdmin, async (_req, res) => {
 
   const write = async (chunk: Buffer): Promise<void> => {
     if (aborted) throw new Error("client disconnected");
-    if (res.write(chunk)) return;
-    await new Promise<void>((resolve) => res.once("drain", resolve));
+    chunks.push(chunk);
   };
 
   const addEntry = async (name: string, data: Buffer): Promise<void> => {
@@ -361,7 +361,9 @@ router.get("/chat/export", requireAdmin, async (_req, res) => {
     end.writeUInt32LE(centralDirectoryOffset, 16);
     end.writeUInt16LE(0, 20);
     await write(end);
-    res.end();
+    const archive = Buffer.concat(chunks);
+    res.setHeader("Content-Length", archive.length);
+    res.end(archive);
   } catch (error) {
     if (!res.headersSent) res.status(500).json({ error: "Could not create chat archive" });
     else res.destroy(error as Error);

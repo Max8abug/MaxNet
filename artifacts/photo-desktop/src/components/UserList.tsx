@@ -4,6 +4,7 @@ import { useAuth } from "../lib/auth-store";
 import { useDesktopStore } from "../store";
 import { Avatar } from "./Avatar";
 import { formatLocalDate, parseServerDate } from "../lib/dates";
+import { getServerNowMs } from "../lib/server-clock";
 
 // "Online right now" window — must agree with the auth-side throttle
 // (PRESENCE_BUMP_MS = 30s) plus a generous grace period for the time between
@@ -14,7 +15,7 @@ function presenceState(lastSeen: string | null | undefined): { online: boolean; 
   if (!lastSeen) return { online: false, label: "never seen", tooltip: "This user has never been active." };
   const t = parseServerDate(lastSeen).getTime();
   if (Number.isNaN(t)) return { online: false, label: "unknown", tooltip: "" };
-  const ago = Date.now() - t;
+  const ago = getServerNowMs() - t;
   const tooltip = `Last seen ${formatLocalDate(lastSeen)}`;
   if (ago < ONLINE_WINDOW_MS) return { online: true, label: "online now", tooltip };
   const mins = Math.floor(ago / 60_000);

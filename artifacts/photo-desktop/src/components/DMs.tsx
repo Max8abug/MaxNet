@@ -3,12 +3,13 @@ import { fetchDMContacts, fetchDMConversations, fetchDMs, markDMsRead, sendDM, t
 import { useAuth, hasPermission } from "../lib/auth-store";
 import { Avatar } from "./Avatar";
 import { formatLocalDate, formatLocalTime, parseServerDate, siteDateKey } from "../lib/dates";
+import { getServerNow } from "../lib/server-clock";
 
 function fmtTime(iso: string): string {
   if (!iso) return "";
   try {
     const d = parseServerDate(iso);
-    const now = new Date();
+    const now = getServerNow();
     if (Number.isNaN(d.getTime())) return iso;
     const sameDay = siteDateKey(d) === siteDateKey(now);
     if (sameDay) return formatLocalTime(d);

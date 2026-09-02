@@ -1,6 +1,7 @@
 import { useRef, useState } from "react";
 import { useAuth } from "../lib/auth-store";
 import { formatLocalDate } from "../lib/dates";
+import { getServerNow } from "../lib/server-clock";
 
 const BASE = "/api";
 
@@ -88,7 +89,7 @@ export function SiteBackup() {
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `site-backup-${new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-")}.json`;
+      a.download = `site-backup-${getServerNow().toISOString().slice(0, 19).replace(/[:T]/g, "-")}.json`;
       document.body.appendChild(a); a.click(); document.body.removeChild(a);
       setTimeout(() => URL.revokeObjectURL(url), 5_000);
       setMsg("Backup downloaded. Save it somewhere safe — keep multiple copies for important sites.");

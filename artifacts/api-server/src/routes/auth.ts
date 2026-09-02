@@ -19,6 +19,7 @@ router.get("/auth/me", async (req, res) => {
       backgroundUrl: u.backgroundUrl,
       backgroundColor: u.backgroundColor,
       rank: u.rank,
+      timeZone: u.timeZone,
     },
   });
 });
@@ -111,7 +112,7 @@ router.patch("/auth/profile", async (req, res) => {
     res.status(401).json({ error: "Login required" });
     return;
   }
-  const { avatarUrl, backgroundUrl, backgroundColor } = req.body ?? {};
+  const { avatarUrl, backgroundUrl, backgroundColor, timeZone } = req.body ?? {};
   const update: Record<string, string | null> = {};
   if (avatarUrl !== undefined) {
     if (avatarUrl !== null && (typeof avatarUrl !== "string" || (avatarUrl && !avatarUrl.startsWith("data:image/")))) {
@@ -142,6 +143,13 @@ router.patch("/auth/profile", async (req, res) => {
     }
     update.backgroundColor = backgroundColor;
   }
+  if (timeZone !== undefined) {
+    if (timeZone !== null && (typeof timeZone !== "string" || !isValidTimeZone(timeZone))) {
+      res.status(400).json({ error: "Invalid time zone" });
+      return;
+    }
+    update.timeZone = timeZone;
+  }
   if (Object.keys(update).length === 0) {
     res.json({ ok: true });
     return;
@@ -149,6 +157,15 @@ router.patch("/auth/profile", async (req, res) => {
   await db.update(usersTable).set(update).where(eq(usersTable.id, req.session.userId));
   res.json({ ok: true });
 });
+
+function isValidTimeZone(value: string): boolean {
+  try {
+    new Intl.DateTimeFormat("en-US", { timeZone: value }).format();
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 router.get("/users/:username", async (req, res) => {
   const u = String(req.params.username || "").trim();

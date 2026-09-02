@@ -1,6 +1,7 @@
 import { useRef, useState } from "react";
 import { useAuth } from "../lib/auth-store";
 import { useThemeMode } from "../lib/theme";
+import { TIME_ZONE_OPTIONS } from "../lib/time-settings";
 
 interface Props { onClose: () => void; }
 
@@ -41,6 +42,7 @@ export function ProfileDialog({ onClose }: Props) {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [color, setColor] = useState(user?.backgroundColor || "#008080");
+  const [timeZone, setTimeZone] = useState(user?.timeZone || "");
   const avatarRef = useRef<HTMLInputElement>(null);
   const bgRef = useRef<HTMLInputElement>(null);
 
@@ -82,6 +84,18 @@ export function ProfileDialog({ onClose }: Props) {
     setBusy(true);
     try { await updateProfile({ backgroundUrl: null, backgroundColor: null }); }
     finally { setBusy(false); }
+  }
+
+  async function applyTimeZone(value: string) {
+    setTimeZone(value);
+    setBusy(true); setErr(null);
+    try {
+      await updateProfile({ timeZone: value || null });
+    } catch (e: any) {
+      setErr(e?.message || "Failed to save time zone");
+    } finally {
+      setBusy(false);
+    }
   }
 
   return (
@@ -141,6 +155,22 @@ export function ProfileDialog({ onClose }: Props) {
             </label>
             <div className="text-xs text-gray-600 mt-1">
               Uses softer dark surfaces to reduce bright backgrounds.
+            </div>
+            <label className="flex items-center gap-2 mt-2">
+              <span className="shrink-0">Time zone:</span>
+              <select
+                className="win98-inset min-w-0 flex-1 px-1 py-0.5"
+                value={timeZone}
+                disabled={busy}
+                onChange={(e) => void applyTimeZone(e.target.value)}
+              >
+                {TIME_ZONE_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>{option.label}</option>
+                ))}
+              </select>
+            </label>
+            <div className="text-xs text-gray-600 mt-1">
+              Dates and times across the site use this setting.
             </div>
           </div>
           {err && <div className="text-red-700 text-xs">{err}</div>}
