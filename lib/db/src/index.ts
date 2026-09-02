@@ -10,7 +10,13 @@ if (!process.env.DATABASE_URL) {
   );
 }
 
-export const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+// Timestamp columns are normalized as UTC wall-clock values for legacy
+// compatibility. Lock every PostgreSQL session to UTC so node-postgres cannot
+// reinterpret the same value differently depending on the host timezone.
+export const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  options: "-c timezone=UTC",
+});
 export const db = drizzle(pool, { schema });
 
 export * from "./schema";

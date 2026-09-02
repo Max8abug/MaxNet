@@ -1,6 +1,11 @@
-import app from "./app";
-import { logger } from "./lib/logger";
-import { ensureSchema } from "./lib/ensure-schema";
+// The DB uses timestamp-without-time-zone columns for legacy compatibility.
+// Set the process timezone before importing the DB/app modules so node-postgres
+// parses and serializes those values consistently on every host.
+process.env.TZ = "UTC";
+
+const { default: app } = await import("./app");
+const { logger } = await import("./lib/logger");
+const { ensureSchema } = await import("./lib/ensure-schema");
 
 const rawPort = process.env["PORT"];
 

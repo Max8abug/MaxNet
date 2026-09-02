@@ -4,14 +4,6 @@ const STORAGE_KEY = "portfolio98-time-zone";
 const listeners = new Set<() => void>();
 export const SITE_DEFAULT_TIME_ZONE = "America/New_York";
 
-function browserTimeZone(): string {
-  try {
-    return Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
-  } catch {
-    return "UTC";
-  }
-}
-
 export function isValidTimeZone(value: string): boolean {
   try {
     new Intl.DateTimeFormat("en-US", { timeZone: value }).format();
