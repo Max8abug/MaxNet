@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import {
-  fetchChat, postChat, clearChat, deleteChatMessage,
+  fetchChat, postChat, clearChat, downloadChatArchive, deleteChatMessage,
   fetchChatAudit, fetchBans, addBan, removeBan, pingTyping, fetchTyping,
   type ChatMessage, type ChatAuditEntry, type BannedUser,
 } from "../lib/api";
@@ -47,6 +47,8 @@ export function ChatBox({ onRequestLogin }: Props) {
   const [replyTo, setReplyTo] = useState<ChatMessage | null>(null);
   const [sending, setSending] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const [archiveStatus, setArchiveStatus] = useState<string | null>(null);
+  const [exporting, setExporting] = useState(false);
   const [typing, setTyping] = useState<string[]>([]);
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -115,6 +117,25 @@ export function ChatBox({ onRequestLogin }: Props) {
   async function clearAll() {
     if (!confirm("Clear ALL chat messages?")) return;
     try { await clearChat(); await refresh(); await refreshAdmin(); } catch {}
+  }
+  async function exportArchive() {
+    setExporting(true); setErr(null); setArchiveStatus(null);
+    try {
+      const blob = await downloadChatArchive();
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = `chat-archive-${new Date().toISOString().slice(0, 10)}.zip`;
+      document.body.appendChild(anchor);
+      anchor.click();
+      document.body.removeChild(anchor);
+      setTimeout(() => URL.revokeObjectURL(url), 5_000);
+      setArchiveStatus("Chat archive downloaded.");
+    } catch (e: any) {
+      setErr(e?.message || "Could not export chat archive");
+    } finally {
+      setExporting(false);
+    }
   }
   async function deleteOne(id: number) {
     try { await deleteChatMessage(id); await refresh(); await refreshAdmin(); } catch {}
@@ -231,7 +252,20 @@ export function ChatBox({ onRequestLogin }: Props) {
                 <button className="win98-button px-2" title="Attach video" onClick={() => videoRef.current?.click()}>🎥</button>
                 <button className="win98-button px-3" disabled={sending} onClick={send}>Send</button>
               </div>
-              {canDelete && <button className="win98-button px-2 mt-1 self-start text-red-700 text-xs" onClick={clearAll}>Clear All Messages</button>}
+              <div className="flex items-center gap-1 mt-1">
+                {isAdmin && (
+                  <button
+                    className="win98-button px-2 text-xs"
+                    disabled={exporting}
+                    onClick={() => void exportArchive()}
+                    title="Download all chat messages and attached media as a ZIP archive"
+                  >
+                    {exporting ? "Exporting…" : "Export Chat ZIP"}
+                  </button>
+                )}
+                {canDelete && <button className="win98-button px-2 text-red-700 text-xs" onClick={clearAll}>Clear All Messages</button>}
+              </div>
+              {archiveStatus && <div className="text-green-700 text-[11px] mt-0.5">{archiveStatus}</div>}
             </>
           ) : (
             <button className="win98-button px-2 py-1 mt-1 shrink-0" onClick={onRequestLogin}>Log in to chat</button>
