@@ -231,12 +231,6 @@ export async function clearChat(): Promise<void> {
   await jsonOrThrow(await fetch(`${BASE}/chat`, { ...opts, method: "DELETE" }));
 }
 
-export async function downloadChatArchive(): Promise<Blob> {
-  const response = await fetch(`${BASE}/chat/export`, opts);
-  if (!response.ok) await jsonOrThrow(response);
-  return response.blob();
-}
-
 export async function deleteChatMessage(id: number): Promise<void> {
   await jsonOrThrow(await fetch(`${BASE}/chat/${id}`, { ...opts, method: "DELETE" }));
 }

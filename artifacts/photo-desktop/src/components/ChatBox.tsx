@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import {
-  fetchChat, postChat, clearChat, downloadChatArchive, deleteChatMessage,
+  fetchChat, postChat, clearChat, deleteChatMessage,
   fetchChatAudit, fetchBans, addBan, removeBan, pingTyping, fetchTyping,
   type ChatMessage, type ChatAuditEntry, type BannedUser,
 } from "../lib/api";
@@ -117,25 +117,6 @@ export function ChatBox({ onRequestLogin }: Props) {
   async function clearAll() {
     if (!confirm("Clear ALL chat messages?")) return;
     try { await clearChat(); await refresh(); await refreshAdmin(); } catch {}
-  }
-  async function exportArchive() {
-    setExporting(true); setErr(null); setArchiveStatus(null);
-    try {
-      const blob = await downloadChatArchive();
-      const url = URL.createObjectURL(blob);
-      const anchor = document.createElement("a");
-      anchor.href = url;
-      anchor.download = `chat-archive-${new Date().toISOString().slice(0, 10)}.zip`;
-      document.body.appendChild(anchor);
-      anchor.click();
-      document.body.removeChild(anchor);
-      setTimeout(() => URL.revokeObjectURL(url), 5_000);
-      setArchiveStatus("Chat archive downloaded.");
-    } catch (e: any) {
-      setErr(e?.message || "Could not export chat archive");
-    } finally {
-      setExporting(false);
-    }
   }
   async function deleteOne(id: number) {
     try { await deleteChatMessage(id); await refresh(); await refreshAdmin(); } catch {}
@@ -254,14 +235,20 @@ export function ChatBox({ onRequestLogin }: Props) {
               </div>
               <div className="flex items-center gap-1 mt-1">
                 {isAdmin && (
-                  <button
+                  <a
                     className="win98-button px-2 text-xs"
-                    disabled={exporting}
-                    onClick={() => void exportArchive()}
+                    href="/api/chat/export"
+                    download={`chat-archive-${new Date().toISOString().slice(0, 10)}.zip`}
+                    aria-disabled={exporting}
+                    onClick={(e) => {
+                      if (exporting) { e.preventDefault(); return; }
+                      setExporting(true); setErr(null); setArchiveStatus("Download started. Check your browser downloads.");
+                      window.setTimeout(() => setExporting(false), 750);
+                    }}
                     title="Download all chat messages and attached media as a ZIP archive"
                   >
                     {exporting ? "Exporting…" : "Export Chat ZIP"}
-                  </button>
+                  </a>
                 )}
                 {canDelete && <button className="win98-button px-2 text-red-700 text-xs" onClick={clearAll}>Clear All Messages</button>}
               </div>
