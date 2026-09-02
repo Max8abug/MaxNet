@@ -6,6 +6,17 @@
 //      when the tab is fully closed but the browser is still running.
 
 const BASE = "/api";
+const PUSH_OPERATION_TIMEOUT_MS = 12_000;
+
+function withTimeout<T>(promise: Promise<T>, message: string, ms = PUSH_OPERATION_TIMEOUT_MS): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = window.setTimeout(() => reject(new Error(message)), ms);
+    promise.then(
+      (value) => { window.clearTimeout(timer); resolve(value); },
+      (error) => { window.clearTimeout(timer); reject(error); },
+    );
+  });
+}
 
 export type ToastListener = (toast: Toast) => void;
 export interface Toast {
@@ -80,7 +91,10 @@ async function getSwRegistration(): Promise<ServiceWorkerRegistration | null> {
   if (!("serviceWorker" in navigator)) return null;
   if (swReg) return swReg;
   try {
-    swReg = await navigator.serviceWorker.register("/sw.js");
+    swReg = await withTimeout(
+      navigator.serviceWorker.register("/sw.js"),
+      "Service worker registration timed out.",
+    );
     return swReg;
   } catch {
     return null;
@@ -96,7 +110,16 @@ export async function registerServiceWorker(): Promise<void> {
 // the server. Returns true if the browser is now subscribed.
 export async function enablePushNotifications(): Promise<{ ok: boolean; reason?: string }> {
   if (!browserNotificationsSupported()) return { ok: false, reason: "Your browser doesn't support notifications." };
-  const perm = await requestNotificationPermission();
+  let perm: NotificationPermission;
+  try {
+    perm = await withTimeout(
+      requestNotificationPermission(),
+      "Notification permission request timed out.",
+      20_000,
+    );
+  } catch (e: any) {
+    return { ok: false, reason: e?.message || "Notification permission request timed out." };
+  }
   if (perm !== "granted") return { ok: false, reason: "Notification permission was not granted." };
 
   if (!("serviceWorker" in navigator) || !("PushManager" in window)) {
@@ -109,7 +132,10 @@ export async function enablePushNotifications(): Promise<{ ok: boolean; reason?:
 
   let key: string;
   try {
-    const r = await fetch(`${BASE}/push/public-key`, { credentials: "include" });
+    const r = await withTimeout(
+      fetch(`${BASE}/push/public-key`, { credentials: "include" }),
+      "Push server request timed out.",
+    );
     const j = await r.json();
     key = j.publicKey;
     if (!key) return { ok: false, reason: "Server is missing a push key." };
@@ -119,7 +145,10 @@ export async function enablePushNotifications(): Promise<{ ok: boolean; reason?:
 
   let sub: PushSubscription | null = null;
   try {
-    sub = await reg.pushManager.getSubscription();
+    sub = await withTimeout(
+      reg.pushManager.getSubscription(),
+      "Push subscription lookup timed out.",
+    );
     if (sub) {
       // Re-subscribe if the server's key has changed (would otherwise be a no-op).
       const existingKey = sub.options?.applicationServerKey
@@ -131,22 +160,28 @@ export async function enablePushNotifications(): Promise<{ ok: boolean; reason?:
       }
     }
     if (!sub) {
-      sub = await reg.pushManager.subscribe({
-        userVisibleOnly: true,
-        applicationServerKey: urlBase64ToUint8Array(key) as unknown as BufferSource,
-      });
+      sub = await withTimeout(
+        reg.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: urlBase64ToUint8Array(key) as unknown as BufferSource,
+        }),
+        "Push subscription setup timed out.",
+      );
     }
   } catch (e: any) {
     return { ok: false, reason: e?.message || "Could not subscribe this browser to push." };
   }
 
   try {
-    const response = await fetch(`${BASE}/push/subscribe`, {
-      method: "POST",
-      credentials: "include",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ subscription: sub.toJSON() }),
-    });
+    const response = await withTimeout(
+      fetch(`${BASE}/push/subscribe`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ subscription: sub.toJSON() }),
+      }),
+      "Saving the push subscription timed out.",
+    );
     if (!response.ok) {
       return { ok: false, reason: "Log in before enabling personal push notifications." };
     }
