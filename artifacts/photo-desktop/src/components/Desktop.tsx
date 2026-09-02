@@ -31,7 +31,7 @@ export function Desktop({ page }: { page: string }) {
   return (
     <div
       ref={boundsRef}
-      className="absolute inset-0 overflow-hidden"
+      className="desktop-surface absolute inset-0 overflow-hidden"
       style={{ minWidth: '100vw', minHeight: '100vh', ...bgStyle }}
     >
       <RedStrings page={page} />

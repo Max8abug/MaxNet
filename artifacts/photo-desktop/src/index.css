@@ -82,6 +82,21 @@
   --app-font-mono: 'Courier New', Courier, monospace;
 }
 
+.dark {
+  --background: 215 25% 12%;
+  --foreground: 210 25% 92%;
+  --border: 215 15% 42%;
+  --card: 215 18% 23%;
+  --card-foreground: 210 25% 92%;
+  --card-border: 215 15% 42%;
+  --secondary: 215 18% 28%;
+  --secondary-foreground: 210 25% 92%;
+  --muted: 215 14% 38%;
+  --muted-foreground: 210 20% 82%;
+  --input: 215 20% 18%;
+  --ring: 210 25% 85%;
+}
+
 @layer base {
   * {
     @apply border-border;
@@ -150,6 +165,92 @@
   border-right: 2px solid white;
   border-bottom: 2px solid white;
   box-shadow: inset 1px 1px black, inset -1px -1px #dfdfdf;
+}
+
+/* The original app intentionally uses some fixed Win98 colors in component
+ * markup. Keep those surfaces readable in dark mode without requiring every
+ * individual window to maintain a second set of utility classes. */
+.dark .desktop-surface::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: rgba(4, 10, 18, 0.42);
+  pointer-events: none;
+  z-index: 0;
+}
+
+.dark .win98-window {
+  background-color: hsl(var(--card));
+  border-top-color: #6d7885;
+  border-left-color: #6d7885;
+  border-right-color: #080b0f;
+  border-bottom-color: #080b0f;
+  box-shadow: inset 1px 1px #8b96a3, inset -1px -1px #10151b, 1px 1px 0 0 #05070a;
+}
+
+.dark .win98-button {
+  background-color: hsl(var(--card));
+  border-top-color: #8b96a3;
+  border-left-color: #8b96a3;
+  border-right-color: #080b0f;
+  border-bottom-color: #080b0f;
+  box-shadow: inset 1px 1px #8b96a3, inset -1px -1px #10151b;
+  color: hsl(var(--card-foreground));
+}
+
+.dark .win98-inset {
+  background-color: #141a21;
+  border-top-color: #080b0f;
+  border-left-color: #080b0f;
+  border-right-color: #8b96a3;
+  border-bottom-color: #8b96a3;
+  box-shadow: inset 1px 1px #05070a, inset -1px -1px #68727e;
+  color: #e3e8ee;
+}
+
+.dark [class~="bg-white"],
+.dark [class~="bg-gray-50"],
+.dark [class~="bg-gray-100"],
+.dark [class~="bg-gray-200"],
+.dark [class~="bg-gray-300"],
+.dark [class~="bg-[#c0c0c0]"],
+.dark [class~="bg-[#f4f4f4]"],
+.dark [class~="bg-[#ffffe1]"] {
+  background-color: #1b222b !important;
+}
+
+.dark [class~="text-black"] {
+  color: #e3e8ee !important;
+}
+
+.dark [class~="text-gray-500"],
+.dark [class~="text-gray-600"],
+.dark [class~="text-gray-700"],
+.dark [class~="text-gray-800"] {
+  color: #aeb8c4 !important;
+}
+
+.dark [class~="border-white"],
+.dark [class~="border-gray-100"],
+.dark [class~="border-gray-200"],
+.dark [class~="border-gray-300"],
+.dark [class~="border-gray-400"] {
+  border-color: #4d5966 !important;
+}
+
+.dark [class~="border-t-white"] {
+  border-top-color: #6d7885 !important;
+}
+
+.dark [class~="border-r-white"],
+.dark [class~="border-b-white"] {
+  border-color: #8b96a3 !important;
+}
+
+.dark input:not([type="color"]),
+.dark textarea,
+.dark select {
+  color-scheme: dark;
 }
 
 @keyframes cafePresencePulse {

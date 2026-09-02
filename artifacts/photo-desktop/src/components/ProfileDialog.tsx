@@ -1,5 +1,6 @@
 import { useRef, useState } from "react";
 import { useAuth } from "../lib/auth-store";
+import { useThemeMode } from "../lib/theme";
 
 interface Props { onClose: () => void; }
 
@@ -36,6 +37,7 @@ function fileToDataUrlRaw(file: File): Promise<string> {
 
 export function ProfileDialog({ onClose }: Props) {
   const { user, updateProfile } = useAuth();
+  const { darkMode, setDarkMode } = useThemeMode();
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [color, setColor] = useState(user?.backgroundColor || "#008080");
@@ -125,6 +127,20 @@ export function ProfileDialog({ onClose }: Props) {
               <button className="win98-button px-2 py-0.5 text-xs self-start" disabled={busy} onClick={clearBg}>
                 Reset to Default
               </button>
+            </div>
+          </div>
+          <div className="border-t border-gray-400 pt-2">
+            <div className="font-bold mb-1">Display</div>
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={darkMode}
+                onChange={(e) => setDarkMode(e.target.checked)}
+              />
+              <span>Dark mode</span>
+            </label>
+            <div className="text-xs text-gray-600 mt-1">
+              Uses softer dark surfaces to reduce bright backgrounds.
             </div>
           </div>
           {err && <div className="text-red-700 text-xs">{err}</div>}

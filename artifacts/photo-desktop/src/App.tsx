@@ -4,6 +4,7 @@ import { Desktop } from "@/components/Desktop";
 import { Taskbar } from "@/components/Taskbar";
 import { pingVisit } from "@/lib/api";
 import { useDesktopStore } from "@/store";
+import { ThemeProvider } from "@/lib/theme";
 
 function AppLayout() {
   const [location] = useLocation();
@@ -32,9 +33,11 @@ function AppLayout() {
 
 function App() {
   return (
-    <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
-      <AppLayout />
-    </WouterRouter>
+    <ThemeProvider>
+      <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
+        <AppLayout />
+      </WouterRouter>
+    </ThemeProvider>
   );
 }
 
