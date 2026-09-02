@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import {
   fetchChat, postChat, clearChat, deleteChatMessage,
-  downloadChatArchive,
   fetchChatAudit, fetchBans, addBan, removeBan, pingTyping, fetchTyping,
   type ChatMessage, type ChatAuditEntry, type BannedUser,
 } from "../lib/api";
@@ -135,29 +134,6 @@ export function ChatBox({ onRequestLogin }: Props) {
   }
   async function unban(username: string) { try { await removeBan(username); await refreshAdmin(); } catch {} }
 
-  async function downloadArchive() {
-    if (exporting) return;
-    setExporting(true);
-    setErr(null);
-    setArchiveStatus(null);
-    try {
-      const { blob, filename } = await downloadChatArchive();
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = filename;
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
-      setArchiveStatus("Chat archive downloaded.");
-    } catch (e: any) {
-      setErr(e?.message || "Could not download the chat archive.");
-    } finally {
-      setExporting(false);
-    }
-  }
-
   function authorColor(name: string): string | undefined {
     const cached = getCachedUser(name);
     return userColor(cached || { username: name }, ranks) || undefined;
@@ -259,15 +235,27 @@ export function ChatBox({ onRequestLogin }: Props) {
               </div>
               <div className="flex items-center gap-1 mt-1">
                 {isAdmin && (
-                  <button
-                    className="win98-button px-2 text-xs"
-                    type="button"
-                    disabled={exporting}
-                    onClick={() => void downloadArchive()}
-                    title="Download all chat messages and attached media as a ZIP archive"
-                  >
-                    {exporting ? "Exporting…" : "Export Chat ZIP"}
-                  </button>
+                  exporting ? (
+                    <button className="win98-button px-2 text-xs" type="button" disabled>
+                      Exporting…
+                    </button>
+                  ) : (
+                    <a
+                      className="win98-button px-2 text-xs"
+                      href="/api/chat/export"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      onClick={() => {
+                        setExporting(true);
+                        setErr(null);
+                        setArchiveStatus("Chat archive download started. Check your browser downloads.");
+                        window.setTimeout(() => setExporting(false), 1500);
+                      }}
+                      title="Download all chat messages and attached media as a ZIP archive"
+                    >
+                      Export Chat ZIP
+                    </a>
+                  )
                 )}
                 {canDelete && <button className="win98-button px-2 text-red-700 text-xs" onClick={clearAll}>Clear All Messages</button>}
               </div>

@@ -11,16 +11,9 @@ export function parseServerDate(value: string | number | Date): Date {
   return new Date(text);
 }
 
-// Keep site timestamps consistent with the site's primary audience instead of
-// depending on the timezone of the Replit preview/browser process. Intl applies
-// daylight-saving changes for this IANA zone automatically.
-const SITE_TIME_ZONE = "America/New_York";
-
 export function formatLocalDate(value: string | number | Date, options?: Intl.DateTimeFormatOptions): string {
   const date = parseServerDate(value);
-  return Number.isNaN(date.getTime())
-    ? String(value)
-    : date.toLocaleString(undefined, { timeZone: SITE_TIME_ZONE, ...options });
+  return Number.isNaN(date.getTime()) ? String(value) : date.toLocaleString(undefined, options);
 }
 
 export function formatLocalTime(value: string | number | Date): string {
@@ -30,10 +23,8 @@ export function formatLocalTime(value: string | number | Date): string {
 export function siteDateKey(value: string | number | Date): string {
   const date = parseServerDate(value);
   if (Number.isNaN(date.getTime())) return "";
-  return new Intl.DateTimeFormat("en-CA", {
-    timeZone: SITE_TIME_ZONE,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).format(date);
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
 }
