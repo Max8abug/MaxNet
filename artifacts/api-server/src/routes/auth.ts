@@ -206,6 +206,106 @@ router.get("/users", async (_req, res) => {
   res.json(rows);
 });
 
+// Admin: change an account's username and/or password without exposing the
+// password hash or requiring the account owner's current password.
+router.patch("/users/:username/credentials", requireAdmin, async (req, res) => {
+  const currentUsername = String(req.params.username || "").trim();
+  if (!currentUsername) { res.status(400).json({ error: "username required" }); return; }
+
+  const target = await findUserByUsername(currentUsername);
+  if (!target) { res.status(404).json({ error: "User not found" }); return; }
+
+  const body = req.body ?? {};
+  const hasUsername = body.username !== undefined;
+  const hasPassword = body.password !== undefined;
+  if (!hasUsername && !hasPassword) {
+    res.status(400).json({ error: "Provide a username or password" });
+    return;
+  }
+
+  let nextUsername = target.username;
+  if (hasUsername) {
+    if (typeof body.username !== "string") {
+      res.status(400).json({ error: "username must be a string" });
+      return;
+    }
+    nextUsername = body.username.trim();
+    if (nextUsername.length < 2 || nextUsername.length > 32) {
+      res.status(400).json({ error: "Username must be 2-32 chars" });
+      return;
+    }
+    if (nextUsername !== target.username && isAdminUsername(target.username)) {
+      res.status(400).json({ error: "The site owner username cannot be changed." });
+      return;
+    }
+    if (isAdminUsername(nextUsername) && nextUsername !== target.username) {
+      res.status(400).json({ error: "That username is reserved." });
+      return;
+    }
+    const collision = await findUserByUsername(nextUsername);
+    if (collision && collision.id !== target.id) {
+      res.status(409).json({ error: "Username taken" });
+      return;
+    }
+    if (nextUsername !== target.username) {
+      const [page] = await db.select({ username: userPagesTable.username })
+        .from(userPagesTable)
+        .where(eq(userPagesTable.username, nextUsername))
+        .limit(1);
+      if (page) {
+        res.status(409).json({ error: "That username already has a personal page." });
+        return;
+      }
+    }
+  }
+
+  let nextPasswordHash: string | undefined;
+  if (hasPassword) {
+    if (typeof body.password !== "string") {
+      res.status(400).json({ error: "password must be a string" });
+      return;
+    }
+    if (body.password.length < 4 || body.password.length > 128) {
+      res.status(400).json({ error: "Password must be 4-128 chars" });
+      return;
+    }
+    nextPasswordHash = await hashPassword(body.password);
+  }
+
+  const actor = req.session.username || "admin";
+  const usernameChanged = nextUsername !== target.username;
+  const passwordChanged = nextPasswordHash !== undefined;
+  const update: { username?: string; passwordHash?: string } = {};
+  if (usernameChanged) update.username = nextUsername;
+  if (nextPasswordHash) update.passwordHash = nextPasswordHash;
+
+  await db.transaction(async (tx) => {
+    if (Object.keys(update).length > 0) {
+      await tx.update(usersTable).set(update).where(eq(usersTable.id, target.id));
+    }
+    if (usernameChanged) {
+      await tx.update(userPagesTable)
+        .set({ username: nextUsername })
+        .where(eq(userPagesTable.username, target.username));
+    }
+    await tx.insert(chatAuditTable).values({
+      area: "user",
+      action: "credentials",
+      actor,
+      target: target.username,
+      body: [
+        usernameChanged ? `username changed to ${nextUsername}` : "",
+        passwordChanged ? "password changed" : "",
+      ].filter(Boolean).join("; "),
+    });
+  });
+
+  if (req.session.userId === target.id) {
+    req.session.username = nextUsername;
+  }
+  res.json({ ok: true, username: nextUsername });
+});
+
 // Admin: permanently delete a user (also bans them so they can't immediately re-register).
 router.delete("/users/:username", requireAdmin, async (req, res) => {
   const username = String(req.params.username || "").trim();

@@ -3,6 +3,8 @@
 // parses and serializes those values consistently on every host.
 process.env.TZ = "UTC";
 
+export {};
+
 const { default: app } = await import("./app");
 const { logger } = await import("./lib/logger");
 const { ensureSchema } = await import("./lib/ensure-schema");

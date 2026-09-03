@@ -25,6 +25,7 @@ import { News } from './News';
 import { SiteBackup } from './SiteBackup';
 import { UserList } from './UserList';
 import { DiagnosticsPanel } from './DiagnosticsPanel';
+import { AccountAdmin } from './AccountAdmin';
 import { useAuth } from '../lib/auth-store';
 
 function getYouTubeEmbedUrl(url: string): string | null {
@@ -309,6 +310,7 @@ export function Window({
         {w.type === 'sitebackup' && !isEditing && <SiteBackup />}
         {w.type === 'userlist' && !isEditing && <UserList page={page} />}
         {w.type === 'diagnostics' && !isEditing && <DiagnosticsPanel />}
+        {w.type === 'accountadmin' && !isEditing && <AccountAdmin />}
         {showLogin && <LoginDialog onClose={() => setShowLogin(false)} />}
 
         {!isMax && (

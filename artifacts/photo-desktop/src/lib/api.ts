@@ -215,6 +215,13 @@ export async function adminDeleteUser(username: string, reason?: string): Promis
     body: JSON.stringify({ reason: reason || "" }),
   }));
 }
+export async function adminUpdateAccount(username: string, data: { username?: string; password?: string }): Promise<{ username: string }> {
+  return jsonOrThrow(await fetch(`${BASE}/users/${encodeURIComponent(username)}/credentials`, {
+    ...opts, method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  }));
+}
 export async function voteDrawing(id: number, vote: -1 | 0 | 1): Promise<{ ok: true; score: number; myVote: number }> {
   return jsonOrThrow(await fetch(`${BASE}/drawings/${id}/vote`, {
     ...opts, method: "POST",
