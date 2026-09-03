@@ -13,7 +13,7 @@ self.addEventListener("activate", (event) => {
 });
 
 self.addEventListener("push", (event) => {
-  let payload = { title: "New notification", body: "", tag: undefined, url: "/" };
+  let payload = { title: "New notification", body: "", tag: undefined, url: "/", kind: "" };
   if (event.data) {
     try { payload = Object.assign(payload, event.data.json()); }
     catch { payload.body = event.data.text(); }
@@ -25,7 +25,7 @@ self.addEventListener("push", (event) => {
       renotify: !!payload.tag,             // still vibrate/sound when same tag updates
       icon: "/favicon.svg",
       badge: "/favicon.svg",
-      data: { url: payload.url || "/" },
+      data: { url: payload.url || "/", kind: payload.kind || "" },
     }),
   );
 });
@@ -38,10 +38,16 @@ self.addEventListener("notificationclick", (event) => {
     for (const c of all) {
       if ("focus" in c) {
         try { await c.focus(); } catch {}
-        try { c.postMessage({ type: "open-dms" }); } catch {}
+        try {
+          c.postMessage({ type: payloadKindToMessage(event.notification.data?.kind) });
+        } catch {}
         return;
       }
     }
     if (self.clients.openWindow) await self.clients.openWindow(targetUrl);
   })());
 });
+
+function payloadKindToMessage(kind) {
+  return kind === "site-news" ? "open-site-news" : "open-dms";
+}

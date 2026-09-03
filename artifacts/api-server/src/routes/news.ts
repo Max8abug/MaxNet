@@ -5,6 +5,7 @@ import { desc, eq } from "drizzle-orm";
 import { requireAuth } from "../lib/auth";
 import { getUserPermissions } from "./ranks";
 import { isBanned, audit } from "./social";
+import { sendPushToAll } from "../lib/push";
 
 const router: IRouter = Router();
 
@@ -92,6 +93,14 @@ router.post("/news", requireNewsPost, async (req, res) => {
     return;
   }
   const [row] = await db.insert(newsPostsTable).values({ author, title, body, images }).returning();
+  void sendPushToAll({
+    title: "New site news",
+    body: title || body.slice(0, 160) || "A new announcement was posted.",
+    tag: `site-news:${row.id}`,
+    kind: "site-news",
+    url: "/",
+    excludeUsername: author,
+  });
   res.json(row);
 });
 

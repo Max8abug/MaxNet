@@ -11,6 +11,8 @@ import { LoginDialog } from './LoginDialog';
 import { Forum } from './Forum';
 import { Blackjack } from './Blackjack';
 import { Flappy } from './Flappy';
+import { GeometryDash } from './GeometryDash';
+import { Poker } from './Poker';
 import { SyncedYouTube } from './SyncedYouTube';
 import { MusicPlayer } from './MusicPlayer';
 import { Polls } from './Polls';
@@ -24,6 +26,7 @@ import { IpLookup } from './IpLookup';
 import { News } from './News';
 import { SiteBackup } from './SiteBackup';
 import { UserList } from './UserList';
+import { UserBrowser } from './UserBrowser';
 import { DiagnosticsPanel } from './DiagnosticsPanel';
 import { AccountAdmin } from './AccountAdmin';
 import { useAuth } from '../lib/auth-store';
@@ -296,12 +299,15 @@ export function Window({
         {w.type === 'forum' && !isEditing && <Forum onRequestLogin={() => setShowLogin(true)} />}
         {w.type === 'blackjack' && !isEditing && <Blackjack onRequestLogin={() => setShowLogin(true)} />}
         {w.type === 'flappy' && !isEditing && <Flappy onRequestLogin={() => setShowLogin(true)} />}
+        {w.type === 'geometry' && !isEditing && <GeometryDash />}
+        {w.type === 'poker' && !isEditing && <Poker />}
         {w.type === 'music' && !isEditing && <MusicPlayer />}
         {w.type === 'polls' && !isEditing && <Polls />}
         {w.type === 'chess' && !isEditing && <Chess />}
         {w.type === 'cafe' && !isEditing && <Cafe />}
         {w.type === 'dms' && !isEditing && <DMs initialPeer={w.dmPeer} />}
         {w.type === 'userpage' && !isEditing && <UserPage username={w.username || ''} />}
+        {w.type === 'browser' && !isEditing && <UserBrowser page={page} />}
         {w.type === 'mypage' && !isEditing && <MyPageRouter />}
         {w.type === 'ranksadmin' && !isEditing && <RanksAdmin />}
         {w.type === 'sitesettings' && !isEditing && <SiteSettingsDialog />}

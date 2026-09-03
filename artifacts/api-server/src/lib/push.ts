@@ -50,12 +50,38 @@ export async function getPublicKey(): Promise<string> {
   return k?.publicKey || "";
 }
 
+type PushPayload = { title: string; body: string; tag?: string; url?: string; kind?: string; excludeUsername?: string };
+
+async function sendPushToSubscriptions(
+  subs: Array<{ id: number; endpoint: string; p256dh: string; auth: string; username: string }>,
+  payload: PushPayload,
+): Promise<void> {
+  if (subs.length === 0) return;
+  const json = JSON.stringify(payload);
+  await Promise.all(subs.map(async (s) => {
+    try {
+      await webpush.sendNotification(
+        { endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth } },
+        json,
+        { TTL: 60 * 60 * 24 },
+      );
+    } catch (e: any) {
+      const code = e?.statusCode;
+      if (code === 404 || code === 410) {
+        await db.delete(pushSubscriptionsTable).where(eq(pushSubscriptionsTable.id, s.id)).catch(() => {});
+      } else {
+        logger.warn({ err: e?.message || e, statusCode: code, username: s.username }, "Push send failed");
+      }
+    }
+  }));
+}
+
 // Send the same notification payload to every device the user has registered.
 // Stale subscriptions (HTTP 404/410 from the push service) are pruned on the
 // fly so they don't accumulate.
 export async function sendPushToUser(
   username: string,
-  payload: { title: string; body: string; tag?: string; url?: string },
+  payload: PushPayload,
 ): Promise<void> {
   const v = await ensureVapid();
   if (!v) return;
@@ -67,23 +93,22 @@ export async function sendPushToUser(
     return;
   }
   if (subs.length === 0) return;
+  await sendPushToSubscriptions(subs, payload);
+}
 
-  const json = JSON.stringify(payload);
-  await Promise.all(subs.map(async (s) => {
-    try {
-      await webpush.sendNotification(
-        { endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth } },
-        json,
-        { TTL: 60 * 60 * 24 }, // server holds the message up to 24h if device offline
-      );
-    } catch (e: any) {
-      const code = e?.statusCode;
-      // 404 / 410 mean the subscription has been revoked or expired.
-      if (code === 404 || code === 410) {
-        await db.delete(pushSubscriptionsTable).where(eq(pushSubscriptionsTable.id, s.id)).catch(() => {});
-      } else {
-        logger.warn({ err: e?.message || e, statusCode: code, username }, "Push send failed");
-      }
-    }
-  }));
+// Broadcast public announcements to every subscribed browser/device.
+export async function sendPushToAll(payload: PushPayload): Promise<void> {
+  const v = await ensureVapid();
+  if (!v) return;
+  let subs;
+  try {
+    subs = await db.select().from(pushSubscriptionsTable);
+  } catch (e) {
+    logger.error({ err: e }, "Failed to load push subscriptions for broadcast");
+    return;
+  }
+  await sendPushToSubscriptions(
+    payload.excludeUsername ? subs.filter((s) => s.username !== payload.excludeUsername) : subs,
+    payload,
+  );
 }

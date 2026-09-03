@@ -43,6 +43,7 @@ export function ChatBox({ onRequestLogin }: Props) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [text, setText] = useState("");
   const [imageData, setImageData] = useState<string | null>(null);
+  const [gifUrl, setGifUrl] = useState("");
   const [videoData, setVideoData] = useState<string | null>(null);
   const [replyTo, setReplyTo] = useState<ChatMessage | null>(null);
   const [sending, setSending] = useState(false);
@@ -102,13 +103,27 @@ export function ChatBox({ onRequestLogin }: Props) {
     setSending(true); setErr(null);
     try {
       await postChat(text, imageData, videoData, replyTo?.id ?? null);
-      setText(""); setImageData(null); setVideoData(null); setReplyTo(null);
+      setText(""); setImageData(null); setVideoData(null); setGifUrl(""); setReplyTo(null);
       await refresh();
     } catch (e: any) { setErr(e?.message || "Failed"); }
     finally { setSending(false); }
   }
 
   async function pickImage(file: File) { try { setImageData(await fileToImageData(file)); } catch { setErr("Image failed"); } }
+  function addGifLink() {
+    const value = gifUrl.trim();
+    try {
+      const url = new URL(value);
+      if ((url.protocol !== "http:" && url.protocol !== "https:") || !/\.gif$/i.test(url.pathname)) {
+        throw new Error();
+      }
+      setImageData(url.toString());
+      setGifUrl("");
+      setErr(null);
+    } catch {
+      setErr("Use a direct HTTP(S) link ending in .gif.");
+    }
+  }
   async function pickVideo(file: File) {
     if (file.size > 9_000_000) { setErr("Video too large (max ~9MB)"); return; }
     try { setVideoData(await fileToDataUrl(file)); } catch { setErr("Video failed"); }
@@ -220,6 +235,17 @@ export function ChatBox({ onRequestLogin }: Props) {
                   <button className="win98-button px-1 text-[10px]" onClick={() => { setImageData(null); setVideoData(null); }}>remove</button>
                 </div>
               )}
+              <div className="flex gap-1 mt-1 shrink-0">
+                <input
+                  type="url"
+                  className="win98-inset px-1 flex-1 min-w-0 text-xs"
+                  placeholder="Paste a direct .gif link"
+                  value={gifUrl}
+                  onChange={(e) => setGifUrl(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addGifLink(); } }}
+                />
+                <button className="win98-button px-2 text-xs" type="button" onClick={addGifLink}>Add GIF</button>
+              </div>
               <div className="flex gap-1 mt-1 shrink-0">
                 <input type="text" className="win98-inset px-1 flex-1"
                   placeholder={`Message as ${user.username}...`}

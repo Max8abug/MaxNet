@@ -52,6 +52,16 @@ function validImageData(s: unknown, max = 2_000_000): s is string {
   return typeof s === "string" && s.startsWith("data:image/") && s.length <= max;
 }
 
+function validGifUrl(s: unknown): s is string {
+  if (typeof s !== "string" || s.length > 2_000) return false;
+  try {
+    const url = new URL(s);
+    return (url.protocol === "http:" || url.protocol === "https:") && /\.gif$/i.test(url.pathname);
+  } catch {
+    return false;
+  }
+}
+
 // ---------- Drawings ----------
 router.get("/drawings", async (req, res) => {
   const rows = await db
@@ -380,8 +390,8 @@ router.post("/chat", requireAuth, async (req, res) => {
     return;
   }
   if (trimmedBody.length > 500) { res.status(413).json({ error: "Message too long" }); return; }
-  if (imageUrl !== undefined && imageUrl !== null && !validImageData(imageUrl, 3_000_000)) {
-    res.status(400).json({ error: "bad imageUrl" }); return;
+  if (imageUrl !== undefined && imageUrl !== null && !validImageData(imageUrl, 3_000_000) && !validGifUrl(imageUrl)) {
+    res.status(400).json({ error: "imageUrl must be a data image or a direct HTTP(S) GIF URL" }); return;
   }
   if (videoUrl !== undefined && videoUrl !== null) {
     if (typeof videoUrl !== "string" || !videoUrl.startsWith("data:video/") || videoUrl.length > 12_000_000) {

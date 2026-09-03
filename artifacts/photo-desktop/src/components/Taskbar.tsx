@@ -6,7 +6,7 @@ import { LoginDialog } from './LoginDialog';
 import { ProfileDialog } from './ProfileDialog';
 import { useThemeMode } from '../lib/theme';
 import { Toaster } from './Toaster';
-import { fetchDMConversations, fetchChat, fetchCafeState } from '../lib/api';
+import { fetchDMConversations, fetchChat, fetchCafeState, fetchNews } from '../lib/api';
 import {
   enablePushNotifications,
   registerServiceWorker,
@@ -42,6 +42,7 @@ export function Taskbar({ page }: { page: string }) {
   // Poll for DM and chat unread counts. Treat the badge as cleared while a window of that type is open and not minimized.
   const dmsOpen = wins.some(w => w.type === 'dms' && (w.state || 'normal') !== 'min');
   const chatOpen = wins.some(w => w.type === 'chat' && (w.state || 'normal') !== 'min');
+  const newsOpen = wins.some(w => w.type === 'news' && (w.state || 'normal') !== 'min');
 
   // Poll the cafe presence count so the taskbar chip pulses live, even when
   // the cafe window is closed. Independent from auth — anyone can see how
@@ -66,8 +67,20 @@ export function Taskbar({ page }: { page: string }) {
   // first-load guard as DMs so old @mentions in history don't replay on reload.
   const chatMentionMaxIdRef = useRef(0);
   const chatFirstLoadRef = useRef(true);
+  const newsMaxIdRef = useRef(0);
+  const newsFirstLoadRef = useRef(true);
   useEffect(() => {
-    if (!user) { setDmUnread(0); setChatUnread(0); dmAlertedRef.current = {}; dmFirstLoadRef.current = true; chatFirstLoadRef.current = true; chatMentionMaxIdRef.current = 0; return; }
+    if (!user) {
+      setDmUnread(0);
+      setChatUnread(0);
+      dmAlertedRef.current = {};
+      dmFirstLoadRef.current = true;
+      chatFirstLoadRef.current = true;
+      chatMentionMaxIdRef.current = 0;
+      newsFirstLoadRef.current = true;
+      newsMaxIdRef.current = 0;
+      return;
+    }
     let alive = true;
     const tick = async () => {
       try {
@@ -137,11 +150,33 @@ export function Taskbar({ page }: { page: string }) {
           }
         }
       } catch {}
+      try {
+        const news = await fetchNews();
+        if (!alive) return;
+        const newest = news.length > 0 ? Math.max(...news.map((post) => post.id)) : 0;
+        const hidden = typeof document !== "undefined" && document.visibilityState === "hidden";
+        if (newsFirstLoadRef.current) {
+          newsMaxIdRef.current = newest;
+          newsFirstLoadRef.current = false;
+        } else {
+          const fresh = news
+            .filter((post) => post.id > newsMaxIdRef.current && post.author !== user.username)
+            .sort((a, b) => a.id - b.id);
+          newsMaxIdRef.current = Math.max(newsMaxIdRef.current, newest);
+          if (!newsOpen || hidden) {
+            for (const post of fresh) {
+              const summary = post.title || post.body.replace(/\s+/g, " ").trim().slice(0, 160) || "A new announcement was posted.";
+              pushToast({ title: "New site news", body: summary, kind: "info" });
+              showBrowserNotification("New site news", summary, { tag: `site-news:${post.id}` });
+            }
+          }
+        }
+      } catch {}
     };
     void tick();
     const t = setInterval(tick, 5000);
     return () => { alive = false; clearInterval(t); };
-  }, [user, dmsOpen, chatOpen]);
+  }, [user, dmsOpen, chatOpen, newsOpen]);
 
   // Service-worker registration + listening for the SW's "open DMs" message
   // (sent when a user clicks a system push notification while the tab is
@@ -151,7 +186,7 @@ export function Taskbar({ page }: { page: string }) {
     void registerServiceWorker();
     if (!("serviceWorker" in navigator)) return;
     const handler = (ev: MessageEvent) => {
-      if (ev.data?.type === "open-dms") {
+        if (ev.data?.type === "open-dms") {
         const existing = wins.find(w => w.type === 'dms');
         if (existing) {
           if ((existing.state || 'normal') === 'min') toggleWindowState(page, existing.id, 'min');
@@ -160,6 +195,15 @@ export function Taskbar({ page }: { page: string }) {
           addWindow(page, { type: 'dms', title: 'Direct Messages', width: 460, height: 380 });
         }
       }
+        if (ev.data?.type === "open-site-news") {
+          const existing = wins.find(w => w.type === 'news');
+          if (existing) {
+            if ((existing.state || 'normal') === 'min') toggleWindowState(page, existing.id, 'min');
+            bringToFront(page, existing.id);
+          } else {
+            addWindow(page, { type: 'news', title: 'Site News', width: 520, height: 480 });
+          }
+        }
     };
     navigator.serviceWorker.addEventListener("message", handler);
     return () => { navigator.serviceWorker.removeEventListener("message", handler); };
@@ -203,9 +247,12 @@ export function Taskbar({ page }: { page: string }) {
     { label: "Open Cafe", act: () => open({ type: 'cafe', title: 'Cafe', width: 720, height: 560 }) },
     { label: "Open DMs", act: () => open({ type: 'dms', title: 'Direct Messages', width: 460, height: 380 }) },
     { label: "Browse Users", act: () => open({ type: 'userlist', title: 'Users', width: 240, height: 400 }) },
-    { label: "My Page", act: () => open({ type: 'mypage', title: user ? `${user.username}'s page` : 'My Page', width: 520, height: 440 }) },
+    { label: "Web Browser", act: () => open({ type: 'browser', title: 'Web Browser', width: 620, height: 520 }) },
+    { label: "My Page Editor", act: () => open({ type: 'mypage', title: user ? `${user.username}'s page` : 'My Page', width: 520, height: 440 }) },
     { label: "Play Blackjack", act: () => open({ type: 'blackjack', title: 'Blackjack', width: 520, height: 480 }) },
     { label: "Play Flappy Bird", act: () => open({ type: 'flappy', title: 'Flappy Bird', width: 560, height: 540 }) },
+    { label: "Play Geometry Dash", act: () => open({ type: 'geometry', title: 'Geometry Dash', width: 560, height: 330 }) },
+    { label: "Play Poker", act: () => open({ type: 'poker', title: 'Poker', width: 560, height: 390 }) },
     { label: "Add Chatbox", act: () => open({ type: 'chat', title: 'Chatbox', width: 360, height: 420 }) },
     { label: "Add Drawing Pad", act: () => open({ type: 'drawing', title: 'Visitor Drawings', width: 460, height: 440 }) },
     { label: "Add Guestbook", act: () => open({ type: 'guestbook', title: 'Guestbook', width: 320, height: 380 }) },

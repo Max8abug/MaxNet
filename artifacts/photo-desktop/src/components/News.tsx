@@ -59,13 +59,18 @@ export function News() {
   const [commentBusy, setCommentBusy] = useState<number | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
-  async function load() {
-    setLoading(true);
+  async function load(showLoading = true) {
+    if (showLoading) setLoading(true);
     try { setPosts(await fetchNews()); setErr(null); }
     catch (e: any) { setErr(e?.message || "Failed to load news"); }
     finally { setLoading(false); }
   }
-  useEffect(() => { void refreshRanks(); void load(); }, [refreshRanks]);
+  useEffect(() => {
+    void refreshRanks();
+    void load();
+    const timer = setInterval(() => { void load(false); }, 15_000);
+    return () => clearInterval(timer);
+  }, [refreshRanks]);
 
   function resetForm() { setTitle(""); setBody(""); setImages([]); setEditingId(null); setErr(null); }
 

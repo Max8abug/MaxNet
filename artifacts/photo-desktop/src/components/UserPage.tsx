@@ -38,6 +38,7 @@ export function UserPage({ username }: Props) {
   const [strokeWidth, setStrokeWidth] = useState(3);
   const [erase, setErase] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [saveStatus, setSaveStatus] = useState<string | null>(null);
   const [edit, setEdit] = useState(false);
   const [elements, setElements] = useState<UserPageElement[]>([]);
   const [selIdx, setSelIdx] = useState<number | null>(null);
@@ -84,8 +85,14 @@ export function UserPage({ username }: Props) {
 
   async function save() {
     const c = canvasRef.current; if (!c) return;
-    setBusy(true);
-    try { await saveUserPage(c.toDataURL("image/png"), elements); setEdit(false); setSelIdx(null); }
+    setBusy(true); setSaveStatus(null);
+    try {
+      await saveUserPage(c.toDataURL("image/png"), elements);
+      await load();
+      setEdit(false);
+      setSelIdx(null);
+      setSaveStatus("Saved and published.");
+    }
     catch (e: any) { alert(e?.message || "Failed"); }
     finally { setBusy(false); }
   }
@@ -239,6 +246,7 @@ export function UserPage({ username }: Props) {
         </div>
       </div>
       {edit && isMe && <div className="text-[10px] text-gray-600 shrink-0">Drag elements to move · click to select · drag the blue corner to resize · double-click text to edit · click outside to deselect</div>}
+      {saveStatus && <div className="text-[10px] text-green-700 shrink-0">{saveStatus}</div>}
     </div>
   );
 }
