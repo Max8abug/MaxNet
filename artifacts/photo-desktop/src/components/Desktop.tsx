@@ -37,7 +37,7 @@ export function Desktop({ page }: { page: string }) {
   return (
     <div
       ref={boundsRef}
-      className="desktop-surface absolute inset-0 overflow-hidden"
+      className={`desktop-surface absolute inset-0 overflow-hidden ${darkMode && !backgroundUrl ? "dark-solid-background" : ""}`}
       style={{ minWidth: '100vw', minHeight: '100vh', ...bgStyle }}
     >
       <RedStrings page={page} />

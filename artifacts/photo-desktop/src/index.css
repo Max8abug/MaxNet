@@ -170,7 +170,7 @@
 /* The original app intentionally uses some fixed Win98 colors in component
  * markup. Keep those surfaces readable in dark mode without requiring every
  * individual window to maintain a second set of utility classes. */
-.dark .desktop-surface::before {
+.dark .desktop-surface.dark-solid-background::before {
   content: "";
   position: absolute;
   inset: 0;
