@@ -1,0 +1,292 @@
+import { useEffect, useRef, useState } from "react";
+import {
+  createNews, deleteNews, fetchNews, updateNews, fetchNewsComments,
+  postNewsComment, deleteNewsComment, type NewsPost, type NewsComment,
+} from "../lib/api";
+import { hasPermission, useAuth } from "../lib/auth-store";
+import { Avatar } from "./Avatar";
+import { formatLocalDate } from "../lib/dates";
+
+// Downscale uploaded images so news posts stay light. Square images aren't
+// required — the longest side is capped so portrait/landscape both work.
+function fileToInlineImage(file: File, maxSize = 1000): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => {
+      if (file.type === "image/gif" || file.type === "image/svg+xml") {
+        resolve(r.result as string);
+        return;
+      }
+      const img = new Image();
+      img.onload = () => {
+        const c = document.createElement("canvas");
+        const scale = Math.min(1, maxSize / Math.max(img.width, img.height));
+        c.width = Math.max(1, Math.round(img.width * scale));
+        c.height = Math.max(1, Math.round(img.height * scale));
+        const ctx = c.getContext("2d")!;
+        ctx.imageSmoothingQuality = "high";
+        ctx.drawImage(img, 0, 0, c.width, c.height);
+        resolve(c.toDataURL("image/jpeg", 0.85));
+      };
+      img.onerror = reject;
+      img.src = r.result as string;
+    };
+    r.onerror = reject;
+    r.readAsDataURL(file);
+  });
+}
+
+function fmt(d: string) { return formatLocalDate(d); }
+
+export function News() {
+  const me = useAuth((s) => s.user);
+  const ranks = useAuth((s) => s.ranks);
+  const refreshRanks = useAuth((s) => s.refreshRanks);
+  const canPost = !!me && (me.isAdmin || hasPermission(me, "postNews", ranks));
+
+  const [posts, setPosts] = useState<NewsPost[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [err, setErr] = useState<string | null>(null);
+
+  const [title, setTitle] = useState("");
+  const [body, setBody] = useState("");
+  const [images, setImages] = useState<string[]>([]);
+  const [busy, setBusy] = useState(false);
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const [expandedComments, setExpandedComments] = useState<Record<number, boolean>>({});
+  const [comments, setComments] = useState<Record<number, NewsComment[]>>({});
+  const [commentDrafts, setCommentDrafts] = useState<Record<number, string>>({});
+  const [commentBusy, setCommentBusy] = useState<number | null>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  async function load(showLoading = true) {
+    if (showLoading) setLoading(true);
+    try { setPosts(await fetchNews()); setErr(null); }
+    catch (e: any) { setErr(e?.message || "Failed to load news"); }
+    finally { setLoading(false); }
+  }
+  useEffect(() => {
+    void refreshRanks();
+    void load();
+    const timer = setInterval(() => { void load(false); }, 15_000);
+    return () => clearInterval(timer);
+  }, [refreshRanks]);
+
+  function resetForm() { setTitle(""); setBody(""); setImages([]); setEditingId(null); setErr(null); }
+
+  async function pickImages(files: FileList | null) {
+    if (!files) return;
+    const out: string[] = [...images];
+    for (const f of Array.from(files)) {
+      if (out.length >= 8) break;
+      try { out.push(await fileToInlineImage(f, 1000)); }
+      catch { setErr("One of the images couldn't be read."); }
+    }
+    setImages(out);
+  }
+
+  async function submit() {
+    if (!title.trim() && !body.trim() && images.length === 0) {
+      setErr("Add a title, body, or at least one image."); return;
+    }
+    setBusy(true); setErr(null);
+    try {
+      if (editingId != null) {
+        await updateNews(editingId, { title: title.trim(), body, images });
+      } else {
+        await createNews({ title: title.trim(), body, images });
+      }
+      resetForm();
+      await load();
+    } catch (e: any) { setErr(e?.message || "Failed to save post"); }
+    finally { setBusy(false); }
+  }
+
+  function startEdit(p: NewsPost) {
+    setEditingId(p.id);
+    setTitle(p.title);
+    setBody(p.body);
+    setImages(p.images || []);
+    setErr(null);
+  }
+
+  async function toggleComments(postId: number) {
+    const willOpen = !expandedComments[postId];
+    setExpandedComments((current) => ({ ...current, [postId]: willOpen }));
+    if (willOpen && !comments[postId]) {
+      try {
+        const loaded = await fetchNewsComments(postId);
+        setComments((current) => ({ ...current, [postId]: loaded }));
+      } catch (e: any) {
+        setErr(e?.message || "Failed to load comments");
+      }
+    }
+  }
+
+  async function submitComment(postId: number) {
+    if (!me) return;
+    const body = (commentDrafts[postId] || "").trim();
+    if (!body) return;
+    setCommentBusy(postId); setErr(null);
+    try {
+      const comment = await postNewsComment(postId, body);
+      setComments((current) => ({ ...current, [postId]: [...(current[postId] || []), comment] }));
+      setCommentDrafts((current) => ({ ...current, [postId]: "" }));
+    } catch (e: any) { setErr(e?.message || "Failed to post comment"); }
+    finally { setCommentBusy(null); }
+  }
+
+  async function removeComment(postId: number, commentId: number) {
+    try {
+      await deleteNewsComment(commentId);
+      setComments((current) => ({ ...current, [postId]: (current[postId] || []).filter((c) => c.id !== commentId) }));
+    } catch (e: any) { setErr(e?.message || "Failed to delete comment"); }
+  }
+
+  async function remove(p: NewsPost) {
+    if (!confirm(`Delete this news post?\n\n"${p.title || p.body.slice(0, 60)}"`)) return;
+    try { await deleteNews(p.id); if (editingId === p.id) resetForm(); await load(); }
+    catch (e: any) { alert(e?.message || "Failed to delete"); }
+  }
+
+  return (
+    <div className="w-full h-full flex flex-col bg-[#c0c0c0] text-xs">
+      {canPost && (
+        <div className="p-2 border-b-2 border-b-[#808080] win98-inset bg-[#dcdcdc] m-1">
+          <div className="font-bold mb-1">{editingId != null ? "Edit news post" : "Post site news"}</div>
+          <input
+            className="win98-inset px-1 w-full mb-1"
+            placeholder="Title"
+            value={title}
+            maxLength={200}
+            onChange={(e) => setTitle(e.target.value)}
+          />
+          <textarea
+            className="win98-inset px-1 w-full mb-1 resize-y"
+            placeholder="What's the news? (line breaks are kept)"
+            value={body}
+            rows={4}
+            maxLength={20000}
+            onChange={(e) => setBody(e.target.value)}
+          />
+          {images.length > 0 && (
+            <div className="flex flex-wrap gap-1 mb-1">
+              {images.map((src, i) => (
+                <div key={i} className="relative">
+                  <img src={src} alt="" className="w-16 h-16 object-cover win98-inset" />
+                  <button
+                    className="absolute -top-1 -right-1 bg-red-700 text-white text-[9px] font-bold w-4 h-4 leading-none"
+                    onClick={() => setImages(images.filter((_, j) => j !== i))}
+                    title="Remove image"
+                  >×</button>
+                </div>
+              ))}
+            </div>
+          )}
+          <div className="flex items-center gap-1 flex-wrap">
+            <input
+              ref={fileRef}
+              type="file"
+              accept="image/png,image/jpeg,image/gif,image/webp"
+              multiple
+              className="hidden"
+              onChange={(e) => { void pickImages(e.target.files); e.target.value = ""; }}
+            />
+            <button
+              className="win98-button px-2 py-0.5"
+              disabled={busy || images.length >= 8}
+              onClick={() => fileRef.current?.click()}
+              title="Attach up to 8 images"
+            >Attach Image{images.length >= 8 ? "s (max 8)" : "s"}</button>
+            <button className="win98-button px-3 py-0.5 font-bold" disabled={busy} onClick={submit}>
+              {busy ? "Saving…" : editingId != null ? "Update Post" : "Publish"}
+            </button>
+            {editingId != null && (
+              <button className="win98-button px-2 py-0.5" disabled={busy} onClick={resetForm}>Cancel edit</button>
+            )}
+            <span className="ml-auto text-[10px] text-gray-700">{images.length}/8 images</span>
+          </div>
+          {err && <div className="text-red-700 mt-1">{err}</div>}
+        </div>
+      )}
+
+      <div className="flex-1 overflow-auto p-1">
+        {loading && <div className="p-2 text-gray-500">Loading…</div>}
+        {!loading && posts.length === 0 && (
+          <div className="p-3 text-gray-600 win98-inset bg-white">No news yet. {canPost ? "Be the first to post!" : "Check back later."}</div>
+        )}
+        {posts.map((p) => {
+          const canEditThis = !!me && (me.isAdmin || me.username === p.author);
+          return (
+            <article key={p.id} className="win98-inset bg-white p-2 mb-1">
+              <header className="flex items-center gap-1 mb-1">
+                <Avatar username={p.author} size={24} />
+                <span className="font-bold">{p.author}</span>
+                <span className="text-gray-500 text-[10px]">{fmt(p.createdAt)}{p.updatedAt && p.updatedAt !== p.createdAt ? ` · edited ${fmt(p.updatedAt)}` : ""}</span>
+                {canEditThis && (
+                  <span className="ml-auto flex gap-0.5">
+                    <button className="win98-button px-1 text-[10px]" onClick={() => startEdit(p)}>edit</button>
+                    <button className="win98-button px-1 text-[10px] text-red-700" onClick={() => remove(p)}>delete</button>
+                  </span>
+                )}
+              </header>
+              {p.title && <h3 className="font-bold text-sm mb-1">{p.title}</h3>}
+              {p.body && <div className="whitespace-pre-wrap mb-1">{p.body}</div>}
+              {p.images && p.images.length > 0 && (
+                <div className="flex flex-wrap gap-1 mt-1">
+                  {p.images.map((src, i) => (
+                    <a key={i} href={src} target="_blank" rel="noopener noreferrer" title="Open full size">
+                      <img src={src} alt="" className="max-h-48 object-contain win98-inset bg-gray-100" />
+                    </a>
+                  ))}
+                </div>
+              )}
+              <div className="mt-2 border-t border-gray-300 pt-1">
+                <button className="win98-button px-2 py-0.5 text-[10px]" onClick={() => void toggleComments(p.id)}>
+                  {expandedComments[p.id] ? "Hide comments" : `Show comments${comments[p.id]?.length ? ` (${comments[p.id].length})` : ""}`}
+                </button>
+                {expandedComments[p.id] && (
+                  <div className="mt-1 win98-inset bg-[#f5f5f5] p-1">
+                    {(comments[p.id] || []).length === 0 ? (
+                      <div className="text-[10px] text-gray-500 mb-1">No comments yet.</div>
+                    ) : (
+                      <div className="flex flex-col gap-1 mb-1">
+                        {(comments[p.id] || []).map((comment) => (
+                          <div key={comment.id} className="flex items-start gap-1 text-[11px]">
+                            <Avatar username={comment.author} size={20} />
+                            <div className="flex-1 min-w-0">
+                              <div><span className="font-bold">{comment.author}</span> <span className="text-gray-500 text-[10px]">{fmt(comment.createdAt)}</span></div>
+                              <div className="whitespace-pre-wrap break-words">{comment.body}</div>
+                            </div>
+                            {me && (me.isAdmin || me.username === comment.author) && (
+                              <button className="win98-button px-1 text-[10px]" onClick={() => void removeComment(p.id, comment.id)}>x</button>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    {me ? (
+                      <div className="flex gap-1">
+                        <input
+                          className="win98-inset px-1 text-[11px] flex-1"
+                          placeholder="Write a comment…"
+                          value={commentDrafts[p.id] || ""}
+                          onChange={(e) => setCommentDrafts((current) => ({ ...current, [p.id]: e.target.value }))}
+                          onKeyDown={(e) => { if (e.key === "Enter") void submitComment(p.id); }}
+                          maxLength={2000}
+                        />
+                        <button className="win98-button px-2 text-[10px]" disabled={commentBusy === p.id} onClick={() => void submitComment(p.id)}>Post</button>
+                      </div>
+                    ) : (
+                      <div className="text-[10px] text-gray-600">Log in to comment.</div>
+                    )}
+                  </div>
+                )}
+              </div>
+            </article>
+          );
+        })}
+      </div>
+    </div>
+  );
+}

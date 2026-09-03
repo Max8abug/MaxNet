@@ -1,0 +1,28 @@
+kind = "web"
+previewPath = "/"
+title = "Photo Desktop"
+description = "A desktop-first social photo experience with a companion API server."
+version = "1.0.0"
+id = "artifacts/photo-desktop"
+router = "path"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 24911
+
+[services.development]
+run = "pnpm --filter @workspace/photo-desktop run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/photo-desktop", "run", "build" ]
+serve = "static"
+publicDir = "artifacts/photo-desktop/dist/public"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "24911"
+BASE_PATH = "/"
