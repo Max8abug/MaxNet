@@ -159,9 +159,9 @@ export function Forum({ onRequestLogin }: Props) {
                 <div className="flex items-center gap-1 text-[11px]">
                   <span className="font-bold" style={{ color: userColor({ username: p.author }, ranks) || (p.author === "Max8abug" ? "#cc0000" : undefined) }}>{p.author}</span>
                   <span className="text-gray-500">{formatLocalDate(p.createdAt)}</span>
-                  {canDelete && p.author !== "Max8abug" && (
+                  {canDelete && (
                     <button
-                      className="win98-button px-1 text-[10px] ml-auto opacity-0 group-hover:opacity-100"
+                      className="win98-button px-1 text-[10px] ml-auto shrink-0"
                       onClick={(e) => { e.stopPropagation(); void delPost(p.id); }}
                       aria-label={`Delete post by ${p.author}`}
                       title="Delete this post"
