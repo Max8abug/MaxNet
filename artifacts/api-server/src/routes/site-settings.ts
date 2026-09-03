@@ -8,7 +8,13 @@ const router: IRouter = Router();
 async function ensureRow() {
   const [row] = await db.select().from(siteSettingsTable).limit(1);
   if (row) return row;
-  await db.insert(siteSettingsTable).values({ logoDataUrl: "", darkLogoDataUrl: "", siteName: "Portfolio 98" });
+  await db.insert(siteSettingsTable).values({
+    logoDataUrl: "",
+    darkLogoDataUrl: "",
+    backgroundDataUrl: "",
+    darkBackgroundDataUrl: "",
+    siteName: "Portfolio 98",
+  });
   const [created] = await db.select().from(siteSettingsTable).limit(1);
   return created!;
 }
@@ -18,6 +24,8 @@ router.get("/site-settings", async (_req, res) => {
   res.json({
     logoDataUrl: row.logoDataUrl || "",
     darkLogoDataUrl: row.darkLogoDataUrl || "",
+    backgroundDataUrl: row.backgroundDataUrl || "",
+    darkBackgroundDataUrl: row.darkBackgroundDataUrl || "",
     siteName: row.siteName || "Portfolio 98",
   });
 });
@@ -25,11 +33,15 @@ router.get("/site-settings", async (_req, res) => {
 router.put("/site-settings", requireAdmin, async (req, res) => {
   const row = await ensureRow();
   const update: Record<string, any> = {};
-  for (const key of ["logoDataUrl", "darkLogoDataUrl"] as const) {
+  for (const key of ["logoDataUrl", "darkLogoDataUrl", "backgroundDataUrl", "darkBackgroundDataUrl"] as const) {
     if (typeof req.body?.[key] === "string") {
-      // Cap at ~512KB so we don't blow up the response payload everywhere this is fetched.
-      if (req.body[key].length > 600_000) {
-        res.status(400).json({ error: "Logo image is too large (max ~400KB). Please pick a smaller image." });
+      const maxSize = key.includes("Background") ? 4_000_000 : 600_000;
+      if (req.body[key].length > maxSize) {
+        res.status(400).json({
+          error: key.includes("Background")
+            ? "Background image is too large (max 4MB). Please pick a smaller image."
+            : "Logo image is too large (max ~400KB). Please pick a smaller image.",
+        });
         return;
       }
       update[key] = req.body[key];
@@ -44,6 +56,8 @@ router.put("/site-settings", requireAdmin, async (req, res) => {
       ok: true,
       logoDataUrl: row.logoDataUrl,
       darkLogoDataUrl: row.darkLogoDataUrl,
+      backgroundDataUrl: row.backgroundDataUrl,
+      darkBackgroundDataUrl: row.darkBackgroundDataUrl,
       siteName: row.siteName,
     });
     return;
@@ -55,6 +69,8 @@ router.put("/site-settings", requireAdmin, async (req, res) => {
     ok: true,
     logoDataUrl: fresh!.logoDataUrl,
     darkLogoDataUrl: fresh!.darkLogoDataUrl,
+    backgroundDataUrl: fresh!.backgroundDataUrl,
+    darkBackgroundDataUrl: fresh!.darkBackgroundDataUrl,
     siteName: fresh!.siteName,
   });
 });

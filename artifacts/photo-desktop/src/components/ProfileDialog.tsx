@@ -45,6 +45,7 @@ export function ProfileDialog({ onClose }: Props) {
   const [timeZone, setTimeZone] = useState(user?.timeZone || "");
   const avatarRef = useRef<HTMLInputElement>(null);
   const bgRef = useRef<HTMLInputElement>(null);
+  const darkBgRef = useRef<HTMLInputElement>(null);
 
   if (!user) return null;
 
@@ -67,6 +68,15 @@ export function ProfileDialog({ onClose }: Props) {
     finally { setBusy(false); }
   }
 
+  async function pickDarkBg(file: File) {
+    setBusy(true); setErr(null);
+    try {
+      const dataUrl = await fileToDataUrl(file, 1600);
+      await updateProfile({ darkBackgroundUrl: dataUrl });
+    } catch (e: any) { setErr(e?.message || "Failed"); }
+    finally { setBusy(false); }
+  }
+
   async function applyColor() {
     setBusy(true); setErr(null);
     try { await updateProfile({ backgroundColor: color, backgroundUrl: null }); }
@@ -82,7 +92,21 @@ export function ProfileDialog({ onClose }: Props) {
 
   async function clearBg() {
     setBusy(true);
-    try { await updateProfile({ backgroundUrl: null, backgroundColor: null }); }
+    try { await updateProfile({ backgroundUrl: null, darkBackgroundUrl: null, backgroundColor: null }); }
+    finally { setBusy(false); }
+  }
+
+  async function clearLightBg() {
+    setBusy(true); setErr(null);
+    try { await updateProfile({ backgroundUrl: null }); }
+    catch (e: any) { setErr(e?.message || "Failed"); }
+    finally { setBusy(false); }
+  }
+
+  async function clearDarkBg() {
+    setBusy(true); setErr(null);
+    try { await updateProfile({ darkBackgroundUrl: null }); }
+    catch (e: any) { setErr(e?.message || "Failed"); }
     finally { setBusy(false); }
   }
 
@@ -126,7 +150,7 @@ export function ProfileDialog({ onClose }: Props) {
           </div>
 
           <div className="border-t border-gray-400 pt-2">
-            <div className="font-bold mb-1">Desktop Background</div>
+            <div className="font-bold mb-1">Light Mode Background</div>
             <div className="flex flex-col gap-1">
               <button className="win98-button px-2 py-0.5" disabled={busy} onClick={() => bgRef.current?.click()}>
                 Upload Background Image...
@@ -138,11 +162,28 @@ export function ProfileDialog({ onClose }: Props) {
                 <input type="color" value={color} onChange={(e) => setColor(e.target.value)} className="win98-inset" />
                 <button className="win98-button px-2 py-0.5" disabled={busy} onClick={applyColor}>Apply</button>
               </div>
-              <button className="win98-button px-2 py-0.5 text-xs self-start" disabled={busy} onClick={clearBg}>
-                Reset to Default
+              <button className="win98-button px-2 py-0.5 text-xs self-start" disabled={busy || !user.backgroundUrl} onClick={clearLightBg}>
+                Reset Light Background
               </button>
             </div>
           </div>
+          <div className="border-t border-gray-400 pt-2">
+            <div className="font-bold mb-1">Dark Mode Background</div>
+            <div className="text-[11px] text-gray-700 mb-1">
+              Used only while dark mode is enabled. If empty, the site’s dark default is used.
+            </div>
+            <button className="win98-button px-2 py-0.5" disabled={busy} onClick={() => darkBgRef.current?.click()}>
+              Upload Dark Background Image...
+            </button>
+            <input ref={darkBgRef} type="file" accept="image/*" className="hidden"
+              onChange={(e) => { const f = e.target.files?.[0]; if (f) void pickDarkBg(f); e.target.value = ""; }} />
+            <button className="win98-button px-2 py-0.5 text-xs self-start mt-1" disabled={busy || !user.darkBackgroundUrl} onClick={clearDarkBg}>
+              Reset Dark Background
+            </button>
+          </div>
+          <button className="win98-button px-2 py-0.5 text-xs self-start" disabled={busy || (!user.backgroundUrl && !user.darkBackgroundUrl && !user.backgroundColor)} onClick={clearBg}>
+            Reset All Backgrounds
+          </button>
           <div className="border-t border-gray-400 pt-2">
             <div className="font-bold mb-1">Display</div>
             <label className="flex items-center gap-2 cursor-pointer">

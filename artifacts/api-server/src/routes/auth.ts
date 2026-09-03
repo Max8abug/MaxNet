@@ -17,6 +17,7 @@ router.get("/auth/me", async (req, res) => {
       isAdmin: u.isAdmin,
       avatarUrl: u.avatarUrl,
       backgroundUrl: u.backgroundUrl,
+      darkBackgroundUrl: u.darkBackgroundUrl,
       backgroundColor: u.backgroundColor,
       rank: u.rank,
       timeZone: u.timeZone,
@@ -112,7 +113,7 @@ router.patch("/auth/profile", async (req, res) => {
     res.status(401).json({ error: "Login required" });
     return;
   }
-  const { avatarUrl, backgroundUrl, backgroundColor, timeZone } = req.body ?? {};
+  const { avatarUrl, backgroundUrl, darkBackgroundUrl, backgroundColor, timeZone } = req.body ?? {};
   const update: Record<string, string | null> = {};
   if (avatarUrl !== undefined) {
     if (avatarUrl !== null && (typeof avatarUrl !== "string" || (avatarUrl && !avatarUrl.startsWith("data:image/")))) {
@@ -135,6 +136,17 @@ router.patch("/auth/profile", async (req, res) => {
       return;
     }
     update.backgroundUrl = backgroundUrl;
+  }
+  if (darkBackgroundUrl !== undefined) {
+    if (darkBackgroundUrl !== null && (typeof darkBackgroundUrl !== "string" || (darkBackgroundUrl && !darkBackgroundUrl.startsWith("data:image/")))) {
+      res.status(400).json({ error: "darkBackgroundUrl must be a data:image/* string or null" });
+      return;
+    }
+    if (typeof darkBackgroundUrl === "string" && darkBackgroundUrl.length > 4_000_000) {
+      res.status(413).json({ error: "Dark background too large" });
+      return;
+    }
+    update.darkBackgroundUrl = darkBackgroundUrl;
   }
   if (backgroundColor !== undefined) {
     if (backgroundColor !== null && (typeof backgroundColor !== "string" || backgroundColor.length > 32)) {

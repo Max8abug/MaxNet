@@ -5,15 +5,21 @@ import { ToastHost } from './Toast';
 import { ImageViewerHost } from './ImageViewer';
 import { useRef, useEffect } from 'react';
 import { useAuth } from '../lib/auth-store';
+import { useThemeMode } from '../lib/theme';
 
 export function Desktop({ page }: { page: string }) {
   const windows = useDesktopStore(state => state.windows[page] || []);
   const setActivePage = useDesktopStore(state => state.setActivePage);
   const boundsRef = useRef<HTMLDivElement>(null);
   const user = useAuth((s) => s.user);
+  const siteSettings = useAuth((s) => s.siteSettings);
+  const { darkMode } = useThemeMode();
 
-  const bgStyle: React.CSSProperties = user?.backgroundUrl
-    ? { backgroundImage: `url(${user.backgroundUrl})`, backgroundSize: "cover", backgroundPosition: "center", backgroundColor: user.backgroundColor || "#008080" }
+  const backgroundUrl = darkMode
+    ? (user?.darkBackgroundUrl || siteSettings.darkBackgroundDataUrl)
+    : (user?.backgroundUrl || siteSettings.backgroundDataUrl);
+  const bgStyle: React.CSSProperties = backgroundUrl
+    ? { backgroundImage: `url(${backgroundUrl})`, backgroundSize: "cover", backgroundPosition: "center", backgroundColor: user?.backgroundColor || "#008080" }
     : { backgroundColor: user?.backgroundColor || "#008080" };
 
   useEffect(() => { setActivePage(page); }, [page, setActivePage]);

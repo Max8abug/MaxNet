@@ -13,14 +13,20 @@ interface AuthState {
   login: (u: string, p: string) => Promise<void>;
   signup: (u: string, p: string) => Promise<void>;
   logout: () => Promise<void>;
-  updateProfile: (data: { avatarUrl?: string | null; backgroundUrl?: string | null; backgroundColor?: string | null; timeZone?: string | null }) => Promise<void>;
+  updateProfile: (data: { avatarUrl?: string | null; backgroundUrl?: string | null; darkBackgroundUrl?: string | null; backgroundColor?: string | null; timeZone?: string | null }) => Promise<void>;
 }
 
 export const useAuth = create<AuthState>((set, get) => ({
   user: null,
   loading: true,
   ranks: [],
-  siteSettings: { logoDataUrl: "", darkLogoDataUrl: "", siteName: "Portfolio 98" },
+  siteSettings: {
+    logoDataUrl: "",
+    darkLogoDataUrl: "",
+    backgroundDataUrl: "",
+    darkBackgroundDataUrl: "",
+    siteName: "Portfolio 98",
+  },
   refresh: async () => {
       try {
         const u = await getMe();

@@ -33,6 +33,7 @@ export async function ensureSchema(): Promise<void> {
       is_admin boolean NOT NULL DEFAULT false,
       avatar_url text,
       background_url text,
+      dark_background_url text,
       background_color text,
       rank text,
       time_zone text,
@@ -43,6 +44,7 @@ export async function ensureSchema(): Promise<void> {
     ALTER TABLE users ADD COLUMN IF NOT EXISTS rank text;
     ALTER TABLE users ADD COLUMN IF NOT EXISTS time_zone text;
     ALTER TABLE users ADD COLUMN IF NOT EXISTS background_url text;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS dark_background_url text;
     ALTER TABLE users ADD COLUMN IF NOT EXISTS background_color text;
     ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar_url text;
     ALTER TABLE users ADD COLUMN IF NOT EXISTS last_seen timestamp NOT NULL DEFAULT now();
@@ -269,10 +271,14 @@ export async function ensureSchema(): Promise<void> {
       id serial PRIMARY KEY,
       logo_data_url text NOT NULL DEFAULT '',
       dark_logo_data_url text NOT NULL DEFAULT '',
+      background_data_url text NOT NULL DEFAULT '',
+      dark_background_data_url text NOT NULL DEFAULT '',
       site_name text NOT NULL DEFAULT 'Portfolio 98',
       updated_at timestamp NOT NULL DEFAULT now()
     );
     ALTER TABLE site_settings ADD COLUMN IF NOT EXISTS dark_logo_data_url text NOT NULL DEFAULT '';
+    ALTER TABLE site_settings ADD COLUMN IF NOT EXISTS background_data_url text NOT NULL DEFAULT '';
+    ALTER TABLE site_settings ADD COLUMN IF NOT EXISTS dark_background_data_url text NOT NULL DEFAULT '';
     ALTER TABLE site_settings ADD COLUMN IF NOT EXISTS site_name text NOT NULL DEFAULT 'Portfolio 98';
     ALTER TABLE site_settings ADD COLUMN IF NOT EXISTS updated_at timestamp NOT NULL DEFAULT now();
     ALTER TABLE site_settings ADD COLUMN IF NOT EXISTS vapid_public_key text NOT NULL DEFAULT '';

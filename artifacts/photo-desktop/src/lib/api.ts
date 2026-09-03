@@ -41,12 +41,13 @@ export interface AuthUser {
   isAdmin: boolean;
   avatarUrl?: string | null;
   backgroundUrl?: string | null;
+  darkBackgroundUrl?: string | null;
   backgroundColor?: string | null;
   rank?: string | null;
   timeZone?: string | null;
 }
 
-export async function updateProfile(data: { avatarUrl?: string | null; backgroundUrl?: string | null; backgroundColor?: string | null; timeZone?: string | null }): Promise<void> {
+export async function updateProfile(data: { avatarUrl?: string | null; backgroundUrl?: string | null; darkBackgroundUrl?: string | null; backgroundColor?: string | null; timeZone?: string | null }): Promise<void> {
   await jsonOrThrow(await fetch(`${BASE}/auth/profile`, {
     ...opts, method: "PATCH",
     headers: { "Content-Type": "application/json" },
@@ -119,7 +120,13 @@ export async function submitDrawing(dataUrl: string, author: string): Promise<Dr
     body: JSON.stringify({ dataUrl, author }),
   }));
 }
-export interface SiteSettings { logoDataUrl: string; darkLogoDataUrl: string; siteName: string; }
+export interface SiteSettings {
+  logoDataUrl: string;
+  darkLogoDataUrl: string;
+  backgroundDataUrl: string;
+  darkBackgroundDataUrl: string;
+  siteName: string;
+}
 export async function fetchSiteSettings(): Promise<SiteSettings> {
   return jsonOrThrow(await fetch(`${BASE}/site-settings`, opts));
 }
