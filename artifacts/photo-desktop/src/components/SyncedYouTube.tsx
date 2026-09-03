@@ -52,6 +52,7 @@ export function SyncedYouTube({ onRequestLogin }: Props) {
     return Number.isFinite(stored) ? Math.max(22, Math.min(68, stored)) : 38;
   });
   const offsetRef = useRef(0);
+  const syncEpochRef = useRef(0);
   const containerRef = useRef<HTMLDivElement>(null);
   const resizingRef = useRef(false);
   const user = useAuth((s) => s.user);
@@ -63,8 +64,12 @@ export function SyncedYouTube({ onRequestLogin }: Props) {
   }
 
   async function refresh() {
+    const requestEpoch = syncEpochRef.current;
     try {
-      adoptState(await getYouTubeSync());
+      const next = await getYouTubeSync();
+      // A poll that started before a queue/vote mutation must not put the
+      // player back into its older state after the mutation succeeds.
+      if (requestEpoch === syncEpochRef.current) adoptState(next);
     } catch {}
   }
   async function refreshChat() {
@@ -87,15 +92,28 @@ export function SyncedYouTube({ onRequestLogin }: Props) {
     localStorage.setItem("youtubeChatPercent", String(chatPercent));
   }, [chatPercent]);
 
+  async function applySyncMutation(request: () => Promise<YouTubeSync>) {
+    const mutationEpoch = ++syncEpochRef.current;
+    const next = await request();
+    // A later mutation wins. Older responses must not remount the iframe or
+    // restore an earlier queue after another tab/action has already changed it.
+    if (mutationEpoch === syncEpochRef.current) {
+      adoptState(next);
+      // Also invalidate polls that began while this mutation was in flight.
+      syncEpochRef.current += 1;
+    }
+  }
+
   async function applyNew() {
     setErr(null);
     const id = parseYouTubeId(input);
     if (!id) { setErr("Couldn't parse a YouTube URL or ID"); return; }
+    setQueueBusy(true);
     try {
-      await setYouTubeSync(id);
+      await applySyncMutation(() => setYouTubeSync(id));
       setInput("");
-      await refresh();
     } catch (e: any) { setErr(e?.message || "Failed"); }
+    finally { setQueueBusy(false); }
   }
 
   async function addToQueue() {
@@ -105,7 +123,7 @@ export function SyncedYouTube({ onRequestLogin }: Props) {
     if (!id) { setErr("Couldn't parse a YouTube URL or ID"); return; }
     setQueueBusy(true);
     try {
-      adoptState(await addYouTubeQueue(id));
+      await applySyncMutation(() => addYouTubeQueue(id));
       setQueueInput("");
     } catch (e: any) { setErr(e?.message || "Could not add video to queue"); }
     finally { setQueueBusy(false); }
@@ -127,7 +145,7 @@ export function SyncedYouTube({ onRequestLogin }: Props) {
     if (!user) { onRequestLogin?.(); return; }
     setQueueBusy(true); setErr(null);
     try {
-      adoptState(await voteYouTubeSkip(vote));
+      await applySyncMutation(() => voteYouTubeSkip(vote));
     } catch (e: any) { setErr(e?.message || "Could not record vote"); }
     finally { setQueueBusy(false); }
   }
@@ -140,7 +158,7 @@ export function SyncedYouTube({ onRequestLogin }: Props) {
     [ids[index], ids[nextIndex]] = [ids[nextIndex], ids[index]];
     setQueueBusy(true); setErr(null);
     try {
-      adoptState(await reorderYouTubeQueue(ids));
+      await applySyncMutation(() => reorderYouTubeQueue(ids));
     } catch (e: any) { setErr(e?.message || "Could not reorder queue"); }
     finally { setQueueBusy(false); }
   }
@@ -148,7 +166,7 @@ export function SyncedYouTube({ onRequestLogin }: Props) {
   async function removeQueueItem(id: string) {
     setQueueBusy(true); setErr(null);
     try {
-      adoptState(await removeYouTubeQueueItem(id));
+      await applySyncMutation(() => removeYouTubeQueueItem(id));
     } catch (e: any) { setErr(e?.message || "Could not remove queue item"); }
     finally { setQueueBusy(false); }
   }
@@ -238,7 +256,7 @@ export function SyncedYouTube({ onRequestLogin }: Props) {
         {state?.videoId && (
           <div className="border-t border-gray-500 pt-1 flex flex-col gap-1">
             <div className="flex items-center justify-between text-[10px] text-gray-700">
-              <span>Skip vote: {state.skipCount}/{state.totalVotes} (needs &gt; 2/3)</span>
+              <span>Skip vote: {state.skipCount}/{state.totalVotes} (needs &gt; 2/3, 3+ votes)</span>
               <span>{state.myVote ? `You voted ${state.myVote}` : ""}</span>
             </div>
             <div className="flex gap-1">
@@ -265,7 +283,7 @@ export function SyncedYouTube({ onRequestLogin }: Props) {
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => { if (e.key === "Enter") void applyNew(); }}
           />
-          <button className="win98-button px-2 text-[10px]" disabled={!user} onClick={() => void applyNew()}>
+          <button className="win98-button px-2 text-[10px]" disabled={!user || queueBusy} onClick={() => void applyNew()}>
             Play For All
           </button>
         </div>

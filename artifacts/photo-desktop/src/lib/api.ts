@@ -402,8 +402,8 @@ export interface YouTubeSync {
 export async function getYouTubeSync(): Promise<YouTubeSync> {
   return jsonOrThrow(await fetch(`${BASE}/youtube/sync`, opts));
 }
-export async function setYouTubeSync(videoId: string): Promise<void> {
-  await jsonOrThrow(await fetch(`${BASE}/youtube/sync`, {
+export async function setYouTubeSync(videoId: string): Promise<YouTubeSync> {
+  return jsonOrThrow(await fetch(`${BASE}/youtube/sync`, {
     ...opts, method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ videoId }),

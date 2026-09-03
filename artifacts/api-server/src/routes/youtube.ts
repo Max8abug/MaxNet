@@ -15,6 +15,7 @@ type QueueItem = {
   addedAt: string;
 };
 type Vote = "skip" | "keep";
+const MIN_SKIP_VOTES = 3;
 
 function cleanVideoId(value: unknown): string | null {
   if (typeof value !== "string") return null;
@@ -214,7 +215,10 @@ router.post("/youtube/skip-vote", requireAuth, async (req, res) => {
   votes[author] = vote;
   const skipCount = Object.values(votes).filter((value) => value === "skip").length;
   const totalVotes = Object.keys(votes).length;
-  const hasSkipMajority = skipCount * 3 > totalVotes * 2;
+  // A single voter should never be able to blank the shared player. The
+  // ratio is still strictly greater than 2/3, but playback changes only after
+  // at least three people have voted on this video.
+  const hasSkipMajority = totalVotes >= MIN_SKIP_VOTES && skipCount * 3 > totalVotes * 2;
   const queue = cleanQueue(row.queue);
 
   if (hasSkipMajority) {
