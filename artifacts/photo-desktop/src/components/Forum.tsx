@@ -98,7 +98,15 @@ export function Forum({ onRequestLogin }: Props) {
 
   async function pickImage(file: File) { try { setImageData(await fileToDataUrl(file)); } catch { setErr("Image failed"); } }
 
-  async function delPost(id: number) { try { await deleteForumPost(id); if (openId !== null) await refreshThread(openId); } catch {} }
+  async function delPost(id: number) {
+    try {
+      await deleteForumPost(id);
+      if (openId !== null) await refreshThread(openId);
+      await refreshList();
+    } catch (e: any) {
+      setErr(e?.message || "Could not delete this post");
+    }
+  }
   async function delThread(id: number) {
     if (!confirm("Delete this entire thread?")) return;
     try { await deleteForumThread(id); setOpenId(null); await refreshList(); } catch {}
@@ -152,7 +160,12 @@ export function Forum({ onRequestLogin }: Props) {
                   <span className="font-bold" style={{ color: userColor({ username: p.author }, ranks) || (p.author === "Max8abug" ? "#cc0000" : undefined) }}>{p.author}</span>
                   <span className="text-gray-500">{formatLocalDate(p.createdAt)}</span>
                   {canDelete && p.author !== "Max8abug" && (
-                    <button className="win98-button px-1 text-[10px] ml-auto opacity-0 group-hover:opacity-100" onClick={() => delPost(p.id)}>delete</button>
+                    <button
+                      className="win98-button px-1 text-[10px] ml-auto opacity-0 group-hover:opacity-100"
+                      onClick={(e) => { e.stopPropagation(); void delPost(p.id); }}
+                      aria-label={`Delete post by ${p.author}`}
+                      title="Delete this post"
+                    >x</button>
                   )}
                 </div>
                 {p.body && <div className="whitespace-pre-wrap break-words text-[12px] mt-0.5">{p.body}</div>}
