@@ -289,6 +289,8 @@ export const youtubeSyncTable = pgTable("youtube_sync", {
   videoId: text("video_id").notNull().default(""),
   startedAt: timestamp("started_at").defaultNow().notNull(),
   setBy: text("set_by").notNull().default(""),
+  queue: jsonb("queue").notNull().default([]),
+  skipVotes: jsonb("skip_votes").notNull().default({}),
 });
 
 // Blackjack

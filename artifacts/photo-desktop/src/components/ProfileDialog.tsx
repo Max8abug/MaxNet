@@ -1,5 +1,6 @@
 import { useRef, useState } from "react";
 import { useAuth } from "../lib/auth-store";
+import { changePassword } from "../lib/api";
 import { useThemeMode } from "../lib/theme";
 import { TIME_ZONE_OPTIONS } from "../lib/time-settings";
 
@@ -43,6 +44,10 @@ export function ProfileDialog({ onClose }: Props) {
   const [err, setErr] = useState<string | null>(null);
   const [color, setColor] = useState(user?.backgroundColor || "#008080");
   const [timeZone, setTimeZone] = useState(user?.timeZone || "");
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [passwordNotice, setPasswordNotice] = useState<string | null>(null);
   const avatarRef = useRef<HTMLInputElement>(null);
   const bgRef = useRef<HTMLInputElement>(null);
   const darkBgRef = useRef<HTMLInputElement>(null);
@@ -122,6 +127,26 @@ export function ProfileDialog({ onClose }: Props) {
     }
   }
 
+  async function applyPassword() {
+    setBusy(true); setErr(null); setPasswordNotice(null);
+    if (newPassword !== confirmPassword) {
+      setErr("New passwords do not match.");
+      setBusy(false);
+      return;
+    }
+    try {
+      await changePassword(currentPassword, newPassword);
+      setCurrentPassword("");
+      setNewPassword("");
+      setConfirmPassword("");
+      setPasswordNotice("Password changed.");
+    } catch (e: any) {
+      setErr(e?.message || "Could not change password");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
     <div
       className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/30"
@@ -184,6 +209,46 @@ export function ProfileDialog({ onClose }: Props) {
           <button className="win98-button px-2 py-0.5 text-xs self-start" disabled={busy || (!user.backgroundUrl && !user.darkBackgroundUrl && !user.backgroundColor)} onClick={clearBg}>
             Reset All Backgrounds
           </button>
+          <div className="border-t border-gray-400 pt-2">
+            <div className="font-bold mb-1">Password</div>
+            <div className="flex flex-col gap-1">
+              <input
+                className="win98-inset px-1 py-0.5"
+                type="password"
+                autoComplete="current-password"
+                placeholder="Current password"
+                value={currentPassword}
+                disabled={busy}
+                onChange={(e) => setCurrentPassword(e.target.value)}
+              />
+              <input
+                className="win98-inset px-1 py-0.5"
+                type="password"
+                autoComplete="new-password"
+                placeholder="New password (4-128 characters)"
+                value={newPassword}
+                disabled={busy}
+                onChange={(e) => setNewPassword(e.target.value)}
+              />
+              <input
+                className="win98-inset px-1 py-0.5"
+                type="password"
+                autoComplete="new-password"
+                placeholder="Confirm new password"
+                value={confirmPassword}
+                disabled={busy}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+              />
+              <button
+                className="win98-button px-2 py-0.5 text-xs self-start"
+                disabled={busy || !currentPassword || !newPassword || !confirmPassword}
+                onClick={() => void applyPassword()}
+              >
+                Change Password
+              </button>
+              {passwordNotice && <div className="text-green-700 text-xs">{passwordNotice}</div>}
+            </div>
+          </div>
           <div className="border-t border-gray-400 pt-2">
             <div className="font-bold mb-1">Display</div>
             <label className="flex items-center gap-2 cursor-pointer">

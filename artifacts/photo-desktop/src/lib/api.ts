@@ -105,6 +105,14 @@ export async function signup(username: string, password: string): Promise<AuthUs
 export async function logout(): Promise<void> {
   await fetch(`${BASE}/auth/logout`, { ...opts, method: "POST" });
 }
+export async function changePassword(currentPassword: string, newPassword: string): Promise<void> {
+  await jsonOrThrow(await fetch(`${BASE}/auth/password`, {
+    ...opts,
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ currentPassword, newPassword }),
+  }));
+}
 
 // ----- Drawings -----
 export async function fetchDrawings(): Promise<Drawing[]> {
@@ -374,7 +382,23 @@ export async function pinForumThread(id: number, pinned: boolean): Promise<Forum
 }
 
 // ----- Synced YouTube -----
-export interface YouTubeSync { videoId: string; startedAt: string; setBy: string; serverNow: string; }
+export interface YouTubeQueueItem {
+  id: string;
+  videoId: string;
+  addedBy: string;
+  addedAt: string;
+}
+export interface YouTubeSync {
+  videoId: string;
+  startedAt: string;
+  setBy: string;
+  serverNow: string;
+  queue: YouTubeQueueItem[];
+  skipCount: number;
+  totalVotes: number;
+  myVote: "skip" | "keep" | null;
+  isStaff: boolean;
+}
 export async function getYouTubeSync(): Promise<YouTubeSync> {
   return jsonOrThrow(await fetch(`${BASE}/youtube/sync`, opts));
 }
@@ -383,6 +407,29 @@ export async function setYouTubeSync(videoId: string): Promise<void> {
     ...opts, method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ videoId }),
+  }));
+}
+export async function addYouTubeQueue(videoId: string): Promise<YouTubeSync> {
+  return jsonOrThrow(await fetch(`${BASE}/youtube/queue`, {
+    ...opts, method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ videoId }),
+  }));
+}
+export async function reorderYouTubeQueue(queue: string[]): Promise<YouTubeSync> {
+  return jsonOrThrow(await fetch(`${BASE}/youtube/queue`, {
+    ...opts, method: "PATCH", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ queue }),
+  }));
+}
+export async function removeYouTubeQueueItem(itemId: string): Promise<YouTubeSync> {
+  return jsonOrThrow(await fetch(`${BASE}/youtube/queue/${encodeURIComponent(itemId)}`, {
+    ...opts, method: "DELETE",
+  }));
+}
+export async function voteYouTubeSkip(vote: "skip" | "keep"): Promise<YouTubeSync> {
+  return jsonOrThrow(await fetch(`${BASE}/youtube/skip-vote`, {
+    ...opts, method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ vote }),
   }));
 }
 

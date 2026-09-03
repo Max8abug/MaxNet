@@ -108,6 +108,45 @@ router.post("/auth/login", async (req, res, next) => {
   }
 });
 
+router.patch("/auth/password", async (req, res, next) => {
+  try {
+    if (!req.session.userId) {
+      res.status(401).json({ error: "Login required" });
+      return;
+    }
+    const { currentPassword, newPassword } = req.body ?? {};
+    if (typeof currentPassword !== "string" || typeof newPassword !== "string") {
+      res.status(400).json({ error: "Current and new passwords are required" });
+      return;
+    }
+    if (newPassword.length < 4 || newPassword.length > 128) {
+      res.status(400).json({ error: "Password must be 4-128 chars" });
+      return;
+    }
+    const [user] = await db.select().from(usersTable)
+      .where(eq(usersTable.id, req.session.userId))
+      .limit(1);
+    if (!user || !(await verifyPassword(currentPassword, user.passwordHash))) {
+      res.status(400).json({ error: "Current password is incorrect" });
+      return;
+    }
+    const passwordHash = await hashPassword(newPassword);
+    await db.update(usersTable)
+      .set({ passwordHash })
+      .where(eq(usersTable.id, user.id));
+    await db.insert(chatAuditTable).values({
+      area: "user",
+      action: "password",
+      actor: user.username,
+      target: user.username,
+      body: "password changed by account owner",
+    });
+    res.json({ ok: true });
+  } catch (err) {
+    next(err);
+  }
+});
+
 router.patch("/auth/profile", async (req, res) => {
   if (!req.session.userId) {
     res.status(401).json({ error: "Login required" });

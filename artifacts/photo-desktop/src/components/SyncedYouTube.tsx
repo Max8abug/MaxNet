@@ -1,5 +1,16 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { fetchChat, getYouTubeSync, postChat, type ChatMessage, setYouTubeSync } from "../lib/api";
+import {
+  addYouTubeQueue,
+  fetchChat,
+  getYouTubeSync,
+  postChat,
+  removeYouTubeQueueItem,
+  reorderYouTubeQueue,
+  setYouTubeSync,
+  type ChatMessage,
+  type YouTubeSync,
+  voteYouTubeSkip,
+} from "../lib/api";
 import { useAuth } from "../lib/auth-store";
 import { formatLocalTime, parseServerDate } from "../lib/dates";
 
@@ -27,24 +38,33 @@ function parseYouTubeId(input: string): string | null {
 interface Props { onRequestLogin?: () => void; }
 
 export function SyncedYouTube({ onRequestLogin }: Props) {
-  const [state, setState] = useState<{ videoId: string; startedAt: string; setBy: string } | null>(null);
+  const [state, setState] = useState<YouTubeSync | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [chatText, setChatText] = useState("");
   const [chatErr, setChatErr] = useState<string | null>(null);
   const [input, setInput] = useState("");
+  const [queueInput, setQueueInput] = useState("");
   const [err, setErr] = useState<string | null>(null);
+  const [queueBusy, setQueueBusy] = useState(false);
+  const [chatPercent, setChatPercent] = useState(() => {
+    if (typeof window === "undefined") return 38;
+    const stored = Number(localStorage.getItem("youtubeChatPercent"));
+    return Number.isFinite(stored) ? Math.max(22, Math.min(68, stored)) : 38;
+  });
   const offsetRef = useRef(0);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const resizingRef = useRef(false);
   const user = useAuth((s) => s.user);
+
+  function adoptState(next: YouTubeSync) {
+    const serverMs = parseServerDate(next.serverNow).getTime();
+    offsetRef.current = serverMs - Date.now();
+    setState(next);
+  }
 
   async function refresh() {
     try {
-      const s = await getYouTubeSync();
-      const serverMs = parseServerDate(s.serverNow).getTime();
-      offsetRef.current = serverMs - Date.now();
-      setState((prev) => {
-        if (prev && prev.videoId === s.videoId && prev.startedAt === s.startedAt && prev.setBy === s.setBy) return prev;
-        return { videoId: s.videoId, startedAt: s.startedAt, setBy: s.setBy };
-      });
+      adoptState(await getYouTubeSync());
     } catch {}
   }
   async function refreshChat() {
@@ -53,15 +73,42 @@ export function SyncedYouTube({ onRequestLogin }: Props) {
       setMessages(all.slice(-30));
     } catch {}
   }
-  useEffect(() => { void refresh(); const t = setInterval(refresh, 15000); return () => clearInterval(t); }, []);
-  useEffect(() => { void refreshChat(); const t = setInterval(refreshChat, 4000); return () => clearInterval(t); }, []);
+  useEffect(() => {
+    void refresh();
+    const t = setInterval(() => void refresh(), 15000);
+    return () => clearInterval(t);
+  }, []);
+  useEffect(() => {
+    void refreshChat();
+    const t = setInterval(() => void refreshChat(), 4000);
+    return () => clearInterval(t);
+  }, []);
+  useEffect(() => {
+    localStorage.setItem("youtubeChatPercent", String(chatPercent));
+  }, [chatPercent]);
 
   async function applyNew() {
     setErr(null);
     const id = parseYouTubeId(input);
     if (!id) { setErr("Couldn't parse a YouTube URL or ID"); return; }
-    try { await setYouTubeSync(id); setInput(""); await refresh(); }
-    catch (e: any) { setErr(e?.message || "Failed"); }
+    try {
+      await setYouTubeSync(id);
+      setInput("");
+      await refresh();
+    } catch (e: any) { setErr(e?.message || "Failed"); }
+  }
+
+  async function addToQueue() {
+    if (!user) { onRequestLogin?.(); return; }
+    setErr(null);
+    const id = parseYouTubeId(queueInput);
+    if (!id) { setErr("Couldn't parse a YouTube URL or ID"); return; }
+    setQueueBusy(true);
+    try {
+      adoptState(await addYouTubeQueue(id));
+      setQueueInput("");
+    } catch (e: any) { setErr(e?.message || "Could not add video to queue"); }
+    finally { setQueueBusy(false); }
   }
 
   async function sendChat() {
@@ -76,7 +123,50 @@ export function SyncedYouTube({ onRequestLogin }: Props) {
     } catch (e: any) { setChatErr(e?.message || "Failed to send"); }
   }
 
-  // Compute initial elapsed once when videoId/startedAt changes; src is stable after that.
+  async function vote(vote: "skip" | "keep") {
+    if (!user) { onRequestLogin?.(); return; }
+    setQueueBusy(true); setErr(null);
+    try {
+      adoptState(await voteYouTubeSkip(vote));
+    } catch (e: any) { setErr(e?.message || "Could not record vote"); }
+    finally { setQueueBusy(false); }
+  }
+
+  async function moveQueueItem(index: number, direction: -1 | 1) {
+    if (!state?.isStaff || !state.queue[index]) return;
+    const nextIndex = index + direction;
+    if (nextIndex < 0 || nextIndex >= state.queue.length) return;
+    const ids = state.queue.map((item) => item.id);
+    [ids[index], ids[nextIndex]] = [ids[nextIndex], ids[index]];
+    setQueueBusy(true); setErr(null);
+    try {
+      adoptState(await reorderYouTubeQueue(ids));
+    } catch (e: any) { setErr(e?.message || "Could not reorder queue"); }
+    finally { setQueueBusy(false); }
+  }
+
+  async function removeQueueItem(id: string) {
+    setQueueBusy(true); setErr(null);
+    try {
+      adoptState(await removeYouTubeQueueItem(id));
+    } catch (e: any) { setErr(e?.message || "Could not remove queue item"); }
+    finally { setQueueBusy(false); }
+  }
+
+  function beginResize(e: React.PointerEvent<HTMLDivElement>) {
+    resizingRef.current = true;
+    e.currentTarget.setPointerCapture(e.pointerId);
+  }
+  function resizeChat(e: React.PointerEvent<HTMLDivElement>) {
+    if (!resizingRef.current || !containerRef.current) return;
+    const rect = containerRef.current.getBoundingClientRect();
+    const next = ((rect.bottom - e.clientY) / rect.height) * 100;
+    setChatPercent(Math.max(22, Math.min(68, next)));
+  }
+  function endResize() {
+    resizingRef.current = false;
+  }
+
   const src = useMemo(() => {
     if (!state?.videoId) return null;
     const startMs = parseServerDate(state.startedAt).getTime();
@@ -86,7 +176,7 @@ export function SyncedYouTube({ onRequestLogin }: Props) {
   }, [state?.videoId, state?.startedAt]);
 
   return (
-    <div className="w-full h-full flex flex-col text-sm bg-black">
+    <div ref={containerRef} className="w-full h-full flex flex-col text-sm bg-black select-none">
       <div className="flex-1 min-h-0 bg-black flex items-center justify-center overflow-hidden">
         {src ? (
           <iframe
@@ -95,14 +185,31 @@ export function SyncedYouTube({ onRequestLogin }: Props) {
             className="w-full h-full"
             allow="autoplay; encrypted-media"
             allowFullScreen
+            title="Synced YouTube player"
           />
         ) : (
-          <div className="text-gray-400 text-xs">No video. {user ? "Set one below." : "Log in to set."}</div>
+          <div className="text-gray-400 text-xs">No video. {user ? "Add one below." : "Log in to add one."}</div>
         )}
       </div>
-      <div className="h-[38%] min-h-[120px] bg-[#c0c0c0] p-1 shrink-0 flex flex-col gap-1">
-        <div className="font-bold text-[11px] text-gray-800">Site chat</div>
-        <div className="flex-1 min-h-0 win98-inset bg-white overflow-auto p-1 text-[10px]">
+
+      <div
+        className="h-1 shrink-0 bg-[#808080] border-y border-[#404040] cursor-row-resize"
+        title="Drag to resize chat"
+        onPointerDown={beginResize}
+        onPointerMove={resizeChat}
+        onPointerUp={endResize}
+        onPointerCancel={endResize}
+      />
+
+      <div
+        className="bg-[#c0c0c0] p-1 shrink-0 flex flex-col gap-1 overflow-hidden"
+        style={{ height: `${chatPercent}%`, minHeight: "112px" }}
+      >
+        <div className="font-bold text-[11px] text-gray-800 flex items-center justify-between">
+          <span>Site chat</span>
+          <span className="font-normal text-[10px] text-gray-600">Drag divider to resize</span>
+        </div>
+        <div className="flex-1 min-h-[34px] win98-inset bg-white overflow-auto p-1 text-[10px]">
           {messages.length === 0 ? <div className="text-gray-500">No messages yet.</div> : messages.map((m) => (
             <div key={m.id} className="mb-1 break-words">
               <span className="font-bold">{m.author}</span>{" "}
@@ -127,22 +234,80 @@ export function SyncedYouTube({ onRequestLogin }: Props) {
           <button className="win98-button px-2 text-[10px] self-start" onClick={onRequestLogin}>Log in to chat</button>
         )}
         {chatErr && <div className="text-red-700 text-[10px]">{chatErr}</div>}
-        {state?.setBy && <div className="text-[10px] text-gray-700">Now playing — set by {state.setBy} (synced for everyone)</div>}
-        {user ? (
-          <div className="flex gap-1">
-            <input
-              className="win98-inset px-1 flex-1 text-xs"
-              placeholder="Paste YouTube URL or video ID"
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={(e) => { if (e.key === "Enter") void applyNew(); }}
-            />
-            <button className="win98-button px-2 text-xs" onClick={applyNew}>Play For All</button>
+
+        {state?.videoId && (
+          <div className="border-t border-gray-500 pt-1 flex flex-col gap-1">
+            <div className="flex items-center justify-between text-[10px] text-gray-700">
+              <span>Skip vote: {state.skipCount}/{state.totalVotes} (needs &gt; 2/3)</span>
+              <span>{state.myVote ? `You voted ${state.myVote}` : ""}</span>
+            </div>
+            <div className="flex gap-1">
+              <button className="win98-button px-2 py-0.5 text-[10px]" disabled={queueBusy} onClick={() => void vote("skip")}>
+                Vote to Skip
+              </button>
+              <button className="win98-button px-2 py-0.5 text-[10px]" disabled={queueBusy} onClick={() => void vote("keep")}>
+                Vote to Keep
+              </button>
+            </div>
           </div>
-        ) : (
-          <div className="text-[10px] text-gray-600">Log in to change the video for everyone.</div>
         )}
-        {err && <div className="text-red-700 text-[11px]">{err}</div>}
+
+        {state?.setBy && (
+          <div className="text-[10px] text-gray-700">
+            Now playing — set by {state.setBy} (synced for everyone)
+          </div>
+        )}
+        <div className="flex gap-1">
+          <input
+            className="win98-inset px-1 flex-1 text-[10px]"
+            placeholder="Paste URL or video ID to play now"
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter") void applyNew(); }}
+          />
+          <button className="win98-button px-2 text-[10px]" disabled={!user} onClick={() => void applyNew()}>
+            Play For All
+          </button>
+        </div>
+        <div className="flex gap-1">
+          <input
+            className="win98-inset px-1 flex-1 text-[10px]"
+            placeholder={user ? "Add URL or video ID to queue" : "Log in to add to queue"}
+            value={queueInput}
+            disabled={!user || queueBusy}
+            onChange={(e) => setQueueInput(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter") void addToQueue(); }}
+          />
+          <button className="win98-button px-2 text-[10px]" disabled={!user || queueBusy} onClick={() => void addToQueue()}>
+            Add Queue
+          </button>
+        </div>
+
+        <div className="border-t border-gray-500 pt-1 min-h-0">
+          <div className="flex items-center justify-between text-[10px] font-bold text-gray-700">
+            <span>Up next ({state?.queue.length || 0})</span>
+            <span className="font-normal">{state?.isStaff ? "Staff can reorder" : "Users can add"}</span>
+          </div>
+          <div className="max-h-[58px] overflow-auto win98-inset bg-white text-[10px]">
+            {!state?.queue.length ? (
+              <div className="px-1 py-0.5 text-gray-500">Queue is empty.</div>
+            ) : state.queue.map((item, index) => (
+              <div key={item.id} className="flex items-center gap-1 px-1 py-0.5 border-b border-gray-200 last:border-0">
+                <span className="flex-1 truncate" title={`${item.videoId} added by ${item.addedBy}`}>
+                  {index + 1}. {item.videoId} <span className="text-gray-500">({item.addedBy})</span>
+                </span>
+                {state.isStaff && (
+                  <>
+                    <button className="win98-button px-1 leading-none" disabled={queueBusy || index === 0} onClick={() => void moveQueueItem(index, -1)} title="Move up">↑</button>
+                    <button className="win98-button px-1 leading-none" disabled={queueBusy || index === state.queue.length - 1} onClick={() => void moveQueueItem(index, 1)} title="Move down">↓</button>
+                    <button className="win98-button px-1 leading-none" disabled={queueBusy} onClick={() => void removeQueueItem(item.id)} title="Remove from queue">×</button>
+                  </>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+        {err && <div className="text-red-700 text-[10px]">{err}</div>}
       </div>
     </div>
   );

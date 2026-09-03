@@ -331,8 +331,12 @@ export async function ensureSchema(): Promise<void> {
       id serial PRIMARY KEY,
       video_id text NOT NULL DEFAULT '',
       started_at timestamp NOT NULL DEFAULT now(),
-      set_by text NOT NULL DEFAULT ''
+      set_by text NOT NULL DEFAULT '',
+      queue jsonb NOT NULL DEFAULT '[]'::jsonb,
+      skip_votes jsonb NOT NULL DEFAULT '{}'::jsonb
     );
+    ALTER TABLE youtube_sync ADD COLUMN IF NOT EXISTS queue jsonb NOT NULL DEFAULT '[]'::jsonb;
+    ALTER TABLE youtube_sync ADD COLUMN IF NOT EXISTS skip_votes jsonb NOT NULL DEFAULT '{}'::jsonb;
 
     CREATE TABLE IF NOT EXISTS blackjack_tables (
       id serial PRIMARY KEY,
