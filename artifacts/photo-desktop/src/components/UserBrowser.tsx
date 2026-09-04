@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { fetchUsers, type PublicUser } from "../lib/api";
+import { fetchUsers, fetchUserPages, voteUserPage, type PublicUser, type UserPageListing } from "../lib/api";
 import { useAuth } from "../lib/auth-store";
 import { useDesktopStore } from "../store";
 import { Avatar } from "./Avatar";
@@ -33,19 +33,22 @@ function displayActivity(lastSeen: string | null | undefined): string {
 function UserCard({
   user,
   onOpen,
+  page,
+  onVote,
 }: {
   user: PublicUser;
   onOpen: (username: string) => void;
+  page?: UserPageListing;
+  onVote: (username: string) => void;
 }) {
   return (
-    <button
-      type="button"
+    <div
       className="group flex min-h-[116px] w-full flex-col gap-2 text-left"
       onClick={() => onOpen(user.username)}
       data-testid={`card-user-${user.username}`}
       title={`Open ${user.username}'s personal page`}
     >
-      <span className="win98-window flex h-full w-full flex-col p-1 transition-transform group-hover:-translate-y-px">
+      <span className="win98-window flex h-full w-full flex-col p-1 transition-transform group-hover:-translate-y-px" onClick={() => onOpen(user.username)}>
         <span className="flex items-center gap-2 border-b border-gray-300 bg-[#e5e5e5] px-1.5 py-1">
           <Avatar username={user.username} size={38} />
           <span className="min-w-0 flex-1">
@@ -70,12 +73,15 @@ function UserCard({
         </span>
         <span className="flex min-h-0 flex-1 flex-col justify-between px-1.5 py-1 text-[10px]">
           <span className="text-gray-700">{displayActivity(user.lastSeen)}</span>
-          <span className="font-bold text-[#000080] group-hover:underline">
-            Open personal page
+          <span className="flex items-center justify-between gap-1">
+            <span className="font-bold text-[#000080] group-hover:underline">Open personal page</span>
+            {page && <button type="button" className="win98-button px-1 text-[10px]" onClick={(e) => { e.stopPropagation(); onVote(user.username); }} aria-label={`Upvote ${user.username}'s page`}>
+              {page.myVote ? "♥" : "♡"} {page.score}
+            </button>}
           </span>
         </span>
       </span>
-    </button>
+    </div>
   );
 }
 
@@ -107,6 +113,7 @@ export function UserBrowser({ page = "/" }: UserBrowserProps) {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [pages, setPages] = useState<UserPageListing[]>([]);
   const me = useAuth((state) => state.user);
   const addWindow = useDesktopStore((state) => state.addWindow);
 
@@ -116,7 +123,8 @@ export function UserBrowser({ page = "/" }: UserBrowserProps) {
     setError(null);
 
     try {
-      setUsers(await fetchUsers());
+      const [nextUsers, nextPages] = await Promise.all([fetchUsers(), fetchUserPages()]);
+      setUsers(nextUsers); setPages(nextPages);
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : "The directory could not be loaded.");
     } finally {
@@ -124,6 +132,13 @@ export function UserBrowser({ page = "/" }: UserBrowserProps) {
       setRefreshing(false);
     }
   }, []);
+  const vote = useCallback(async (username: string) => {
+    if (!me) { setError("Log in to vote for pages."); return; }
+    try {
+      const result = await voteUserPage(username);
+      setPages(current => current.map(p => p.username === username ? { ...p, score: result.score, myVote: result.myVote } : p));
+    } catch (e) { setError(e instanceof Error ? e.message : "Could not vote."); }
+  }, [me]);
 
   useEffect(() => {
     void loadUsers();
@@ -131,10 +146,14 @@ export function UserBrowser({ page = "/" }: UserBrowserProps) {
 
   const visibleUsers = useMemo(() => {
     const normalizedQuery = query.trim().toLocaleLowerCase();
+    const scores = new Map(pages.map((item) => [item.username, item.score]));
     return [...users]
-      .sort((first, second) => first.username.localeCompare(second.username))
+      .sort((first, second) => {
+        const scoreDifference = (scores.get(second.username) || 0) - (scores.get(first.username) || 0);
+        return scoreDifference || first.username.localeCompare(second.username);
+      })
       .filter((user) => !normalizedQuery || user.username.toLocaleLowerCase().includes(normalizedQuery));
-  }, [query, users]);
+  }, [pages, query, users]);
 
   const openUserPage = useCallback(
     (username: string) => {
@@ -282,7 +301,7 @@ export function UserBrowser({ page = "/" }: UserBrowserProps) {
         ) : (
           <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-3">
             {visibleUsers.map((user) => (
-              <UserCard key={user.username} user={user} onOpen={openUserPage} />
+              <UserCard key={user.username} user={user} page={pages.find(p => p.username === user.username)} onVote={vote} onOpen={openUserPage} />
             ))}
           </div>
         )}

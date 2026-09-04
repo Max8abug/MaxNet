@@ -44,6 +44,7 @@ export function ProfileDialog({ onClose }: Props) {
   const [err, setErr] = useState<string | null>(null);
   const [color, setColor] = useState(user?.backgroundColor || "#008080");
   const [timeZone, setTimeZone] = useState(user?.timeZone || "");
+  const [username, setUsername] = useState(user?.username || "");
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -147,6 +148,15 @@ export function ProfileDialog({ onClose }: Props) {
     }
   }
 
+  async function applyUsername() {
+    const next = username.trim();
+    if (!/^[A-Za-z0-9_]{2,32}$/.test(next)) { setErr("Username must be 2-32 letters, numbers, or underscores."); return; }
+    setBusy(true); setErr(null);
+    try { await updateProfile({ username: next }); }
+    catch (e: any) { setErr(e?.message || "Could not change username"); }
+    finally { setBusy(false); }
+  }
+
   return (
     <div
       className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/30"
@@ -172,6 +182,14 @@ export function ProfileDialog({ onClose }: Props) {
             </div>
             <input ref={avatarRef} type="file" accept="image/*" className="hidden"
               onChange={(e) => { const f = e.target.files?.[0]; if (f) void pickAvatar(f); e.target.value = ""; }} />
+          </div>
+          <div className="border-t border-gray-400 pt-2">
+            <div className="font-bold mb-1">Username</div>
+            <div className="flex gap-1">
+              <input className="win98-inset px-1 py-0.5 flex-1" value={username} disabled={busy} onChange={e => setUsername(e.target.value)} />
+              <button className="win98-button px-2 py-0.5" disabled={busy || username.trim() === user.username} onClick={() => void applyUsername()}>Save</button>
+            </div>
+            <div className="text-[10px] text-gray-600 mt-1">2-32 letters, numbers, or underscores.</div>
           </div>
 
           <div className="border-t border-gray-400 pt-2">

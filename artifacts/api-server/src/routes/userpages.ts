@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
-import { db, userPagesTable } from "@workspace/db";
-import { eq } from "drizzle-orm";
+import { db, userPagesTable, userPageVotesTable } from "@workspace/db";
+import { eq, and, count, desc } from "drizzle-orm";
 import { requireAuth } from "../lib/auth";
 import { audit, requireDeleteMessages } from "./social";
 
@@ -34,7 +34,35 @@ function sanitizeElements(raw: unknown): any[] {
 router.get("/userpages/:username", async (req, res) => {
   const u = String(req.params.username);
   const [row] = await db.select().from(userPagesTable).where(eq(userPagesTable.username, u)).limit(1);
-  res.json({ page: row || null });
+  if (!row) { res.json({ page: null }); return; }
+  const [{ score }] = await db.select({ score: count() }).from(userPageVotesTable).where(eq(userPageVotesTable.pageUsername, u));
+  const my = req.session.username
+    ? await db.select().from(userPageVotesTable).where(and(eq(userPageVotesTable.pageUsername, u), eq(userPageVotesTable.voterUsername, req.session.username))).limit(1)
+    : [];
+  res.json({ page: { ...row, score: Number(score || 0), myVote: my.length ? 1 : 0 } });
+});
+
+router.get("/userpages", async (req, res) => {
+  const rows = await db.select().from(userPagesTable);
+  const result = await Promise.all(rows.map(async (row) => {
+    const [{ score }] = await db.select({ score: count() }).from(userPageVotesTable).where(eq(userPageVotesTable.pageUsername, row.username));
+    const my = req.session.username ? await db.select().from(userPageVotesTable).where(and(eq(userPageVotesTable.pageUsername, row.username), eq(userPageVotesTable.voterUsername, req.session.username))).limit(1) : [];
+    return { ...row, score: Number(score || 0), myVote: my.length ? 1 : 0 };
+  }));
+  result.sort((a, b) => b.score - a.score || new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
+  res.json(result);
+});
+
+router.post("/userpages/:username/vote", requireAuth, async (req, res) => {
+  const username = String(req.params.username);
+  const [page] = await db.select().from(userPagesTable).where(eq(userPagesTable.username, username)).limit(1);
+  if (!page) { res.status(404).json({ error: "Page not found" }); return; }
+  const voter = req.session.username!;
+  const [existing] = await db.select().from(userPageVotesTable).where(and(eq(userPageVotesTable.pageUsername, username), eq(userPageVotesTable.voterUsername, voter))).limit(1);
+  if (existing) await db.delete(userPageVotesTable).where(eq(userPageVotesTable.id, existing.id));
+  else await db.insert(userPageVotesTable).values({ pageUsername: username, voterUsername: voter });
+  const [{ score }] = await db.select({ score: count() }).from(userPageVotesTable).where(eq(userPageVotesTable.pageUsername, username));
+  res.json({ ok: true, score: Number(score || 0), myVote: existing ? 0 : 1 });
 });
 
 router.put("/userpages", requireAuth, async (req, res) => {

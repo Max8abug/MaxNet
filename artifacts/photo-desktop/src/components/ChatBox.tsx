@@ -51,10 +51,16 @@ export function ChatBox({ onRequestLogin }: Props) {
   const [archiveStatus, setArchiveStatus] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
   const [typing, setTyping] = useState<string[]>([]);
+  const [typingRooms, setTypingRooms] = useState<Record<number, boolean>>({});
+  const [room, setRoom] = useState(1);
+  const [cooldownUntil, setCooldownUntil] = useState(0);
+  const [loadingOlder, setLoadingOlder] = useState(false);
+  const [roomActivity, setRoomActivity] = useState<Record<number, string | null>>({});
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const videoRef = useRef<HTMLInputElement>(null);
   const lastSeenIdRef = useRef<number>(0);
+  const beforeCursorRef = useRef<number | undefined>(undefined);
   const user = useAuth((s) => s.user);
   const ranks = useAuth((s) => s.ranks);
   const refreshRanks = useAuth((s) => s.refreshRanks);
@@ -68,16 +74,46 @@ export function ChatBox({ onRequestLogin }: Props) {
   const [banName, setBanName] = useState("");
   const [banReason, setBanReason] = useState("");
 
-  async function refresh() {
+  async function refresh(initial = false) {
     try {
-      const m = await fetchChat();
+      const m = await fetchChat(room, 50);
       // Toast about new messages from others (not own, not first load)
       if (lastSeenIdRef.current > 0 && document.visibilityState === "visible") {
         const fresh = m.filter(x => x.id > lastSeenIdRef.current && x.author !== user?.username);
         fresh.slice(-3).forEach(x => pushToast(`${x.author}`, x.body || (x.imageUrl ? "[image]" : x.videoUrl ? "[video]" : "")));
       }
       if (m.length) lastSeenIdRef.current = Math.max(lastSeenIdRef.current, ...m.map(x => x.id));
-      setMessages(m);
+      setMessages(current => {
+        if (initial || current.length === 0) return m;
+        const merged = new Map(current.map(x => [x.id, x]));
+        m.forEach(x => merged.set(x.id, x));
+        return Array.from(merged.values()).filter(x => x.room === room).sort((a, b) => a.id - b.id).slice(-300);
+      });
+    } catch {}
+  }
+  async function loadOlder() {
+    if (loadingOlder || !messages.length) return;
+    const el = scrollRef.current;
+    if (!el) return;
+    setLoadingOlder(true);
+    const previousHeight = el.scrollHeight;
+    const oldest = beforeCursorRef.current ?? messages[0]!.id;
+    try {
+      const older = await fetchChat(room, 50, oldest);
+      if (older.length) {
+        beforeCursorRef.current = older[0]!.id;
+        setMessages(current => {
+          const merged = new Map([...older, ...current].map(x => [x.id, x]));
+          return Array.from(merged.values()).sort((a, b) => a.id - b.id).slice(-300);
+        });
+        requestAnimationFrame(() => { if (scrollRef.current) scrollRef.current.scrollTop += scrollRef.current.scrollHeight - previousHeight; });
+      }
+    } catch {} finally { setLoadingOlder(false); }
+  }
+  async function refreshRoomActivity() {
+    try {
+      const latest = await Promise.all([1, 2, 3, 4].map(n => fetchChat(n, 1)));
+      setRoomActivity(Object.fromEntries(latest.map((rows, i) => [i + 1, rows[0]?.createdAt || null])));
     } catch {}
   }
   async function refreshAdmin() {
@@ -87,14 +123,28 @@ export function ChatBox({ onRequestLogin }: Props) {
   }
 
   useEffect(() => { void refreshRanks(); }, [refreshRanks]);
-  useEffect(() => { void refresh(); const t = setInterval(refresh, 4000); return () => clearInterval(t); }, [user?.username]);
-  useEffect(() => { const t = setInterval(async () => { setTyping((await fetchTyping()).filter(u => u !== user?.username)); }, 2500); return () => clearInterval(t); }, [user?.username]);
+  useEffect(() => { setMessages([]); beforeCursorRef.current = undefined; void refresh(true); void refreshRoomActivity(); const t = setInterval(() => { void refresh(); void refreshRoomActivity(); }, 4000); return () => clearInterval(t); }, [user?.username, room]);
+  useEffect(() => {
+    const poll = async () => {
+      const values = await Promise.all([1, 2, 3, 4].map(n => fetchTyping(n)));
+      setTyping(values[room - 1]!.filter(u => u !== user?.username));
+      setTypingRooms(Object.fromEntries(values.map((users, i) => [i + 1, users.some(u => u !== user?.username)])));
+    };
+    void poll();
+    const t = setInterval(() => void poll(), 2500);
+    return () => clearInterval(t);
+  }, [user?.username, room]);
   useEffect(() => { if (!isAdmin) { setTab("chat"); return; } void refreshAdmin(); }, [isAdmin]);
   useEffect(() => { if (tab === "chat") scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight }); }, [messages.length, tab]);
 
+  useEffect(() => {
+    const timer = window.setInterval(() => setCooldownUntil(value => value > Date.now() ? value : 0), 250);
+    return () => window.clearInterval(timer);
+  }, []);
+
   function onTypeChange(v: string) {
     setText(v);
-    if (user && v.trim()) pingTyping();
+    if (user && v.trim()) pingTyping(room);
   }
 
   async function send() {
@@ -102,10 +152,13 @@ export function ChatBox({ onRequestLogin }: Props) {
     if (!user) { onRequestLogin?.(); return; }
     setSending(true); setErr(null);
     try {
-      await postChat(text, imageData, videoData, replyTo?.id ?? null);
+       await postChat(text, imageData, videoData, replyTo?.id ?? null, room);
       setText(""); setImageData(null); setVideoData(null); setGifUrl(""); setReplyTo(null);
       await refresh();
-    } catch (e: any) { setErr(e?.message || "Failed"); }
+    } catch (e: any) {
+      if (e?.retryAfterMs) setCooldownUntil(Date.now() + e.retryAfterMs);
+      setErr(e?.message || "Failed");
+    }
     finally { setSending(false); }
   }
 
@@ -114,14 +167,16 @@ export function ChatBox({ onRequestLogin }: Props) {
     const value = gifUrl.trim();
     try {
       const url = new URL(value);
-      if ((url.protocol !== "http:" && url.protocol !== "https:") || !/\.gif$/i.test(url.pathname)) {
+       const host = url.hostname.toLowerCase();
+       if ((url.protocol !== "http:" && url.protocol !== "https:") ||
+           !(host === "media.tenor.com" || host === "tenor.com" || host === "www.tenor.com")) {
         throw new Error();
       }
       setImageData(url.toString());
       setGifUrl("");
       setErr(null);
     } catch {
-      setErr("Use a direct HTTP(S) link ending in .gif.");
+       setErr("Use a Tenor GIF link (share links are supported).");
     }
   }
   async function pickVideo(file: File) {
@@ -170,7 +225,15 @@ export function ChatBox({ onRequestLogin }: Props) {
 
       {tab === "chat" && (
         <>
-          <div ref={scrollRef} className="flex-1 win98-inset bg-white p-1 overflow-auto text-xs">
+           <div className="flex gap-1 mb-1 shrink-0">
+             {[1, 2, 3, 4].map((n) => {
+               const active = !!typingRooms[n] || (!!roomActivity[n] && Date.now() - new Date(roomActivity[n]!).getTime() < 30_000);
+               return <button key={n} className={`win98-button px-2 text-xs ${room === n ? "font-bold" : ""}`} onClick={() => setRoom(n)}>
+                 <span className={`inline-block w-2 h-2 rounded-full mr-1 ${active ? "bg-green-600" : "bg-red-600"}`} />Room {n}
+               </button>;
+             })}
+           </div>
+           <div ref={scrollRef} onScroll={(e) => { if (e.currentTarget.scrollTop < 20) void loadOlder(); }} className="flex-1 win98-inset bg-white p-1 overflow-auto text-xs">
             {messages.length === 0 ? (
               <div className="text-gray-500">No messages yet.</div>
             ) : (
@@ -257,7 +320,9 @@ export function ChatBox({ onRequestLogin }: Props) {
                   onChange={(e) => { const f = e.target.files?.[0]; if (f) void pickVideo(f); e.target.value = ""; }} />
                 <button className="win98-button px-2" title="Attach image" onClick={() => fileRef.current?.click()}>📎</button>
                 <button className="win98-button px-2" title="Attach video" onClick={() => videoRef.current?.click()}>🎥</button>
-                <button className="win98-button px-3" disabled={sending} onClick={send}>Send</button>
+                   <button className="win98-button px-3" disabled={sending || cooldownUntil > Date.now()} onClick={send}>
+                     {cooldownUntil > Date.now() ? `Wait ${Math.ceil((cooldownUntil - Date.now()) / 1000)}s` : "Send"}
+                   </button>
               </div>
               <div className="flex items-center gap-1 mt-1">
                 {isAdmin && (

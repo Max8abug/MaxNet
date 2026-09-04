@@ -10,7 +10,7 @@ import {
   chatAuditTable,
   usersTable,
 } from "@workspace/db";
-import { asc, desc, sql, eq, inArray } from "drizzle-orm";
+import { asc, desc, sql, eq, inArray, and, lt } from "drizzle-orm";
 import { requireAuth, requireAdmin, isAdminUsername } from "../lib/auth";
 import { getUserPermissions } from "./ranks";
 import { sendPushToUser } from "../lib/push";
@@ -56,10 +56,42 @@ function validGifUrl(s: unknown): s is string {
   if (typeof s !== "string" || s.length > 2_000) return false;
   try {
     const url = new URL(s);
-    return (url.protocol === "http:" || url.protocol === "https:") && /\.gif$/i.test(url.pathname);
+    if (url.protocol !== "http:" && url.protocol !== "https:") return false;
+    const host = url.hostname.toLowerCase();
+    return (host === "tenor.com" || host === "www.tenor.com" ||
+      (host === "media.tenor.com" && /\.gif(?:$|\?)/i.test(url.pathname)));
   } catch {
     return false;
   }
+}
+
+function safeTenorHost(value: string): boolean {
+  try {
+    const host = new URL(value).hostname.toLowerCase();
+    return host === "media.tenor.com" || host === "tenor.com" || host === "www.tenor.com";
+  } catch { return false; }
+}
+
+// Tenor share links are HTML pages, not image resources. Resolve their
+// server-provided og:image while keeping outbound requests on Tenor only.
+async function normalizeGifUrl(value: string): Promise<string | null> {
+  if (!validGifUrl(value)) return null;
+  const parsed = new URL(value);
+  if (parsed.hostname.toLowerCase() === "media.tenor.com") return value;
+  try {
+    const response = await fetch(value, { redirect: "manual", signal: AbortSignal.timeout(3000) });
+    if (response.status >= 300 && response.status < 400) {
+      const location = response.headers.get("location");
+      if (!location || !safeTenorHost(location)) return null;
+      return normalizeGifUrl(new URL(location, value).toString());
+    }
+    if (!response.ok) return null;
+    const html = (await response.text()).slice(0, 500_000);
+    const match = html.match(/<meta[^>]+(?:property|name)=["']og:image["'][^>]+content=["']([^"']+)/i)
+      || html.match(/<meta[^>]+content=["']([^"']+)[^>]+(?:property|name)=["']og:image["']/i);
+    const asset = match?.[1] ? new URL(match[1], value).toString() : "";
+    return safeTenorHost(asset) && /\.gif(?:$|\?)/i.test(new URL(asset).pathname) ? asset : null;
+  } catch { return null; }
 }
 
 // ---------- Drawings ----------
@@ -138,12 +170,16 @@ router.delete("/drawings/:id", requireDeleteMessages, async (req, res) => {
 });
 
 // ---------- Chat ----------
-router.get("/chat", async (_req, res) => {
+router.get("/chat", async (req, res) => {
+  const room = Math.max(1, Math.min(4, Number(req.query.room) || 1));
+  const limit = Math.max(1, Math.min(100, Number(req.query.limit) || 50));
+  const before = Number(req.query.before);
   const rows = await db
     .select()
     .from(chatMessagesTable)
+    .where(and(eq(chatMessagesTable.room, room), Number.isFinite(before) && before > 0 ? lt(chatMessagesTable.id, before) : undefined))
     .orderBy(desc(chatMessagesTable.createdAt))
-    .limit(100);
+    .limit(limit);
   res.json(rows.reverse());
 });
 
@@ -382,15 +418,21 @@ router.get("/chat/export", requireAdmin, async (_req, res) => {
   }
 });
 
+const lastChatPost = new Map<string, number>();
 router.post("/chat", requireAuth, async (req, res) => {
   const { body, imageUrl, videoUrl, replyTo } = req.body ?? {};
+  const room = Math.max(1, Math.min(4, Number(req.body?.room) || 1));
   const trimmedBody = typeof body === "string" ? body.trim() : "";
   if (!trimmedBody && !imageUrl && !videoUrl) {
     res.status(400).json({ error: "body or media required" });
     return;
   }
   if (trimmedBody.length > 500) { res.status(413).json({ error: "Message too long" }); return; }
-  if (imageUrl !== undefined && imageUrl !== null && !validImageData(imageUrl, 3_000_000) && !validGifUrl(imageUrl)) {
+  let normalizedImageUrl: string | null = validImageData(imageUrl, 3_000_000) ? imageUrl : null;
+  if (imageUrl !== undefined && imageUrl !== null && !normalizedImageUrl) {
+    normalizedImageUrl = await normalizeGifUrl(imageUrl);
+  }
+  if (imageUrl !== undefined && imageUrl !== null && !normalizedImageUrl) {
     res.status(400).json({ error: "imageUrl must be a data image or a direct HTTP(S) GIF URL" }); return;
   }
   if (videoUrl !== undefined && videoUrl !== null) {
@@ -400,14 +442,22 @@ router.post("/chat", requireAuth, async (req, res) => {
   }
   const replyToId = (typeof replyTo === "number" && Number.isFinite(replyTo)) ? replyTo : null;
   const author = req.session.username || "anon";
+  const last = lastChatPost.get(author) || 0;
+  const retryAfter = Math.max(0, 5000 - (Date.now() - last));
+  if (retryAfter > 0) {
+    res.setHeader("Retry-After", Math.ceil(retryAfter / 1000));
+    res.status(429).json({ error: `Please wait ${Math.ceil(retryAfter / 1000)} more second(s) before sending.`, retryAfterMs: retryAfter });
+    return;
+  }
   if (await isBanned(author)) {
     await audit("chat", "blocked", author, author, trimmedBody.slice(0, 500));
     res.status(403).json({ error: "You are banned from chat." });
     return;
   }
+  lastChatPost.set(author, Date.now());
   const [row] = await db
     .insert(chatMessagesTable)
-    .values({ body: trimmedBody, author, imageUrl: imageUrl || null, videoUrl: videoUrl || null, replyTo: replyToId })
+    .values({ body: trimmedBody, author, room, imageUrl: normalizedImageUrl, videoUrl: videoUrl || null, replyTo: replyToId })
     .returning();
   await audit("chat", "post", author, "", trimmedBody + (imageUrl ? " [image]" : "") + (videoUrl ? " [video]" : ""));
 
@@ -442,16 +492,18 @@ router.post("/chat", requireAuth, async (req, res) => {
 });
 
 // ---------- Typing indicator ----------
-const typingMap = new Map<string, number>(); // username -> lastTypingMs
+const typingMap = new Map<string, { room: number; at: number }>();
 router.post("/chat/typing", requireAuth, (req, res) => {
-  typingMap.set(req.session.username!, Date.now());
+  const room = Math.max(1, Math.min(4, Number(req.body?.room) || 1));
+  typingMap.set(req.session.username!, { room, at: Date.now() });
   res.json({ ok: true });
 });
-router.get("/chat/typing", (_req, res) => {
+router.get("/chat/typing", (req, res) => {
+  const room = Math.max(1, Math.min(4, Number(req.query.room) || 1));
   const now = Date.now();
   const list: string[] = [];
-  for (const [u, t] of typingMap.entries()) {
-    if (now - t < 4000) list.push(u);
+  for (const [u, state] of typingMap.entries()) {
+    if (now - state.at < 4000 && state.room === room) list.push(u);
     else typingMap.delete(u);
   }
   res.json({ typing: list });

@@ -251,7 +251,7 @@ export function Taskbar({ page }: { page: string }) {
     { label: "My Page Editor", act: () => open({ type: 'mypage', title: user ? `${user.username}'s page` : 'My Page', width: 520, height: 440 }) },
     { label: "Play Blackjack", act: () => open({ type: 'blackjack', title: 'Blackjack', width: 520, height: 480 }) },
     { label: "Play Flappy Bird", act: () => open({ type: 'flappy', title: 'Flappy Bird', width: 560, height: 540 }) },
-    { label: "Play Geometry Dash", act: () => open({ type: 'geometry', title: 'Geometry Dash', width: 560, height: 330 }) },
+    { label: "Play Dino Run", act: () => open({ type: 'geometry', title: 'Dino Run', width: 560, height: 330 }) },
     { label: "Play Poker", act: () => open({ type: 'poker', title: 'Poker', width: 560, height: 390 }) },
     { label: "Add Chatbox", act: () => open({ type: 'chat', title: 'Chatbox', width: 360, height: 420 }) },
     { label: "Add Drawing Pad", act: () => open({ type: 'drawing', title: 'Visitor Drawings', width: 460, height: 440 }) },

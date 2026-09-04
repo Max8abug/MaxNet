@@ -13,6 +13,7 @@ export interface Drawing {
 
 export interface ChatMessage {
   id: number;
+  room: number;
   author: string;
   body: string;
   imageUrl?: string | null;
@@ -47,7 +48,7 @@ export interface AuthUser {
   timeZone?: string | null;
 }
 
-export async function updateProfile(data: { avatarUrl?: string | null; backgroundUrl?: string | null; darkBackgroundUrl?: string | null; backgroundColor?: string | null; timeZone?: string | null }): Promise<void> {
+export async function updateProfile(data: { username?: string; avatarUrl?: string | null; backgroundUrl?: string | null; darkBackgroundUrl?: string | null; backgroundColor?: string | null; timeZone?: string | null }): Promise<void> {
   await jsonOrThrow(await fetch(`${BASE}/auth/profile`, {
     ...opts, method: "PATCH",
     headers: { "Content-Type": "application/json" },
@@ -72,8 +73,16 @@ export async function fetchUserProfile(username: string): Promise<PublicUser | n
 async function jsonOrThrow(r: Response) {
   if (!r.ok) {
     let msg = `HTTP ${r.status}`;
-    try { const j = await r.json(); if (j?.error) msg = j.error; } catch {}
-    throw new Error(msg);
+    try {
+      const j = await r.json();
+      if (j?.error) msg = j.error;
+      const error = new Error(msg) as Error & { retryAfterMs?: number };
+      if (typeof j?.retryAfterMs === "number") error.retryAfterMs = j.retryAfterMs;
+      throw error;
+    } catch (error) {
+      if (error instanceof Error && (error as any).retryAfterMs !== undefined) throw error;
+      throw new Error(msg);
+    }
   }
   return r.json();
 }
@@ -239,21 +248,23 @@ export async function voteDrawing(id: number, vote: -1 | 0 | 1): Promise<{ ok: t
 }
 
 // ----- Chat -----
-export async function fetchChat(): Promise<ChatMessage[]> {
-  return jsonOrThrow(await fetch(`${BASE}/chat`, opts));
+export async function fetchChat(room = 1, limit = 50, before?: number): Promise<ChatMessage[]> {
+  const query = new URLSearchParams({ room: String(room), limit: String(limit) });
+  if (before) query.set("before", String(before));
+  return jsonOrThrow(await fetch(`${BASE}/chat?${query}`, opts));
 }
-export async function postChat(body: string, imageUrl?: string | null, videoUrl?: string | null, replyTo?: number | null): Promise<ChatMessage> {
+export async function postChat(body: string, imageUrl?: string | null, videoUrl?: string | null, replyTo?: number | null, room = 1): Promise<ChatMessage> {
   return jsonOrThrow(await fetch(`${BASE}/chat`, {
     ...opts, method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ body, imageUrl: imageUrl || null, videoUrl: videoUrl || null, replyTo: replyTo ?? null }),
+    body: JSON.stringify({ body, imageUrl: imageUrl || null, videoUrl: videoUrl || null, replyTo: replyTo ?? null, room }),
   }));
 }
-export async function pingTyping(): Promise<void> {
-  try { await fetch(`${BASE}/chat/typing`, { ...opts, method: "POST" }); } catch {}
+export async function pingTyping(room = 1): Promise<void> {
+  try { await fetch(`${BASE}/chat/typing`, { ...opts, method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ room }) }); } catch {}
 }
-export async function fetchTyping(): Promise<string[]> {
-  try { const j = await jsonOrThrow(await fetch(`${BASE}/chat/typing`, opts)); return j.typing || []; } catch { return []; }
+export async function fetchTyping(room = 1): Promise<string[]> {
+  try { const j = await jsonOrThrow(await fetch(`${BASE}/chat/typing?room=${room}`, opts)); return j.typing || []; } catch { return []; }
 }
 export async function clearChat(): Promise<void> {
   await jsonOrThrow(await fetch(`${BASE}/chat`, { ...opts, method: "DELETE" }));
@@ -499,8 +510,30 @@ export async function unlockThread(id: number, password: string): Promise<void> 
 
 // ----- DMs -----
 export interface DMContact { username: string; avatarUrl: string | null; rank: string | null; isAdmin: boolean; }
-export interface DMMessage { id: number; fromUser: string; toUser: string; body: string; createdAt: string; }
-export interface DMConversation { partner: string; lastBody: string; lastAt: string; unread: number; }
+export interface DMMessage { id: number; fromUser: string; toUser: string; groupId?: number | null; body: string; createdAt: string; }
+export interface DMConversation {
+  kind?: "direct" | "group";
+  partner: string;
+  groupId?: number;
+  groupName?: string;
+  members?: string[];
+  lastBody: string;
+  lastAt: string;
+  unread: number;
+}
+export interface DMGroup { id: number; name: string; owner: string; members: string[]; createdAt: string; }
+export interface DMReport {
+  id: number;
+  reporter: string;
+  messageId: number | null;
+  groupId: number | null;
+  reason: string;
+  status: "open" | "reviewed" | "dismissed";
+  reviewedBy: string | null;
+  reviewedAt: string | null;
+  createdAt: string;
+  message: DMMessage | null;
+}
 export async function fetchDMContacts(): Promise<DMContact[]> { return jsonOrThrow(await fetch(`${BASE}/dms/contacts`, opts)); }
 export async function fetchDMConversations(): Promise<DMConversation[]> { return jsonOrThrow(await fetch(`${BASE}/dms`, opts)); }
 export async function fetchDMs(other: string): Promise<DMMessage[]> { return jsonOrThrow(await fetch(`${BASE}/dms/${encodeURIComponent(other)}`, opts)); }
@@ -509,6 +542,29 @@ export async function markDMsRead(other: string): Promise<void> {
 }
 export async function sendDM(other: string, body: string): Promise<DMMessage> {
   return jsonOrThrow(await fetch(`${BASE}/dms/${encodeURIComponent(other)}`, { ...opts, method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ body }) }));
+}
+export async function fetchDMGroups(): Promise<DMGroup[]> { return jsonOrThrow(await fetch(`${BASE}/dms/groups`, opts)); }
+export async function createDMGroup(name: string, members: string[]): Promise<DMGroup> {
+  return jsonOrThrow(await fetch(`${BASE}/dms/groups`, { ...opts, method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name, members }) }));
+}
+export async function fetchDMGroupMessages(id: number): Promise<{ group: DMGroup; messages: DMMessage[] }> {
+  return jsonOrThrow(await fetch(`${BASE}/dms/groups/${id}`, opts));
+}
+export async function markDMGroupRead(id: number): Promise<void> {
+  await fetch(`${BASE}/dms/groups/${id}/read`, { ...opts, method: "POST" });
+}
+export async function sendDMGroup(id: number, body: string): Promise<DMMessage> {
+  return jsonOrThrow(await fetch(`${BASE}/dms/groups/${id}`, { ...opts, method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ body }) }));
+}
+export async function reportDM(messageId: number, reason: string, groupId?: number | null): Promise<DMReport> {
+  return jsonOrThrow(await fetch(`${BASE}/dms/reports`, { ...opts, method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ messageId, reason, groupId: groupId ?? null }) }));
+}
+export async function fetchDMReports(): Promise<DMReport[]> { return jsonOrThrow(await fetch(`${BASE}/dms/admin/reports`, opts)); }
+export async function updateDMReport(id: number, status: DMReport["status"]): Promise<DMReport> {
+  return jsonOrThrow(await fetch(`${BASE}/dms/admin/reports/${id}`, { ...opts, method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ status }) }));
+}
+export async function deleteDMMessage(id: number): Promise<void> {
+  await jsonOrThrow(await fetch(`${BASE}/dms/admin/messages/${id}`, { ...opts, method: "DELETE" }));
 }
 
 // ----- Polls -----
@@ -537,6 +593,21 @@ export async function uploadTrack(title: string, dataUrl: string): Promise<Track
 export async function deleteTrack(id: number): Promise<void> {
   await jsonOrThrow(await fetch(`${BASE}/music/${id}`, { ...opts, method: "DELETE" }));
 }
+export interface Playlist { id: number; owner: string; name: string; createdAt: string; updatedAt: string; tracks: Track[]; }
+export async function fetchPlaylists(): Promise<Playlist[]> { return jsonOrThrow(await fetch(`${BASE}/music/playlists`, opts)); }
+export async function createPlaylist(name: string): Promise<Playlist> {
+  return jsonOrThrow(await fetch(`${BASE}/music/playlists`, { ...opts, method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name }) }));
+}
+export async function renamePlaylist(id: number, name: string): Promise<Playlist> {
+  return jsonOrThrow(await fetch(`${BASE}/music/playlists/${id}`, { ...opts, method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name }) }));
+}
+export async function deletePlaylist(id: number): Promise<void> { await jsonOrThrow(await fetch(`${BASE}/music/playlists/${id}`, { ...opts, method: "DELETE" })); }
+export async function addPlaylistTrack(playlistId: number, trackId: number): Promise<void> {
+  await jsonOrThrow(await fetch(`${BASE}/music/playlists/${playlistId}/tracks`, { ...opts, method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ trackId }) }));
+}
+export async function removePlaylistTrack(playlistId: number, trackId: number): Promise<void> {
+  await jsonOrThrow(await fetch(`${BASE}/music/playlists/${playlistId}/tracks/${trackId}`, { ...opts, method: "DELETE" }));
+}
 
 // ----- User pages -----
 export type UserPageElement =
@@ -553,6 +624,13 @@ export async function saveUserPage(dataUrl: string, elements: UserPageElement[] 
 }
 export async function clearUserPage(username: string): Promise<void> {
   await jsonOrThrow(await fetch(`${BASE}/userpages/${encodeURIComponent(username)}`, { ...opts, method: "DELETE" }));
+}
+export interface UserPageListing extends UserPage { username: string; score: number; myVote: number; }
+export async function fetchUserPages(): Promise<UserPageListing[]> {
+  return jsonOrThrow(await fetch(`${BASE}/userpages`, opts));
+}
+export async function voteUserPage(username: string): Promise<{ ok: true; score: number; myVote: number }> {
+  return jsonOrThrow(await fetch(`${BASE}/userpages/${encodeURIComponent(username)}/vote`, { ...opts, method: "POST" }));
 }
 
 // ----- Cafe -----

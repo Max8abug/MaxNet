@@ -1,6 +1,10 @@
 import { Router, type IRouter } from "express";
-import { db, usersTable, bannedUsersTable, userPagesTable, chatAuditTable } from "@workspace/db";
-import { eq } from "drizzle-orm";
+import {
+  db, usersTable, bannedUsersTable, userPagesTable, chatAuditTable, tracksTable,
+  dmsTable, dmGroupsTable, dmGroupMembersTable, dmReportsTable,
+  userPageVotesTable, playlistsTable, pushSubscriptionsTable,
+} from "@workspace/db";
+import { eq, ilike } from "drizzle-orm";
 import { hashPassword, verifyPassword, isAdminUsername, findUserByUsername, requireAdmin } from "../lib/auth";
 import { getClientIp, isIpBanned, recordUserIp } from "../lib/ip-tracking";
 
@@ -152,7 +156,46 @@ router.patch("/auth/profile", async (req, res) => {
     res.status(401).json({ error: "Login required" });
     return;
   }
-  const { avatarUrl, backgroundUrl, darkBackgroundUrl, backgroundColor, timeZone } = req.body ?? {};
+  const { username, avatarUrl, backgroundUrl, darkBackgroundUrl, backgroundColor, timeZone } = req.body ?? {};
+  if (username !== undefined) {
+    if (typeof username !== "string") { res.status(400).json({ error: "username must be a string" }); return; }
+    const next = username.trim();
+    if (!/^[A-Za-z0-9_]{2,32}$/.test(next)) { res.status(400).json({ error: "Username must be 2-32 letters, numbers, or underscores" }); return; }
+    const [current] = await db.select().from(usersTable).where(eq(usersTable.id, req.session.userId)).limit(1);
+    if (!current) { res.status(401).json({ error: "Login required" }); return; }
+    if (next.toLowerCase() !== current.username.toLowerCase() && (current.isAdmin || current.username.toLowerCase() === "max8abug")) {
+      res.status(400).json({ error: "The site owner username cannot be changed." }); return;
+    }
+    if (next.toLowerCase() !== current.username.toLowerCase() && next.toLowerCase() === "max8abug") {
+      res.status(400).json({ error: "That username is reserved." }); return;
+    }
+    const [collision] = await db.select().from(usersTable).where(ilike(usersTable.username, next)).limit(1);
+    if (collision && collision.id !== current.id) { res.status(409).json({ error: "Username taken" }); return; }
+    if (next !== current.username) {
+      const [pageCollision] = await db.select({ username: userPagesTable.username })
+        .from(userPagesTable).where(ilike(userPagesTable.username, next)).limit(1);
+      if (pageCollision && pageCollision.username !== current.username) {
+        res.status(409).json({ error: "That username already has a personal page." }); return;
+      }
+    }
+    if (next !== current.username) {
+      await db.transaction(async (tx) => {
+        await tx.update(usersTable).set({ username: next }).where(eq(usersTable.id, current.id));
+        await tx.update(userPagesTable).set({ username: next }).where(eq(userPagesTable.username, current.username));
+        await tx.update(tracksTable).set({ uploader: next }).where(eq(tracksTable.uploader, current.username));
+        await tx.update(dmsTable).set({ fromUser: next }).where(eq(dmsTable.fromUser, current.username));
+        await tx.update(dmsTable).set({ toUser: next }).where(eq(dmsTable.toUser, current.username));
+        await tx.update(dmGroupsTable).set({ owner: next }).where(eq(dmGroupsTable.owner, current.username));
+        await tx.update(dmGroupMembersTable).set({ username: next }).where(eq(dmGroupMembersTable.username, current.username));
+        await tx.update(dmReportsTable).set({ reporter: next }).where(eq(dmReportsTable.reporter, current.username));
+        await tx.update(userPageVotesTable).set({ pageUsername: next }).where(eq(userPageVotesTable.pageUsername, current.username));
+        await tx.update(userPageVotesTable).set({ voterUsername: next }).where(eq(userPageVotesTable.voterUsername, current.username));
+        await tx.update(playlistsTable).set({ owner: next }).where(eq(playlistsTable.owner, current.username));
+        await tx.update(pushSubscriptionsTable).set({ username: next }).where(eq(pushSubscriptionsTable.username, current.username));
+      });
+      req.session.username = next;
+    }
+  }
   const update: Record<string, string | null> = {};
   if (avatarUrl !== undefined) {
     if (avatarUrl !== null && (typeof avatarUrl !== "string" || (avatarUrl && !avatarUrl.startsWith("data:image/")))) {
