@@ -61,7 +61,9 @@ export function ChatBox({ onRequestLogin }: Props) {
   const lastSeenIdRef = useRef<Record<string, number>>({});
   const roomRef = useRef<ChatRoom>("lobby");
   const sendTimerRef = useRef<number | null>(null);
+  const sendCountdownTimerRef = useRef<number | null>(null);
   const [sendCountdown, setSendCountdown] = useState(0);
+  const [sendCooldown, setSendCooldown] = useState(false);
   const user = useAuth((s) => s.user);
   const ranks = useAuth((s) => s.ranks);
   const refreshRanks = useAuth((s) => s.refreshRanks);
@@ -147,6 +149,7 @@ export function ChatBox({ onRequestLogin }: Props) {
   useEffect(() => { if (tab === "chat" && !loadingOlder) scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight }); }, [messages.length, tab]);
   useEffect(() => () => {
     if (sendTimerRef.current !== null) window.clearTimeout(sendTimerRef.current);
+    if (sendCountdownTimerRef.current !== null) window.clearInterval(sendCountdownTimerRef.current);
   }, []);
 
   function onTypeChange(v: string) {
@@ -155,32 +158,35 @@ export function ChatBox({ onRequestLogin }: Props) {
   }
 
   async function send() {
-    if ((!text.trim() && !imageData && !videoData) || sending) return;
+    if ((!text.trim() && !imageData && !videoData) || sending || sendCooldown) return;
     if (!user) { onRequestLogin?.(); return; }
     const sendRoom = room;
     const sendText = text;
     const sendImage = imageData;
     const sendVideo = videoData;
     const sendReply = replyTo?.id ?? null;
-    setSending(true); setErr(null); setSendCountdown(5);
+    setSending(true); setErr(null);
     try {
-      await new Promise<void>((resolve) => {
-        const started = Date.now();
-        const countdown = window.setInterval(() => {
-          setSendCountdown(Math.max(0, Math.ceil((5000 - (Date.now() - started)) / 1000)));
-        }, 250);
-        sendTimerRef.current = window.setTimeout(() => {
-          window.clearInterval(countdown);
-          sendTimerRef.current = null;
-          setSendCountdown(0);
-          resolve();
-        }, 5000);
-      });
       await postChat(sendText, sendImage, sendVideo, sendReply, sendRoom);
+      setSendCooldown(true);
+      setSendCountdown(5);
+      const started = Date.now();
+      sendCountdownTimerRef.current = window.setInterval(() => {
+        setSendCountdown(Math.max(0, Math.ceil((5000 - (Date.now() - started)) / 1000)));
+      }, 250);
+      sendTimerRef.current = window.setTimeout(() => {
+        if (sendCountdownTimerRef.current !== null) {
+          window.clearInterval(sendCountdownTimerRef.current);
+          sendCountdownTimerRef.current = null;
+        }
+        sendTimerRef.current = null;
+        setSendCooldown(false);
+        setSendCountdown(0);
+      }, 5000);
       setText(""); setImageData(null); setVideoData(null); setGifUrl(""); setReplyTo(null);
       await refresh(sendRoom);
     } catch (e: any) { setErr(e?.message || "Failed"); }
-    finally { setSending(false); setSendCountdown(0); }
+    finally { setSending(false); }
   }
 
   async function loadOlder() {
@@ -386,7 +392,9 @@ export function ChatBox({ onRequestLogin }: Props) {
                   onChange={(e) => { const f = e.target.files?.[0]; if (f) void pickVideo(f); e.target.value = ""; }} />
                 <button className="win98-button px-2" title="Attach image" onClick={() => fileRef.current?.click()}>📎</button>
                 <button className="win98-button px-2" title="Attach video" onClick={() => videoRef.current?.click()}>🎥</button>
-                 <button className="win98-button px-3" disabled={sending} onClick={send}>{sending ? `Send in ${sendCountdown}s` : "Send"}</button>
+                <button className="win98-button px-3" disabled={sending || sendCooldown} onClick={send}>
+                  {sending ? "Sending…" : sendCooldown ? `Send in ${sendCountdown}s` : "Send"}
+                </button>
               </div>
               <div className="flex items-center gap-1 mt-1">
                 {isAdmin && (
