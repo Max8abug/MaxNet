@@ -1,0 +1,1 @@
+- [Workspace dependency state](development-environment.md) — declared packages can still need a clean pnpm install before an API restart.

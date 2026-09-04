@@ -114,14 +114,16 @@ export function ChatBox({ onRequestLogin }: Props) {
     const value = gifUrl.trim();
     try {
       const url = new URL(value);
-      if ((url.protocol !== "http:" && url.protocol !== "https:") || !/\.gif$/i.test(url.pathname)) {
+      const host = url.hostname.toLowerCase();
+      const isTenor = host === "tenor.com" || host.endsWith(".tenor.com") || host === "tenor.co";
+      if ((url.protocol !== "http:" && url.protocol !== "https:") || (!/\.gif(?:$|[?#])/i.test(url.href) && !isTenor)) {
         throw new Error();
       }
       setImageData(url.toString());
       setGifUrl("");
       setErr(null);
     } catch {
-      setErr("Use a direct HTTP(S) link ending in .gif.");
+      setErr("Use a direct GIF link or a Tenor share link.");
     }
   }
   async function pickVideo(file: File) {

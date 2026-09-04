@@ -209,6 +209,71 @@ router.patch("/auth/profile", async (req, res) => {
   res.json({ ok: true });
 });
 
+router.patch("/auth/username", async (req, res, next) => {
+  try {
+    if (!req.session.userId || !req.session.username) {
+      res.status(401).json({ error: "Login required" });
+      return;
+    }
+    const { currentPassword, username } = req.body ?? {};
+    if (typeof currentPassword !== "string" || typeof username !== "string") {
+      res.status(400).json({ error: "Current password and new username are required" });
+      return;
+    }
+    const nextUsername = username.trim();
+    if (nextUsername.length < 2 || nextUsername.length > 32) {
+      res.status(400).json({ error: "Username must be 2-32 chars" });
+      return;
+    }
+    if (isAdminUsername(req.session.username)) {
+      res.status(400).json({ error: "The site owner username cannot be changed." });
+      return;
+    }
+    if (isAdminUsername(nextUsername)) {
+      res.status(400).json({ error: "That username is reserved." });
+      return;
+    }
+    const [user] = await db.select().from(usersTable)
+      .where(eq(usersTable.id, req.session.userId)).limit(1);
+    if (!user || !(await verifyPassword(currentPassword, user.passwordHash))) {
+      res.status(400).json({ error: "Current password is incorrect" });
+      return;
+    }
+    if (nextUsername === user.username) {
+      res.status(400).json({ error: "Choose a different username" });
+      return;
+    }
+    const existing = await findUserByUsername(nextUsername);
+    if (existing) {
+      res.status(409).json({ error: "Username taken" });
+      return;
+    }
+    const [page] = await db.select({ username: userPagesTable.username })
+      .from(userPagesTable).where(eq(userPagesTable.username, nextUsername)).limit(1);
+    if (page) {
+      res.status(409).json({ error: "That username already has a personal page." });
+      return;
+    }
+
+    await db.transaction(async (tx) => {
+      await tx.update(usersTable).set({ username: nextUsername }).where(eq(usersTable.id, user.id));
+      await tx.update(userPagesTable).set({ username: nextUsername })
+        .where(eq(userPagesTable.username, user.username));
+      await tx.insert(chatAuditTable).values({
+        area: "user",
+        action: "username",
+        actor: user.username,
+        target: nextUsername,
+        body: "username changed by account owner",
+      });
+    });
+    req.session.username = nextUsername;
+    res.json({ ok: true, username: nextUsername });
+  } catch (err) {
+    next(err);
+  }
+});
+
 function isValidTimeZone(value: string): boolean {
   try {
     new Intl.DateTimeFormat("en-US", { timeZone: value }).format();
@@ -234,15 +299,33 @@ router.get("/users/:username", async (req, res) => {
   });
 });
 
-router.get("/users", async (_req, res) => {
+router.get("/users", async (req, res) => {
   const rows = await db.select({
     username: usersTable.username,
     isAdmin: usersTable.isAdmin,
     avatarUrl: usersTable.avatarUrl,
     rank: usersTable.rank,
     lastSeen: usersTable.lastSeen,
-  }).from(usersTable).limit(500);
-  res.json(rows);
+    pageUsername: userPagesTable.username,
+    pageVotes: userPagesTable.votes,
+  }).from(usersTable)
+    .leftJoin(userPagesTable, eq(usersTable.username, userPagesTable.username))
+    .limit(500);
+  res.json(rows.map((row) => {
+    const votes = row.pageVotes && typeof row.pageVotes === "object"
+      ? row.pageVotes as Record<string, boolean>
+      : {};
+    return {
+      username: row.username,
+      isAdmin: row.isAdmin,
+      avatarUrl: row.avatarUrl,
+      rank: row.rank,
+      lastSeen: row.lastSeen,
+      hasPage: !!row.pageUsername,
+      upvotes: Object.values(votes).filter(Boolean).length,
+      myVote: req.session.username ? !!votes[req.session.username] : false,
+    };
+  }));
 });
 
 // Admin: change an account's username and/or password without exposing the

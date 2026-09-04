@@ -112,6 +112,15 @@ export async function ensureSchema(): Promise<void> {
       created_at timestamp NOT NULL DEFAULT now()
     );
 
+    CREATE TABLE IF NOT EXISTS music_playlists (
+      id serial PRIMARY KEY,
+      name text NOT NULL,
+      created_by text NOT NULL,
+      track_ids jsonb NOT NULL DEFAULT '[]'::jsonb,
+      created_at timestamp NOT NULL DEFAULT now()
+    );
+    ALTER TABLE music_playlists ADD COLUMN IF NOT EXISTS track_ids jsonb NOT NULL DEFAULT '[]'::jsonb;
+
     CREATE TABLE IF NOT EXISTS polls (
       id serial PRIMARY KEY,
       question text NOT NULL,
@@ -125,13 +134,41 @@ export async function ensureSchema(): Promise<void> {
       id serial PRIMARY KEY,
       from_user text NOT NULL,
       to_user text NOT NULL,
+      group_id integer,
       body text NOT NULL DEFAULT '',
       image_url text,
       read_at timestamp,
       created_at timestamp NOT NULL DEFAULT now()
     );
+    ALTER TABLE dms ADD COLUMN IF NOT EXISTS group_id integer;
     ALTER TABLE dms ADD COLUMN IF NOT EXISTS image_url text;
     ALTER TABLE dms ADD COLUMN IF NOT EXISTS read_at timestamp;
+
+    CREATE TABLE IF NOT EXISTS dm_groups (
+      id serial PRIMARY KEY,
+      name text NOT NULL,
+      created_by text NOT NULL,
+      created_at timestamp NOT NULL DEFAULT now()
+    );
+
+    CREATE TABLE IF NOT EXISTS dm_group_members (
+      id serial PRIMARY KEY,
+      group_id integer NOT NULL,
+      username text NOT NULL,
+      created_at timestamp NOT NULL DEFAULT now()
+    );
+    CREATE INDEX IF NOT EXISTS dm_group_members_group_idx ON dm_group_members (group_id);
+    CREATE INDEX IF NOT EXISTS dm_group_members_username_idx ON dm_group_members (username);
+
+    CREATE TABLE IF NOT EXISTS dm_reports (
+      id serial PRIMARY KEY,
+      message_id integer NOT NULL,
+      reporter text NOT NULL,
+      reason text NOT NULL DEFAULT '',
+      status text NOT NULL DEFAULT 'open',
+      created_at timestamp NOT NULL DEFAULT now(),
+      reviewed_at timestamp
+    );
 
     CREATE TABLE IF NOT EXISTS chess_lobbies (
       id serial PRIMARY KEY,
@@ -152,9 +189,11 @@ export async function ensureSchema(): Promise<void> {
       username text PRIMARY KEY,
       data_url text NOT NULL,
       elements jsonb NOT NULL DEFAULT '[]'::jsonb,
+      votes jsonb NOT NULL DEFAULT '{}'::jsonb,
       updated_at timestamp NOT NULL DEFAULT now()
     );
     ALTER TABLE user_pages ADD COLUMN IF NOT EXISTS elements jsonb NOT NULL DEFAULT '[]'::jsonb;
+    ALTER TABLE user_pages ADD COLUMN IF NOT EXISTS votes jsonb NOT NULL DEFAULT '{}'::jsonb;
 
     CREATE TABLE IF NOT EXISTS cafe_presence (
       username text PRIMARY KEY,

@@ -61,6 +61,14 @@ export const tracksTable = pgTable("tracks", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
+export const musicPlaylistsTable = pgTable("music_playlists", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(),
+  createdBy: text("created_by").notNull(),
+  trackIds: jsonb("track_ids").notNull().default([]),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
 export const pollsTable = pgTable("polls", {
   id: serial("id").primaryKey(),
   question: text("question").notNull(),
@@ -74,10 +82,35 @@ export const dmsTable = pgTable("dms", {
   id: serial("id").primaryKey(),
   fromUser: text("from_user").notNull(),
   toUser: text("to_user").notNull(),
+  groupId: integer("group_id"),
   body: text("body").notNull().default(""),
   imageUrl: text("image_url"),
   readAt: timestamp("read_at"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const dmGroupsTable = pgTable("dm_groups", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(),
+  createdBy: text("created_by").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const dmGroupMembersTable = pgTable("dm_group_members", {
+  id: serial("id").primaryKey(),
+  groupId: integer("group_id").notNull(),
+  username: text("username").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const dmReportsTable = pgTable("dm_reports", {
+  id: serial("id").primaryKey(),
+  messageId: integer("message_id").notNull(),
+  reporter: text("reporter").notNull(),
+  reason: text("reason").notNull().default(""),
+  status: text("status").notNull().default("open"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  reviewedAt: timestamp("reviewed_at"),
 });
 
 export const chessLobbiesTable = pgTable("chess_lobbies", {
@@ -99,6 +132,7 @@ export const userPagesTable = pgTable("user_pages", {
   username: text("username").primaryKey(),
   dataUrl: text("data_url").notNull(),
   elements: jsonb("elements").notNull().default([]),
+  votes: jsonb("votes").notNull().default({}),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 

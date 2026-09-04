@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { fetchUsers, type PublicUser } from "../lib/api";
+import { fetchUsers, voteUserPage, type PublicUser } from "../lib/api";
 import { useAuth } from "../lib/auth-store";
 import { useDesktopStore } from "../store";
 import { Avatar } from "./Avatar";
@@ -33,15 +33,21 @@ function displayActivity(lastSeen: string | null | undefined): string {
 function UserCard({
   user,
   onOpen,
+  onVote,
+  canVote,
 }: {
   user: PublicUser;
   onOpen: (username: string) => void;
+  onVote: (username: string, vote: boolean) => void;
+  canVote: boolean;
 }) {
   return (
-    <button
-      type="button"
+    <div
+      role="button"
+      tabIndex={0}
       className="group flex min-h-[116px] w-full flex-col gap-2 text-left"
       onClick={() => onOpen(user.username)}
+      onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); onOpen(user.username); } }}
       data-testid={`card-user-${user.username}`}
       title={`Open ${user.username}'s personal page`}
     >
@@ -69,13 +75,29 @@ function UserCard({
           />
         </span>
         <span className="flex min-h-0 flex-1 flex-col justify-between px-1.5 py-1 text-[10px]">
-          <span className="text-gray-700">{displayActivity(user.lastSeen)}</span>
-          <span className="font-bold text-[#000080] group-hover:underline">
-            Open personal page
+          <span className="text-gray-700">{user.hasPage ? displayActivity(user.lastSeen) : "No personal page yet"}</span>
+          <span className="flex items-center justify-between gap-1">
+            <span className="font-bold text-[#000080] group-hover:underline">
+              {user.hasPage ? "Open personal page" : "View profile"}
+            </span>
+            {user.hasPage && (
+              <button
+                type="button"
+                className={`win98-button shrink-0 px-1 text-[10px] ${user.myVote ? "bg-[#d0e8ff]" : ""}`}
+                disabled={!canVote}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  if (canVote) onVote(user.username, !user.myVote);
+                }}
+                title={canVote ? (user.myVote ? "Remove your upvote" : "Upvote this page") : "Log in to upvote"}
+              >
+                ▲ {user.upvotes || 0}
+              </button>
+            )}
           </span>
         </span>
       </span>
-    </button>
+    </div>
   );
 }
 
@@ -104,9 +126,11 @@ function LoadingCard({ index }: { index: number }) {
 export function UserBrowser({ page = "/" }: UserBrowserProps) {
   const [users, setUsers] = useState<PublicUser[]>([]);
   const [query, setQuery] = useState("");
+  const [sortMode, setSortMode] = useState<"popular" | "alphabetical">("popular");
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [voting, setVoting] = useState<string | null>(null);
   const me = useAuth((state) => state.user);
   const addWindow = useDesktopStore((state) => state.addWindow);
 
@@ -131,10 +155,28 @@ export function UserBrowser({ page = "/" }: UserBrowserProps) {
 
   const visibleUsers = useMemo(() => {
     const normalizedQuery = query.trim().toLocaleLowerCase();
-    return [...users]
-      .sort((first, second) => first.username.localeCompare(second.username))
+    return [...users].sort((first, second) => sortMode === "popular"
+      ? Number(second.hasPage) - Number(first.hasPage)
+        || (second.upvotes || 0) - (first.upvotes || 0)
+        || first.username.localeCompare(second.username)
+      : first.username.localeCompare(second.username))
       .filter((user) => !normalizedQuery || user.username.toLocaleLowerCase().includes(normalizedQuery));
-  }, [query, users]);
+  }, [query, sortMode, users]);
+
+  const votePage = useCallback(async (username: string, vote: boolean) => {
+    if (!me || voting) return;
+    setVoting(username);
+    try {
+      const result = await voteUserPage(username, vote);
+      setUsers((current) => current.map((user) => user.username === username
+        ? { ...user, upvotes: result.upvotes, myVote: result.myVote }
+        : user));
+    } catch (voteError) {
+      setError(voteError instanceof Error ? voteError.message : "The vote could not be saved.");
+    } finally {
+      setVoting(null);
+    }
+  }, [me, voting]);
 
   const openUserPage = useCallback(
     (username: string) => {
@@ -224,6 +266,13 @@ export function UserBrowser({ page = "/" }: UserBrowserProps) {
             Clear
           </button>
         )}
+        <label className="flex items-center gap-1">
+          <span className="font-bold">Sort</span>
+          <select className="win98-inset bg-white px-1 py-0.5" value={sortMode} onChange={(event) => setSortMode(event.target.value as "popular" | "alphabetical")} aria-label="Sort profiles">
+            <option value="popular">Popularity</option>
+            <option value="alphabetical">Alphabetical</option>
+          </select>
+        </label>
       </div>
 
       {error && (
@@ -282,7 +331,7 @@ export function UserBrowser({ page = "/" }: UserBrowserProps) {
         ) : (
           <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-3">
             {visibleUsers.map((user) => (
-              <UserCard key={user.username} user={user} onOpen={openUserPage} />
+              <UserCard key={user.username} user={user} onOpen={openUserPage} onVote={votePage} canVote={!!me && !voting} />
             ))}
           </div>
         )}

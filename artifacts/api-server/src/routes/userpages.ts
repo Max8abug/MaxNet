@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { db, userPagesTable } from "@workspace/db";
+import { db, userPagesTable, usersTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { requireAuth } from "../lib/auth";
 import { audit, requireDeleteMessages } from "./social";
@@ -37,6 +37,29 @@ router.get("/userpages/:username", async (req, res) => {
   res.json({ page: row || null });
 });
 
+router.get("/userpages/:username/vote", requireAuth, async (req, res) => {
+  const u = String(req.params.username);
+  const [row] = await db.select({ votes: userPagesTable.votes })
+    .from(userPagesTable).where(eq(userPagesTable.username, u)).limit(1);
+  if (!row) { res.status(404).json({ error: "page not found" }); return; }
+  const votes = row.votes && typeof row.votes === "object" ? row.votes as Record<string, boolean> : {};
+  res.json({ upvotes: Object.values(votes).filter(Boolean).length, myVote: !!votes[req.session.username!] });
+});
+
+router.post("/userpages/:username/vote", requireAuth, async (req, res) => {
+  const u = String(req.params.username);
+  const [row] = await db.select().from(userPagesTable).where(eq(userPagesTable.username, u)).limit(1);
+  if (!row) { res.status(404).json({ error: "page not found" }); return; }
+  const votes = row.votes && typeof row.votes === "object"
+    ? { ...(row.votes as Record<string, boolean>) }
+    : {};
+  const me = req.session.username!;
+  if (req.body?.vote === false || req.body?.vote === 0) delete votes[me];
+  else votes[me] = true;
+  await db.update(userPagesTable).set({ votes }).where(eq(userPagesTable.username, u));
+  res.json({ ok: true, upvotes: Object.values(votes).filter(Boolean).length, myVote: !!votes[me] });
+});
+
 router.put("/userpages", requireAuth, async (req, res) => {
   const { dataUrl, elements } = req.body ?? {};
   if (typeof dataUrl !== "string" || !dataUrl.startsWith("data:image/")) { res.status(400).json({ error: "data:image/* required" }); return; }
@@ -49,7 +72,7 @@ router.put("/userpages", requireAuth, async (req, res) => {
   if (existing) {
     await db.update(userPagesTable).set({ dataUrl, elements: cleanElements, updatedAt: new Date() }).where(eq(userPagesTable.username, me));
   } else {
-    await db.insert(userPagesTable).values({ username: me, dataUrl, elements: cleanElements });
+    await db.insert(userPagesTable).values({ username: me, dataUrl, elements: cleanElements, votes: {} });
   }
   res.json({ ok: true });
 });

@@ -1,6 +1,6 @@
 import { useRef, useState } from "react";
 import { useAuth } from "../lib/auth-store";
-import { changePassword } from "../lib/api";
+import { changePassword, changeUsername } from "../lib/api";
 import { useThemeMode } from "../lib/theme";
 import { TIME_ZONE_OPTIONS } from "../lib/time-settings";
 
@@ -48,6 +48,9 @@ export function ProfileDialog({ onClose }: Props) {
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [passwordNotice, setPasswordNotice] = useState<string | null>(null);
+  const [newUsername, setNewUsername] = useState("");
+  const [usernamePassword, setUsernamePassword] = useState("");
+  const [usernameNotice, setUsernameNotice] = useState<string | null>(null);
   const avatarRef = useRef<HTMLInputElement>(null);
   const bgRef = useRef<HTMLInputElement>(null);
   const darkBgRef = useRef<HTMLInputElement>(null);
@@ -147,6 +150,22 @@ export function ProfileDialog({ onClose }: Props) {
     }
   }
 
+  async function applyUsername() {
+    if (!newUsername.trim() || !usernamePassword) return;
+    setBusy(true); setErr(null); setUsernameNotice(null);
+    try {
+      const result = await changeUsername(usernamePassword, newUsername);
+      await useAuth.getState().refresh();
+      setNewUsername("");
+      setUsernamePassword("");
+      setUsernameNotice(`Username changed to ${result.username}.`);
+    } catch (e: any) {
+      setErr(e?.message || "Could not change username");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
     <div
       className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/30"
@@ -209,6 +228,38 @@ export function ProfileDialog({ onClose }: Props) {
           <button className="win98-button px-2 py-0.5 text-xs self-start" disabled={busy || (!user.backgroundUrl && !user.darkBackgroundUrl && !user.backgroundColor)} onClick={clearBg}>
             Reset All Backgrounds
           </button>
+          <div className="border-t border-gray-400 pt-2">
+            <div className="font-bold mb-1">Username</div>
+            <div className="text-[11px] text-gray-700 mb-1">
+              Changing your username also updates your personal page address. Your current password is required.
+            </div>
+            <div className="flex flex-col gap-1">
+              <input
+                className="win98-inset px-1 py-0.5"
+                placeholder={`New username (current: ${user.username})`}
+                value={newUsername}
+                disabled={busy}
+                onChange={(e) => setNewUsername(e.target.value)}
+              />
+              <input
+                className="win98-inset px-1 py-0.5"
+                type="password"
+                autoComplete="current-password"
+                placeholder="Current password"
+                value={usernamePassword}
+                disabled={busy}
+                onChange={(e) => setUsernamePassword(e.target.value)}
+              />
+              <button
+                className="win98-button px-2 py-0.5 text-xs self-start"
+                disabled={busy || !newUsername.trim() || !usernamePassword}
+                onClick={() => void applyUsername()}
+              >
+                Change Username
+              </button>
+              {usernameNotice && <div className="text-green-700 text-xs">{usernameNotice}</div>}
+            </div>
+          </div>
           <div className="border-t border-gray-400 pt-2">
             <div className="font-bold mb-1">Password</div>
             <div className="flex flex-col gap-1">

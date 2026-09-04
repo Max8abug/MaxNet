@@ -15,9 +15,13 @@ export function Desktop({ page }: { page: string }) {
   const siteSettings = useAuth((s) => s.siteSettings);
   const { darkMode } = useThemeMode();
 
-  const backgroundUrl = darkMode
-    ? (user?.darkBackgroundUrl || siteSettings.darkBackgroundDataUrl)
-    : (user?.backgroundUrl || siteSettings.backgroundDataUrl);
+  // A saved personal background must always win over the site default. Use
+  // nullish fallback semantics so a real user value is never shadowed by the
+  // default-background setting.
+  const personalBackground = darkMode ? user?.darkBackgroundUrl : user?.backgroundUrl;
+  const backgroundUrl = personalBackground ?? (darkMode
+    ? siteSettings.darkBackgroundDataUrl
+    : siteSettings.backgroundDataUrl);
   const bgStyle: React.CSSProperties = backgroundUrl
     ? { backgroundImage: `url(${backgroundUrl})`, backgroundSize: "cover", backgroundPosition: "center", backgroundColor: user?.backgroundColor || "#008080" }
     : { backgroundColor: user?.backgroundColor || "#008080" };

@@ -2,9 +2,10 @@ import { useEffect, useState } from "react";
 import { fetchChessLobbies, createChessLobby, fetchChessLobby, joinChessLobby, moveChess, resignChess, chatChess, fetchChessMoves, type ChessLobby } from "../lib/api";
 import { useAuth } from "../lib/auth-store";
 
-// Use the FILLED chess glyphs for both colors so they render clearly when colored.
-// (The outlined ♔♕♖♗♘♙ glyphs vanish when filled with white.)
-const PIECE: Record<string, string> = { K: "♚", Q: "♛", R: "♜", B: "♝", N: "♞", P: "♟", k: "♚", q: "♛", r: "♜", b: "♝", n: "♞", p: "♟" };
+const PIECE: Record<string, string> = {
+  K: "♔", Q: "♕", R: "♖", B: "♗", N: "♘", P: "♙",
+  k: "♚", q: "♛", r: "♜", b: "♝", n: "♞", p: "♟",
+};
 
 function fenToBoard(fen: string): (string | null)[][] {
   const [b] = fen.split(" ");
@@ -170,10 +171,10 @@ export function Chess() {
                   className={`${dark ? "bg-amber-700" : "bg-amber-100"} flex items-center justify-center text-3xl leading-none cursor-pointer relative ${isSel ? "ring-2 ring-yellow-400 ring-inset" : ""}`}
                   onClick={() => clickCell(displayR, displayC)}>
                   {p && <span style={{
-                    color: p === p.toUpperCase() ? "#fafafa" : "#1a1a1a",
+                    color: p === p.toUpperCase() ? "#fffdf5" : "#101827",
                     textShadow: p === p.toUpperCase()
-                      ? "0 0 1px #000, 1px 1px 0 #000, -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000"
-                      : "0 0 1px #fff",
+                      ? "0 0 2px #000, 1px 1px 0 #000, -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000"
+                      : "0 0 2px #fff, 1px 1px 0 #fff, -1px -1px 0 #fff, 1px -1px 0 #fff, -1px 1px 0 #fff",
                     fontWeight: 900,
                     lineHeight: 1,
                   }}>{PIECE[p]}</span>}

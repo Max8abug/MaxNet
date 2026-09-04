@@ -52,13 +52,48 @@ function validImageData(s: unknown, max = 2_000_000): s is string {
   return typeof s === "string" && s.startsWith("data:image/") && s.length <= max;
 }
 
-function validGifUrl(s: unknown): s is string {
-  if (typeof s !== "string" || s.length > 2_000) return false;
+function isHttpUrl(s: unknown): s is string {
+  if (typeof s !== "string" || s.length > 4_000) return false;
   try {
     const url = new URL(s);
-    return (url.protocol === "http:" || url.protocol === "https:") && /\.gif$/i.test(url.pathname);
+    return url.protocol === "http:" || url.protocol === "https:";
   } catch {
     return false;
+  }
+}
+
+function isTenorUrl(value: string): boolean {
+  try {
+    const hostname = new URL(value).hostname.toLowerCase();
+    return hostname === "tenor.com" || hostname.endsWith(".tenor.com") || hostname === "tenor.co";
+  } catch {
+    return false;
+  }
+}
+
+async function normalizeGifUrl(value: unknown): Promise<string | null> {
+  if (!isHttpUrl(value)) return null;
+  const url = value.trim();
+  if (/\.gif(?:$|[?#])/i.test(url)) return url;
+  if (!isTenorUrl(url)) return null;
+
+  // Tenor's share pages are HTML, not image resources. Resolve the image
+  // advertised by the page so browsers receive an actual GIF URL.
+  try {
+    const response = await fetch(url, { headers: { "user-agent": "Portfolio98 chat GIF resolver" } });
+    if (!response.ok) return null;
+    const html = await response.text();
+    const matches = [
+      html.match(/<meta[^>]+property=["']og:image["'][^>]+content=["']([^"']+)["']/i),
+      html.match(/<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:image["']/i),
+      html.match(/https:\/\/media\.tenor\.com\/[^"'\\\s]+/i),
+    ];
+    const candidate = matches.find(Boolean)?.[1] || matches.find(Boolean)?.[0];
+    if (!candidate) return null;
+    const decoded = candidate.replace(/&amp;/g, "&");
+    return /\.gif(?:$|[?#])/i.test(decoded) ? decoded : null;
+  } catch {
+    return null;
   }
 }
 
@@ -390,8 +425,13 @@ router.post("/chat", requireAuth, async (req, res) => {
     return;
   }
   if (trimmedBody.length > 500) { res.status(413).json({ error: "Message too long" }); return; }
-  if (imageUrl !== undefined && imageUrl !== null && !validImageData(imageUrl, 3_000_000) && !validGifUrl(imageUrl)) {
-    res.status(400).json({ error: "imageUrl must be a data image or a direct HTTP(S) GIF URL" }); return;
+  let normalizedImageUrl: string | null = null;
+  if (imageUrl !== undefined && imageUrl !== null) {
+    if (validImageData(imageUrl, 3_000_000)) normalizedImageUrl = imageUrl;
+    else normalizedImageUrl = await normalizeGifUrl(imageUrl);
+    if (!normalizedImageUrl) {
+      res.status(400).json({ error: "imageUrl must be a data image, direct GIF URL, or Tenor share link" }); return;
+    }
   }
   if (videoUrl !== undefined && videoUrl !== null) {
     if (typeof videoUrl !== "string" || !videoUrl.startsWith("data:video/") || videoUrl.length > 12_000_000) {
@@ -407,9 +447,9 @@ router.post("/chat", requireAuth, async (req, res) => {
   }
   const [row] = await db
     .insert(chatMessagesTable)
-    .values({ body: trimmedBody, author, imageUrl: imageUrl || null, videoUrl: videoUrl || null, replyTo: replyToId })
+    .values({ body: trimmedBody, author, imageUrl: normalizedImageUrl, videoUrl: videoUrl || null, replyTo: replyToId })
     .returning();
-  await audit("chat", "post", author, "", trimmedBody + (imageUrl ? " [image]" : "") + (videoUrl ? " [video]" : ""));
+  await audit("chat", "post", author, "", trimmedBody + (normalizedImageUrl ? " [image]" : "") + (videoUrl ? " [video]" : ""));
 
   // @-mention notifications: pull every @name from the body, map to real users
   // (case-insensitively), and push to anyone other than the author. Best-effort
