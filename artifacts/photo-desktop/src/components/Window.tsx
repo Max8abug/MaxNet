@@ -173,9 +173,14 @@ export function Window({
   }
 
   const bounds = boundsRef.current;
-  const maxStyle = isMax && bounds ? {
-    width: bounds.clientWidth, height: mobile ? bounds.clientHeight : bounds.clientHeight - 40, transform: 'translate3d(0,0,0)',
-  } : { width: w.width, height: w.height, transform: `translate3d(${w.x}px, ${w.y}px, 0)` };
+  // Mobile windows are app screens, not floating desktop windows. The mobile
+  // shell gives us a stage whose size already accounts for the top app bar, so
+  // never use the persisted desktop dimensions here.
+  const maxStyle = mobile
+    ? { width: '100%', height: '100%', transform: 'translate3d(0,0,0)' }
+    : isMax && bounds
+      ? { width: bounds.clientWidth, height: bounds.clientHeight - 40, transform: 'translate3d(0,0,0)' }
+      : { width: w.width, height: w.height, transform: `translate3d(${w.x}px, ${w.y}px, 0)` };
 
   return (
     <div

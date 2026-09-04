@@ -140,17 +140,16 @@ export function MobileShell({ page }: { page: string }) {
   if (openWindow) {
     return (
       <div
-        ref={boundsRef}
-        className="mobile-shell relative flex min-h-[100dvh] w-full flex-col overflow-hidden p-1"
+        className="mobile-shell relative flex h-[100dvh] min-h-0 max-h-[100dvh] w-full flex-col overflow-hidden p-1"
         data-testid="mobile-app-view"
       >
-        <header className="win98-window relative z-[100] flex min-h-12 shrink-0 items-center justify-between gap-2 px-2 py-1">
+        <header className="mobile-app-header win98-window relative z-[100] flex min-h-12 shrink-0 items-center justify-between gap-2 px-2 py-1">
           <div className="min-w-0">
-            <p className="truncate text-[10px] font-bold uppercase tracking-[0.16em] text-[#4b4b4b]">
-              PHOTO DESKTOP / MOBILE
+            <p className="truncate text-[9px] font-bold uppercase tracking-[0.16em] text-[#4b4b4b]">
+              PHOTO DESKTOP
             </p>
             <p
-              className="truncate text-sm font-bold text-black"
+              className="truncate text-[13px] font-bold text-black"
               data-testid="text-open-app"
             >
               {openWindow.title}
@@ -168,7 +167,11 @@ export function MobileShell({ page }: { page: string }) {
           </button>
         </header>
 
-        <div className="relative min-h-0 flex-1" data-testid="mobile-window-stage">
+        <div
+          ref={boundsRef}
+          className="mobile-window-stage relative min-h-0 flex-1 overflow-hidden"
+          data-testid="mobile-window-stage"
+        >
           <MobileWindow
             window={openWindow}
             page={page}
@@ -185,33 +188,33 @@ export function MobileShell({ page }: { page: string }) {
   return (
     <div
       ref={boundsRef}
-        className="mobile-shell flex min-h-[100dvh] w-full flex-col overflow-hidden p-1"
+      className="mobile-shell flex h-[100dvh] min-h-0 max-h-[100dvh] w-full flex-col overflow-hidden p-1"
       data-testid="mobile-home-screen"
     >
-      <header className="win98-window flex shrink-0 items-center justify-between gap-3 px-2 py-1.5">
+      <header className="mobile-home-header win98-window flex shrink-0 items-center justify-between gap-3 px-2 py-1.5">
         <div className="min-w-0">
-          <p className="truncate text-[10px] font-bold uppercase tracking-[0.18em] text-[#4b4b4b]">
-            PHOTO DESKTOP
+          <p className="truncate text-[9px] font-bold uppercase tracking-[0.18em] text-[#4b4b4b]">
+            PHOTO DESKTOP / POCKET
           </p>
-          <h1 className="truncate text-base font-bold text-black">
-            Pocket Home
+          <h1 className="truncate text-[15px] font-bold text-black">
+            App launcher
           </h1>
         </div>
         <div
-          className="win98-inset shrink-0 px-2 py-1 text-right text-[10px] leading-tight text-black"
+          className="win98-inset shrink-0 px-2 py-1 text-right text-[9px] leading-tight text-black"
           data-testid="status-mobile-desktop"
         >
-          <div className="font-bold">READY</div>
-          <div>22 shortcuts</div>
+          <div className="font-bold text-[#006b65]">READY</div>
+          <div>{APPS.length} apps</div>
         </div>
       </header>
 
-      <main className="min-h-0 flex-1 overflow-y-auto px-1 pb-3 pt-3">
-        <div className="mb-2 flex items-end justify-between px-1">
+      <main className="mobile-home-main min-h-0 flex-1 overflow-y-auto px-1 pb-2 pt-3 overscroll-contain">
+        <div className="mb-3 flex items-end justify-between px-1">
           <div>
-            <p className="text-xs font-bold text-white">Desktop programs</p>
+            <p className="text-[13px] font-bold text-white">Your programs</p>
             <p className="text-[10px] text-[#d7ffff]">
-              Tap an icon to open its window.
+              Tap an app to open it full screen.
             </p>
           </div>
           <div className="text-[10px] text-[#d7ffff]" data-testid="text-page-path">
@@ -220,7 +223,7 @@ export function MobileShell({ page }: { page: string }) {
         </div>
 
         <section
-          className="grid grid-cols-3 gap-2 sm:grid-cols-4"
+          className="mobile-app-grid grid grid-cols-3 gap-2.5 sm:grid-cols-4"
           aria-label="Desktop applications"
           data-testid="app-grid"
         >
@@ -230,7 +233,7 @@ export function MobileShell({ page }: { page: string }) {
               <button
                 key={app.type}
                 type="button"
-                 className="mobile-tile group flex min-h-[92px] flex-col items-center justify-start gap-1 rounded-sm px-1 py-2 text-center text-white transition-transform active:translate-y-px"
+                className="mobile-tile group flex min-h-[84px] flex-col items-center justify-start gap-1 rounded-sm px-1 py-2 text-center text-white transition-transform active:translate-y-px"
                 onClick={() => launchApp(app)}
                 data-testid={`button-launch-${app.type}`}
                 aria-label={`Open ${app.label}`}
@@ -249,9 +252,12 @@ export function MobileShell({ page }: { page: string }) {
         </section>
       </main>
 
-      <footer className="win98-window flex shrink-0 items-center justify-between px-2 py-1 text-[10px] text-black">
-        <span data-testid="text-mobile-footer">Personal web desktop</span>
-        <span>1998 / now</span>
+      <footer className="mobile-dock win98-window flex shrink-0 items-center justify-between gap-2 px-2 py-1.5 text-[10px] text-black">
+        <span className="flex min-w-0 items-center gap-1.5" data-testid="text-mobile-footer">
+          <span className="mobile-dock-led" aria-hidden="true" />
+          <span className="truncate">Personal web desktop</span>
+        </span>
+        <span className="shrink-0 text-[#4b4b4b]">Scroll for more</span>
       </footer>
     </div>
   );

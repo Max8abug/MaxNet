@@ -291,6 +291,7 @@
   background:
     linear-gradient(135deg, rgba(255,255,255,.08) 25%, transparent 25%) 0 0 / 12px 12px,
     #008080;
+  padding-bottom: max(0.25rem, env(safe-area-inset-bottom));
 }
 .mobile-shell .mobile-window-stage > .win98-window {
   position: absolute;
@@ -298,6 +299,32 @@
   width: 100% !important;
   height: 100% !important;
   transform: none !important;
+}
+.mobile-home-main {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255,255,255,.55) transparent;
+}
+.mobile-home-main::-webkit-scrollbar {
+  width: 8px;
+}
+.mobile-home-main::-webkit-scrollbar-thumb {
+  background: rgba(255,255,255,.55);
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+.mobile-app-grid {
+  padding-bottom: 0.5rem;
+}
+.mobile-dock {
+  box-shadow: inset 1px 1px #dfdfdf, inset -1px -1px #808080, 1px 1px 0 black;
+}
+.mobile-dock-led {
+  width: 8px;
+  height: 8px;
+  flex: 0 0 auto;
+  border-radius: 999px;
+  background: #24a148;
+  box-shadow: 0 0 0 1px #14652e, 0 0 5px rgba(36, 161, 72, .75);
 }
 .mobile-shell .mobile-window-stage > .win98-window > .win98-titlebar {
   min-height: 30px;
