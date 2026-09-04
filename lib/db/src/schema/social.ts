@@ -1,4 +1,4 @@
-import { pgTable, serial, text, timestamp, integer, boolean, varchar, jsonb, index } from "drizzle-orm/pg-core";
+import { pgTable, serial, text, timestamp, integer, boolean, varchar, jsonb, index, uniqueIndex } from "drizzle-orm/pg-core";
 
 export const drawingsTable = pgTable("drawings", {
   id: serial("id").primaryKey(),
@@ -10,6 +10,7 @@ export const drawingsTable = pgTable("drawings", {
 
 export const chatMessagesTable = pgTable("chat_messages", {
   id: serial("id").primaryKey(),
+  room: integer("room").notNull().default(1),
   author: text("author").notNull().default("anon"),
   body: text("body").notNull(),
   imageUrl: text("image_url"),
@@ -74,9 +75,38 @@ export const dmsTable = pgTable("dms", {
   id: serial("id").primaryKey(),
   fromUser: text("from_user").notNull(),
   toUser: text("to_user").notNull(),
+  groupId: integer("group_id"),
   body: text("body").notNull().default(""),
   imageUrl: text("image_url"),
   readAt: timestamp("read_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const dmGroupsTable = pgTable("dm_groups", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(),
+  owner: text("owner").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const dmGroupMembersTable = pgTable("dm_group_members", {
+  id: serial("id").primaryKey(),
+  groupId: integer("group_id").notNull(),
+  username: text("username").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (t) => ({
+  uniqueMember: uniqueIndex("dm_group_members_unique_idx").on(t.groupId, t.username),
+}));
+
+export const dmReportsTable = pgTable("dm_reports", {
+  id: serial("id").primaryKey(),
+  reporter: text("reporter").notNull(),
+  messageId: integer("message_id"),
+  groupId: integer("group_id"),
+  reason: text("reason").notNull(),
+  status: text("status").notNull().default("open"),
+  reviewedBy: text("reviewed_by"),
+  reviewedAt: timestamp("reviewed_at"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
@@ -101,6 +131,32 @@ export const userPagesTable = pgTable("user_pages", {
   elements: jsonb("elements").notNull().default([]),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
+
+export const userPageVotesTable = pgTable("user_page_votes", {
+  id: serial("id").primaryKey(),
+  pageUsername: text("page_username").notNull(),
+  voterUsername: text("voter_username").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (t) => ({
+  uniqueVote: uniqueIndex("user_page_votes_unique_idx").on(t.pageUsername, t.voterUsername),
+}));
+
+export const playlistsTable = pgTable("music_playlists", {
+  id: serial("id").primaryKey(),
+  owner: text("owner").notNull(),
+  name: text("name").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const playlistTracksTable = pgTable("music_playlist_tracks", {
+  id: serial("id").primaryKey(),
+  playlistId: integer("playlist_id").notNull(),
+  trackId: integer("track_id").notNull(),
+  position: integer("position").notNull().default(0),
+}, (t) => ({
+  playlistIdx: index("music_playlist_tracks_playlist_idx").on(t.playlistId),
+}));
 
 export const cafePresenceTable = pgTable("cafe_presence", {
   username: text("username").primaryKey(),

@@ -32,23 +32,23 @@ export function GeometryDash() {
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
-    ctx.fillStyle = "#111a38";
+       ctx.fillStyle = "#f7f1df";
     ctx.fillRect(0, 0, WIDTH, HEIGHT);
-    ctx.fillStyle = "#263a70";
+       ctx.fillStyle = "#d8c9a5";
     for (let x = -(state.score * 3 % 32); x < WIDTH; x += 32) ctx.fillRect(x, 20, 1, 130);
-    ctx.fillStyle = "#35c5b5";
+       ctx.fillStyle = "#e8dfc7";
     ctx.fillRect(0, GROUND, WIDTH, HEIGHT - GROUND);
-    ctx.fillStyle = "#183b4a";
+       ctx.fillStyle = "#77705f";
     ctx.fillRect(0, GROUND, WIDTH, 4);
 
-    ctx.fillStyle = "#ffd447";
+       ctx.fillStyle = "#4b3621";
     ctx.fillRect(50, state.y, PLAYER_SIZE, PLAYER_SIZE);
-    ctx.fillStyle = "#111a38";
+       ctx.fillStyle = "#f7f1df";
     ctx.fillRect(56, state.y + 5, 4, 4);
     ctx.fillRect(64, state.y + 5, 4, 4);
 
     for (const obstacle of state.obstacles) {
-      ctx.fillStyle = "#ff5c7a";
+       ctx.fillStyle = "#46505a";
       ctx.beginPath();
       ctx.moveTo(obstacle.x, GROUND);
       ctx.lineTo(obstacle.x + obstacle.width / 2, GROUND - obstacle.height);
@@ -66,7 +66,7 @@ export function GeometryDash() {
       ctx.textAlign = "center";
       ctx.font = "bold 25px monospace";
       ctx.fillStyle = "#ffffff";
-      ctx.fillText(state.over ? "RUN OVER" : "GEOMETRY DASH", WIDTH / 2, 90);
+       ctx.fillText(state.over ? "GAME OVER" : "DINO RUN", WIDTH / 2, 90);
       ctx.font = "14px monospace";
       ctx.fillStyle = "#ffd447";
       ctx.fillText(state.over ? "Click or press Space to try again" : "Click or press Space to start", WIDTH / 2, 120);
@@ -159,7 +159,7 @@ export function GeometryDash() {
   return (
     <div className="w-full h-full flex flex-col bg-[#111a38] text-white text-xs p-2 gap-2">
       <div className="flex items-center gap-3 shrink-0">
-        <div className="font-bold tracking-wide">GEOMETRY DASH</div>
+       <div className="font-bold tracking-wide">DINO RUN</div>
         <div className="text-yellow-300">Best: {best}</div>
         <div className="flex-1" />
         <button className="win98-button text-black px-2 py-0.5" onClick={start}>{running ? "Restart" : "Start"}</button>
@@ -174,7 +174,7 @@ export function GeometryDash() {
           onPointerDown={(event) => { event.preventDefault(); jump(); }}
         />
       </div>
-      <div className="text-center text-[10px] text-[#b8c6ff] shrink-0">Click or press Space to jump over the spikes.</div>
+       <div className="text-center text-[10px] text-[#4b3621] shrink-0">Click or press Space to jump over cacti.</div>
     </div>
   );
 }

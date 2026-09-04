@@ -170,10 +170,10 @@ export function Chess() {
                   className={`${dark ? "bg-amber-700" : "bg-amber-100"} flex items-center justify-center text-3xl leading-none cursor-pointer relative ${isSel ? "ring-2 ring-yellow-400 ring-inset" : ""}`}
                   onClick={() => clickCell(displayR, displayC)}>
                   {p && <span style={{
-                    color: p === p.toUpperCase() ? "#fafafa" : "#1a1a1a",
+                    color: p === p.toUpperCase() ? "#fff1c7" : "#101a2d",
                     textShadow: p === p.toUpperCase()
-                      ? "0 0 1px #000, 1px 1px 0 #000, -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000"
-                      : "0 0 1px #fff",
+                      ? "0 0 1px #5b2d10, 1px 1px 0 #5b2d10, -1px -1px 0 #5b2d10, 1px -1px 0 #5b2d10, -1px 1px 0 #5b2d10"
+                      : "0 0 1px #d9e4ff, 1px 1px 0 #d9e4ff, -1px -1px 0 #d9e4ff",
                     fontWeight: 900,
                     lineHeight: 1,
                   }}>{PIECE[p]}</span>}
