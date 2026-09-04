@@ -163,6 +163,8 @@ export interface SiteSettings {
   darkLogoDataUrl: string;
   backgroundDataUrl: string;
   darkBackgroundDataUrl: string;
+  mobileBackgroundDataUrl: string;
+  mobileDarkBackgroundDataUrl: string;
   siteName: string;
 }
 export async function fetchSiteSettings(): Promise<SiteSettings> {

@@ -1,4 +1,4 @@
-import type { ComponentType, RefObject } from 'react';
+import type { ComponentType, CSSProperties, RefObject } from 'react';
 import { useMemo, useRef, useState } from 'react';
 import {
   BarChart3,
@@ -14,6 +14,7 @@ import {
   Link2,
   DatabaseBackup,
   Activity,
+  ArrowRight,
   Settings,
   ShieldCheck,
   UserCog,
@@ -33,6 +34,9 @@ import {
 import { Window } from './Window';
 import { useDesktopStore, type WindowData, type WindowType } from '../store';
 import { useAuth } from '../lib/auth-store';
+import { useThemeMode } from '../lib/theme';
+import { formatLocalTime } from '../lib/dates';
+import { useServerNow } from '../lib/server-clock';
 
 type MobileWindowProps = {
   window: WindowData;
@@ -105,8 +109,12 @@ function createWindowData(app: AppDefinition): Partial<WindowData> {
 
 export function MobileShell({ page }: { page: string }) {
   const boundsRef = useRef<HTMLDivElement>(null);
+  const homeMainRef = useRef<HTMLElement>(null);
   const [openWindowId, setOpenWindowId] = useState<string | null>(null);
   const user = useAuth((state) => state.user);
+  const siteSettings = useAuth((state) => state.siteSettings);
+  const { darkMode } = useThemeMode();
+  const serverNow = useServerNow();
   const windows = useDesktopStore(
     (state) => state.windows[page] ?? EMPTY_WINDOWS,
   );
@@ -125,6 +133,17 @@ export function MobileShell({ page }: { page: string }) {
   );
   const regularApps = apps.filter((app) => !app.adminOnly);
   const adminApps = apps.filter((app) => app.adminOnly);
+  const personalBackground = darkMode ? user?.darkBackgroundUrl : user?.backgroundUrl;
+  const backgroundUrl = personalBackground ?? (darkMode
+    ? (siteSettings.mobileDarkBackgroundDataUrl || siteSettings.darkBackgroundDataUrl)
+    : (siteSettings.mobileBackgroundDataUrl || siteSettings.backgroundDataUrl));
+  const wallpaperStyle: CSSProperties = backgroundUrl
+    ? {
+      backgroundImage: `linear-gradient(rgba(4, 8, 20, .14), rgba(4, 8, 20, .14)), url(${backgroundUrl})`,
+      backgroundSize: 'cover',
+      backgroundPosition: 'center',
+    }
+    : {};
 
   const launchApp = (app: AppDefinition) => {
     const currentWindows = useDesktopStore.getState().windows[page] ?? [];
@@ -159,10 +178,31 @@ export function MobileShell({ page }: { page: string }) {
     setActivePage(page);
   };
 
+  const renderTile = (app: AppDefinition) => {
+    const Icon = app.icon;
+    return (
+      <button
+        key={app.type}
+        type="button"
+        className={`mobile-tile mobile-tile--${app.size} ${app.tone} group flex flex-col text-white transition-transform active:translate-y-px`}
+        onClick={() => launchApp(app)}
+        data-testid={`button-launch-${app.type}`}
+        aria-label={`Open ${app.label}`}
+      >
+        <span className="mobile-tile-icon flex items-center justify-center transition-transform group-active:scale-95">
+          <Icon strokeWidth={1.7} />
+        </span>
+        <span className="mobile-tile-label">{app.label}</span>
+        {app.subtitle && <span className="mobile-tile-subtitle">{app.subtitle}</span>}
+      </button>
+    );
+  };
+
   if (openWindow) {
     return (
       <div
         className="mobile-shell relative flex h-[100dvh] min-h-0 max-h-[100dvh] w-full flex-col overflow-hidden p-1"
+        style={wallpaperStyle}
         data-testid="mobile-app-view"
       >
         <header className="mobile-app-header win98-window relative z-[100] flex min-h-12 shrink-0 items-center justify-between gap-2 px-2 py-1">
@@ -209,108 +249,69 @@ export function MobileShell({ page }: { page: string }) {
 
   return (
     <div
-      ref={boundsRef}
-      className="mobile-shell flex h-[100dvh] min-h-0 max-h-[100dvh] w-full flex-col overflow-hidden p-1"
+      className="mobile-shell mobile-phone-home flex h-[100dvh] min-h-0 max-h-[100dvh] w-full flex-col overflow-hidden"
+      style={wallpaperStyle}
       data-testid="mobile-home-screen"
     >
-      <header className="mobile-home-header win98-window flex shrink-0 items-center justify-between gap-3 px-2 py-1.5">
-        <div className="min-w-0">
-          <p className="truncate text-[9px] font-bold uppercase tracking-[0.18em] text-[#4b4b4b]">
-            PHOTO DESKTOP / POCKET
-          </p>
-          <h1 className="truncate text-[15px] font-bold text-black">
-            App launcher
-          </h1>
-        </div>
-        <div
-          className="win98-inset shrink-0 px-2 py-1 text-right text-[9px] leading-tight text-black"
-          data-testid="status-mobile-desktop"
-        >
-          <div className="font-bold text-[#006b65]">READY</div>
-          <div>{apps.length} apps</div>
-        </div>
+      <header className="mobile-phone-status flex shrink-0 items-center justify-between px-3" data-testid="mobile-status-bar">
+        <span className="mobile-phone-time">{formatLocalTime(serverNow)}</span>
+        <span className="mobile-phone-user truncate px-2">
+          {user ? `${user.isAdmin ? '★ ' : ''}${user.username}` : 'Guest'}
+        </span>
+        <span className="mobile-phone-indicators flex shrink-0 items-center gap-1.5" aria-label="Connection status">
+          <span className="mobile-phone-signal" aria-hidden="true" />
+          <span className="mobile-phone-battery" aria-hidden="true" />
+        </span>
       </header>
 
-      <main className="mobile-home-main min-h-0 flex-1 overflow-y-auto px-1 pb-2 pt-3 overscroll-contain">
-        <div className="mb-3 flex items-end justify-between px-1">
-          <div>
-            <p className="text-[13px] font-bold text-white">Your programs</p>
-            <p className="text-[10px] text-[#d7ffff]">
-              Tap an app to open it full screen.
-            </p>
-          </div>
-          <div className="text-[10px] text-[#d7ffff]" data-testid="text-page-path">
-            {page}
-          </div>
+      <div className="mobile-phone-heading flex shrink-0 items-end justify-between px-3 pb-2 pt-2">
+        <div className="min-w-0">
+          <p className="truncate text-[10px] font-bold uppercase tracking-[0.18em] text-white/70">
+            {siteSettings.siteName || 'Photo Desktop'}
+          </p>
+          <h1 className="truncate text-xl font-light tracking-wide text-white">
+            All apps
+          </h1>
         </div>
+        <div className="mobile-phone-app-count shrink-0" data-testid="status-mobile-desktop">
+          {apps.length}
+        </div>
+      </div>
 
+      <main ref={homeMainRef} className="mobile-home-main min-h-0 flex-1 overflow-y-auto px-2 pb-2 overscroll-contain">
         <section
-          className="mobile-app-grid grid grid-cols-3 gap-2.5 sm:grid-cols-4"
+          className="mobile-app-grid grid"
           aria-label="Desktop applications"
           data-testid="app-grid"
         >
-          {regularApps.map((app) => {
-            const Icon = app.icon;
-            return (
-              <button
-                key={app.type}
-                type="button"
-                className={`mobile-tile mobile-tile--${app.size} group flex flex-col rounded-sm px-2 py-2 text-white transition-transform active:translate-y-px`}
-                onClick={() => launchApp(app)}
-                data-testid={`button-launch-${app.type}`}
-                aria-label={`Open ${app.label}`}
-              >
-                <span
-                  className={`mobile-tile-icon flex items-center justify-center border-2 border-white/80 ${app.tone} text-[#14283d] shadow-[2px_2px_0_rgba(0,0,0,0.42)] transition-transform group-active:translate-y-px`}
-                >
-                  <Icon className="h-7 w-7" strokeWidth={1.8} />
-                </span>
-                <span className="mobile-tile-label max-w-full text-[11px] font-bold leading-[1.08] [text-shadow:1px_1px_0_#005050]">{app.label}</span>
-                {app.subtitle && <span className="mobile-tile-subtitle">{app.subtitle}</span>}
-              </button>
-            );
-          })}
+          {regularApps.map(renderTile)}
         </section>
         {adminApps.length > 0 && (
           <>
-            <div className="mobile-section-label mt-4 px-1">
+            <div className="mobile-section-label mt-3 px-1">
               <span>Administrator tools</span>
               <span className="mobile-section-rule" aria-hidden="true" />
             </div>
             <section
-              className="mobile-app-grid mt-2 grid grid-cols-3 gap-2.5 sm:grid-cols-4"
+              className="mobile-app-grid mt-2 grid"
               aria-label="Administrator applications"
               data-testid="admin-app-grid"
             >
-              {adminApps.map((app) => {
-                const Icon = app.icon;
-                return (
-                  <button
-                    key={app.type}
-                    type="button"
-                    className={`mobile-tile mobile-tile--${app.size} mobile-tile--admin group flex flex-col rounded-sm px-2 py-2 text-white transition-transform active:translate-y-px`}
-                    onClick={() => launchApp(app)}
-                    data-testid={`button-launch-${app.type}`}
-                    aria-label={`Open ${app.label}`}
-                  >
-                    <span className={`mobile-tile-icon flex items-center justify-center border-2 border-white/80 ${app.tone} text-[#14283d] shadow-[2px_2px_0_rgba(0,0,0,0.42)] transition-transform group-active:translate-y-px`}>
-                      <Icon className="h-7 w-7" strokeWidth={1.8} />
-                    </span>
-                    <span className="mobile-tile-label max-w-full text-[11px] font-bold leading-[1.08] [text-shadow:1px_1px_0_#005050]">{app.label}</span>
-                  </button>
-                );
-              })}
+              {adminApps.map(renderTile)}
             </section>
           </>
         )}
       </main>
 
-      <footer className="mobile-dock win98-window flex shrink-0 items-center justify-between gap-2 px-2 py-1.5 text-[10px] text-black">
-        <span className="flex min-w-0 items-center gap-1.5" data-testid="text-mobile-footer">
-          <span className="mobile-dock-led" aria-hidden="true" />
-          <span className="truncate">Personal web desktop</span>
-        </span>
-        <span className="shrink-0 text-[#4b4b4b]">Scroll for more</span>
+      <footer className="mobile-all-apps-footer shrink-0 px-3 pb-2 pt-1">
+        <button
+          type="button"
+          className="mobile-all-apps-button flex items-center gap-2 text-white"
+          onClick={() => homeMainRef.current?.scrollTo({ top: homeMainRef.current.scrollHeight, behavior: 'smooth' })}
+        >
+          <span>All apps</span>
+          <ArrowRight className="h-5 w-5" strokeWidth={1.5} />
+        </button>
       </footer>
     </div>
   );

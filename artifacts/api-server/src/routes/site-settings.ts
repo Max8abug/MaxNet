@@ -13,6 +13,8 @@ async function ensureRow() {
     darkLogoDataUrl: "",
     backgroundDataUrl: "",
     darkBackgroundDataUrl: "",
+    mobileBackgroundDataUrl: "",
+    mobileDarkBackgroundDataUrl: "",
     siteName: "Portfolio 98",
   });
   const [created] = await db.select().from(siteSettingsTable).limit(1);
@@ -26,6 +28,8 @@ router.get("/site-settings", async (_req, res) => {
     darkLogoDataUrl: row.darkLogoDataUrl || "",
     backgroundDataUrl: row.backgroundDataUrl || "",
     darkBackgroundDataUrl: row.darkBackgroundDataUrl || "",
+    mobileBackgroundDataUrl: row.mobileBackgroundDataUrl || "",
+    mobileDarkBackgroundDataUrl: row.mobileDarkBackgroundDataUrl || "",
     siteName: row.siteName || "Portfolio 98",
   });
 });
@@ -33,7 +37,14 @@ router.get("/site-settings", async (_req, res) => {
 router.put("/site-settings", requireAdmin, async (req, res) => {
   const row = await ensureRow();
   const update: Record<string, any> = {};
-  for (const key of ["logoDataUrl", "darkLogoDataUrl", "backgroundDataUrl", "darkBackgroundDataUrl"] as const) {
+  for (const key of [
+    "logoDataUrl",
+    "darkLogoDataUrl",
+    "backgroundDataUrl",
+    "darkBackgroundDataUrl",
+    "mobileBackgroundDataUrl",
+    "mobileDarkBackgroundDataUrl",
+  ] as const) {
     if (typeof req.body?.[key] === "string") {
       const maxSize = key.includes("Background") ? 4_000_000 : 600_000;
       if (req.body[key].length > maxSize) {
@@ -58,6 +69,8 @@ router.put("/site-settings", requireAdmin, async (req, res) => {
       darkLogoDataUrl: row.darkLogoDataUrl,
       backgroundDataUrl: row.backgroundDataUrl,
       darkBackgroundDataUrl: row.darkBackgroundDataUrl,
+      mobileBackgroundDataUrl: row.mobileBackgroundDataUrl,
+      mobileDarkBackgroundDataUrl: row.mobileDarkBackgroundDataUrl,
       siteName: row.siteName,
     });
     return;
@@ -71,6 +84,8 @@ router.put("/site-settings", requireAdmin, async (req, res) => {
     darkLogoDataUrl: fresh!.darkLogoDataUrl,
     backgroundDataUrl: fresh!.backgroundDataUrl,
     darkBackgroundDataUrl: fresh!.darkBackgroundDataUrl,
+    mobileBackgroundDataUrl: fresh!.mobileBackgroundDataUrl,
+    mobileDarkBackgroundDataUrl: fresh!.mobileDarkBackgroundDataUrl,
     siteName: fresh!.siteName,
   });
 });

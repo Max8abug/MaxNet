@@ -64,6 +64,8 @@ export function SiteSettingsDialog() {
   const [darkPreview, setDarkPreview] = useState(settings.darkLogoDataUrl);
   const [backgroundPreview, setBackgroundPreview] = useState(settings.backgroundDataUrl);
   const [darkBackgroundPreview, setDarkBackgroundPreview] = useState(settings.darkBackgroundDataUrl);
+  const [mobileBackgroundPreview, setMobileBackgroundPreview] = useState(settings.mobileBackgroundDataUrl);
+  const [mobileDarkBackgroundPreview, setMobileDarkBackgroundPreview] = useState(settings.mobileDarkBackgroundDataUrl);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
@@ -71,6 +73,8 @@ export function SiteSettingsDialog() {
   const darkFileRef = useRef<HTMLInputElement>(null);
   const backgroundFileRef = useRef<HTMLInputElement>(null);
   const darkBackgroundFileRef = useRef<HTMLInputElement>(null);
+  const mobileBackgroundFileRef = useRef<HTMLInputElement>(null);
+  const mobileDarkBackgroundFileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => { void refreshSiteSettings(); }, [refreshSiteSettings]);
   useEffect(() => {
@@ -79,7 +83,17 @@ export function SiteSettingsDialog() {
     setDarkPreview(settings.darkLogoDataUrl);
     setBackgroundPreview(settings.backgroundDataUrl);
     setDarkBackgroundPreview(settings.darkBackgroundDataUrl);
-  }, [settings.siteName, settings.logoDataUrl, settings.darkLogoDataUrl, settings.backgroundDataUrl, settings.darkBackgroundDataUrl]);
+    setMobileBackgroundPreview(settings.mobileBackgroundDataUrl);
+    setMobileDarkBackgroundPreview(settings.mobileDarkBackgroundDataUrl);
+  }, [
+    settings.siteName,
+    settings.logoDataUrl,
+    settings.darkLogoDataUrl,
+    settings.backgroundDataUrl,
+    settings.darkBackgroundDataUrl,
+    settings.mobileBackgroundDataUrl,
+    settings.mobileDarkBackgroundDataUrl,
+  ]);
 
   if (!user?.isAdmin) {
     return <div className="p-3 text-sm text-red-700">Only the site owner can change these settings.</div>;
@@ -110,6 +124,15 @@ export function SiteSettingsDialog() {
     } catch { setErr("Could not read that image. Try a PNG or JPG."); }
   }
 
+  async function pickMobileBackground(file: File, dark = false) {
+    setErr(null); setMsg(null);
+    try {
+      const data = await fileToBackgroundDataUrl(file);
+      if (dark) setMobileDarkBackgroundPreview(data);
+      else setMobileBackgroundPreview(data);
+    } catch { setErr("Could not read that image. Try a PNG or JPG."); }
+  }
+
   async function save() {
     setBusy(true); setErr(null); setMsg(null);
     try {
@@ -118,6 +141,8 @@ export function SiteSettingsDialog() {
         darkLogoDataUrl: darkPreview,
         backgroundDataUrl: backgroundPreview,
         darkBackgroundDataUrl: darkBackgroundPreview,
+        mobileBackgroundDataUrl: mobileBackgroundPreview,
+        mobileDarkBackgroundDataUrl: mobileDarkBackgroundPreview,
         siteName,
       });
       await refreshSiteSettings();
@@ -154,6 +179,20 @@ export function SiteSettingsDialog() {
       await updateSiteSettings(dark ? { darkBackgroundDataUrl: "" } : { backgroundDataUrl: "" });
       await refreshSiteSettings();
       setMsg(`${dark ? "Dark" : "Light"} default background reset.`);
+    } catch (e: any) { setErr(e?.message || "Failed to clear"); }
+    finally { setBusy(false); }
+  }
+
+  async function clearMobileBackground(dark = false) {
+    if (dark) setMobileDarkBackgroundPreview("");
+    else setMobileBackgroundPreview("");
+    setBusy(true); setErr(null); setMsg(null);
+    try {
+      await updateSiteSettings(dark
+        ? { mobileDarkBackgroundDataUrl: "" }
+        : { mobileBackgroundDataUrl: "" });
+      await refreshSiteSettings();
+      setMsg(`Mobile ${dark ? "dark" : "light"} default background reset.`);
     } catch (e: any) { setErr(e?.message || "Failed to clear"); }
     finally { setBusy(false); }
   }
@@ -260,6 +299,56 @@ export function SiteSettingsDialog() {
             />
             <button className="win98-button px-2 py-0.5" disabled={busy} onClick={() => darkBackgroundFileRef.current?.click()}>Choose Dark Background…</button>
             <button className="win98-button px-2 py-0.5 text-red-700" disabled={busy || !darkBackgroundPreview} onClick={() => void clearBackground(true)}>Reset dark default</button>
+          </div>
+        </div>
+      </div>
+
+      <div className="border-t border-gray-400 pt-2">
+        <div className="font-bold mb-1">Mobile Light Mode Background</div>
+        <div className="text-[11px] text-gray-700 mb-2">
+          Optional wallpaper used by the mobile tile launcher in light mode. If empty, mobile uses the default light background above.
+        </div>
+        <div className="flex items-center gap-3">
+          <div className="win98-inset bg-[#c0c0c0] w-16 h-12 flex items-center justify-center overflow-hidden">
+            {mobileBackgroundPreview ? (
+              <img src={mobileBackgroundPreview} alt="mobile light background preview" className="w-full h-full object-cover" />
+            ) : <span className="text-[10px] text-gray-600">Fallback</span>}
+          </div>
+          <div className="flex flex-col gap-1">
+            <input
+              ref={mobileBackgroundFileRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={(e) => { const f = e.target.files?.[0]; if (f) void pickMobileBackground(f); e.target.value = ""; }}
+            />
+            <button className="win98-button px-2 py-0.5" disabled={busy} onClick={() => mobileBackgroundFileRef.current?.click()}>Choose Mobile Light…</button>
+            <button className="win98-button px-2 py-0.5 text-red-700" disabled={busy || !mobileBackgroundPreview} onClick={() => void clearMobileBackground()}>Reset mobile light</button>
+          </div>
+        </div>
+      </div>
+
+      <div className="border-t border-gray-400 pt-2">
+        <div className="font-bold mb-1">Mobile Dark Mode Background</div>
+        <div className="text-[11px] text-gray-700 mb-2">
+          Optional wallpaper used by the mobile tile launcher in dark mode. If empty, mobile uses the default dark background above.
+        </div>
+        <div className="flex items-center gap-3">
+          <div className="win98-inset bg-[#171b22] w-16 h-12 flex items-center justify-center overflow-hidden">
+            {mobileDarkBackgroundPreview ? (
+              <img src={mobileDarkBackgroundPreview} alt="mobile dark background preview" className="w-full h-full object-cover" />
+            ) : <span className="text-[10px] text-gray-300">Fallback</span>}
+          </div>
+          <div className="flex flex-col gap-1">
+            <input
+              ref={mobileDarkBackgroundFileRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={(e) => { const f = e.target.files?.[0]; if (f) void pickMobileBackground(f, true); e.target.value = ""; }}
+            />
+            <button className="win98-button px-2 py-0.5" disabled={busy} onClick={() => mobileDarkBackgroundFileRef.current?.click()}>Choose Mobile Dark…</button>
+            <button className="win98-button px-2 py-0.5 text-red-700" disabled={busy || !mobileDarkBackgroundPreview} onClick={() => void clearMobileBackground(true)}>Reset mobile dark</button>
           </div>
         </div>
       </div>

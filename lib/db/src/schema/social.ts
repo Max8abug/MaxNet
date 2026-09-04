@@ -267,6 +267,8 @@ export const siteSettingsTable = pgTable("site_settings", {
   darkLogoDataUrl: text("dark_logo_data_url").notNull().default(""),
   backgroundDataUrl: text("background_data_url").notNull().default(""),
   darkBackgroundDataUrl: text("dark_background_data_url").notNull().default(""),
+  mobileBackgroundDataUrl: text("mobile_background_data_url").notNull().default(""),
+  mobileDarkBackgroundDataUrl: text("mobile_dark_background_data_url").notNull().default(""),
   siteName: text("site_name").notNull().default("Portfolio 98"),
   vapidPublicKey: text("vapid_public_key").notNull().default(""),
   vapidPrivateKey: text("vapid_private_key").notNull().default(""),

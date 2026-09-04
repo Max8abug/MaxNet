@@ -315,12 +315,16 @@ export async function ensureSchema(): Promise<void> {
       dark_logo_data_url text NOT NULL DEFAULT '',
       background_data_url text NOT NULL DEFAULT '',
       dark_background_data_url text NOT NULL DEFAULT '',
+      mobile_background_data_url text NOT NULL DEFAULT '',
+      mobile_dark_background_data_url text NOT NULL DEFAULT '',
       site_name text NOT NULL DEFAULT 'Portfolio 98',
       updated_at timestamp NOT NULL DEFAULT now()
     );
     ALTER TABLE site_settings ADD COLUMN IF NOT EXISTS dark_logo_data_url text NOT NULL DEFAULT '';
     ALTER TABLE site_settings ADD COLUMN IF NOT EXISTS background_data_url text NOT NULL DEFAULT '';
     ALTER TABLE site_settings ADD COLUMN IF NOT EXISTS dark_background_data_url text NOT NULL DEFAULT '';
+    ALTER TABLE site_settings ADD COLUMN IF NOT EXISTS mobile_background_data_url text NOT NULL DEFAULT '';
+    ALTER TABLE site_settings ADD COLUMN IF NOT EXISTS mobile_dark_background_data_url text NOT NULL DEFAULT '';
     ALTER TABLE site_settings ADD COLUMN IF NOT EXISTS site_name text NOT NULL DEFAULT 'Portfolio 98';
     ALTER TABLE site_settings ADD COLUMN IF NOT EXISTS updated_at timestamp NOT NULL DEFAULT now();
     ALTER TABLE site_settings ADD COLUMN IF NOT EXISTS vapid_public_key text NOT NULL DEFAULT '';
