@@ -14,11 +14,26 @@ export interface Drawing {
 export interface ChatMessage {
   id: number;
   author: string;
+  room: ChatRoom;
   body: string;
   imageUrl?: string | null;
   videoUrl?: string | null;
   replyTo?: number | null;
   createdAt: string;
+}
+
+export const CHAT_ROOMS = [
+  { id: "lobby", label: "Lobby" },
+  { id: "media", label: "Media" },
+  { id: "games", label: "Games" },
+  { id: "random", label: "Random" },
+] as const;
+export type ChatRoom = typeof CHAT_ROOMS[number]["id"];
+export interface ChatRoomStatus {
+  room: ChatRoom;
+  latestMessageId: number;
+  latestAuthor: string | null;
+  typing: string[];
 }
 
 export interface GuestbookEntry {
@@ -254,21 +269,33 @@ export async function voteDrawing(id: number, vote: -1 | 0 | 1): Promise<{ ok: t
 }
 
 // ----- Chat -----
-export async function fetchChat(): Promise<ChatMessage[]> {
-  return jsonOrThrow(await fetch(`${BASE}/chat`, opts));
+export async function fetchChatPage(room: ChatRoom = "lobby", before?: number, limit = 60): Promise<{ messages: ChatMessage[]; hasMore: boolean }> {
+  const params = new URLSearchParams({ room, limit: String(limit) });
+  if (before) params.set("before", String(before));
+  const response = await fetch(`${BASE}/chat?${params.toString()}`, opts);
+  return {
+    messages: await jsonOrThrow(response),
+    hasMore: response.headers.get("X-Chat-Has-More") === "1",
+  };
 }
-export async function postChat(body: string, imageUrl?: string | null, videoUrl?: string | null, replyTo?: number | null): Promise<ChatMessage> {
+export async function fetchChat(room: ChatRoom = "lobby"): Promise<ChatMessage[]> {
+  return (await fetchChatPage(room)).messages;
+}
+export async function fetchChatRoomStatuses(): Promise<ChatRoomStatus[]> {
+  return jsonOrThrow(await fetch(`${BASE}/chat/rooms`, opts));
+}
+export async function postChat(body: string, imageUrl?: string | null, videoUrl?: string | null, replyTo?: number | null, room: ChatRoom = "lobby"): Promise<ChatMessage> {
   return jsonOrThrow(await fetch(`${BASE}/chat`, {
     ...opts, method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ body, imageUrl: imageUrl || null, videoUrl: videoUrl || null, replyTo: replyTo ?? null }),
+    body: JSON.stringify({ body, imageUrl: imageUrl || null, videoUrl: videoUrl || null, replyTo: replyTo ?? null, room }),
   }));
 }
-export async function pingTyping(): Promise<void> {
-  try { await fetch(`${BASE}/chat/typing`, { ...opts, method: "POST" }); } catch {}
+export async function pingTyping(room: ChatRoom = "lobby"): Promise<void> {
+  try { await fetch(`${BASE}/chat/typing`, { ...opts, method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ room }) }); } catch {}
 }
-export async function fetchTyping(): Promise<string[]> {
-  try { const j = await jsonOrThrow(await fetch(`${BASE}/chat/typing`, opts)); return j.typing || []; } catch { return []; }
+export async function fetchTyping(room: ChatRoom = "lobby"): Promise<string[]> {
+  try { const j = await jsonOrThrow(await fetch(`${BASE}/chat/typing?room=${encodeURIComponent(room)}`, opts)); return j.typing || []; } catch { return []; }
 }
 export async function clearChat(): Promise<void> {
   await jsonOrThrow(await fetch(`${BASE}/chat`, { ...opts, method: "DELETE" }));

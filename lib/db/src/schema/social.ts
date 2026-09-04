@@ -11,6 +11,7 @@ export const drawingsTable = pgTable("drawings", {
 export const chatMessagesTable = pgTable("chat_messages", {
   id: serial("id").primaryKey(),
   author: text("author").notNull().default("anon"),
+  room: text("room").notNull().default("lobby"),
   body: text("body").notNull(),
   imageUrl: text("image_url"),
   videoUrl: text("video_url"),

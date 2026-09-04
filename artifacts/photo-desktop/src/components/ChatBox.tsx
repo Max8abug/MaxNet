@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import {
-  fetchChat, postChat, clearChat, deleteChatMessage,
+  fetchChatPage, fetchChatRoomStatuses, postChat, clearChat, deleteChatMessage,
   fetchChatAudit, fetchBans, addBan, removeBan, pingTyping, fetchTyping,
-  type ChatMessage, type ChatAuditEntry, type BannedUser,
+  CHAT_ROOMS, type ChatRoom, type ChatRoomStatus, type ChatMessage, type ChatAuditEntry, type BannedUser,
 } from "../lib/api";
 import { useAuth, userColor, hasPermission } from "../lib/auth-store";
 import { Avatar, getCachedAvatar, getCachedUser } from "./Avatar";
@@ -41,6 +41,10 @@ function fileToDataUrl(f: File): Promise<string> {
 
 export function ChatBox({ onRequestLogin }: Props) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [room, setRoom] = useState<ChatRoom>("lobby");
+  const [hasMore, setHasMore] = useState(false);
+  const [loadingOlder, setLoadingOlder] = useState(false);
+  const [roomStatuses, setRoomStatuses] = useState<ChatRoomStatus[]>([]);
   const [text, setText] = useState("");
   const [imageData, setImageData] = useState<string | null>(null);
   const [gifUrl, setGifUrl] = useState("");
@@ -54,7 +58,10 @@ export function ChatBox({ onRequestLogin }: Props) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const videoRef = useRef<HTMLInputElement>(null);
-  const lastSeenIdRef = useRef<number>(0);
+  const lastSeenIdRef = useRef<Record<string, number>>({});
+  const roomRef = useRef<ChatRoom>("lobby");
+  const sendTimerRef = useRef<number | null>(null);
+  const [sendCountdown, setSendCountdown] = useState(0);
   const user = useAuth((s) => s.user);
   const ranks = useAuth((s) => s.ranks);
   const refreshRanks = useAuth((s) => s.refreshRanks);
@@ -68,16 +75,47 @@ export function ChatBox({ onRequestLogin }: Props) {
   const [banName, setBanName] = useState("");
   const [banReason, setBanReason] = useState("");
 
-  async function refresh() {
+  function roomSeenKey(name: ChatRoom): string {
+    return `chatRoomLastSeen:${name}`;
+  }
+
+  function markRoomSeen(name: ChatRoom, messageId: number) {
+    if (!messageId) return;
+    const previous = Number(localStorage.getItem(roomSeenKey(name)) || "0");
+    if (messageId > previous) localStorage.setItem(roomSeenKey(name), String(messageId));
+  }
+
+  async function refresh(activeRoom = roomRef.current) {
     try {
-      const m = await fetchChat();
+      const page = await fetchChatPage(activeRoom);
+      const m = page.messages;
+      if (activeRoom !== roomRef.current) return;
       // Toast about new messages from others (not own, not first load)
-      if (lastSeenIdRef.current > 0 && document.visibilityState === "visible") {
-        const fresh = m.filter(x => x.id > lastSeenIdRef.current && x.author !== user?.username);
+      const lastSeen = lastSeenIdRef.current[activeRoom] || 0;
+      if (lastSeen > 0 && document.visibilityState === "visible") {
+        const fresh = m.filter(x => x.id > lastSeen && x.author !== user?.username);
         fresh.slice(-3).forEach(x => pushToast(`${x.author}`, x.body || (x.imageUrl ? "[image]" : x.videoUrl ? "[video]" : "")));
       }
-      if (m.length) lastSeenIdRef.current = Math.max(lastSeenIdRef.current, ...m.map(x => x.id));
-      setMessages(m);
+      if (m.length) lastSeenIdRef.current[activeRoom] = Math.max(lastSeen, ...m.map(x => x.id));
+      setMessages((current) => {
+        const merged = new Map(current.map((message) => [message.id, message]));
+        m.forEach((message) => merged.set(message.id, message));
+        return [...merged.values()].sort((a, b) => a.id - b.id).slice(-180);
+      });
+      setHasMore(page.hasMore || hasMore);
+      if (activeRoom === room) markRoomSeen(activeRoom, Math.max(...m.map(x => x.id), 0));
+    } catch {}
+  }
+  async function refreshRoomStatuses() {
+    try {
+      const statuses = await fetchChatRoomStatuses();
+      setRoomStatuses(statuses);
+      statuses.forEach((status) => {
+        const seen = Number(localStorage.getItem(roomSeenKey(status.room)) || "0");
+        if (!seen) markRoomSeen(status.room, status.latestMessageId);
+      });
+      const current = statuses.find((status) => status.room === roomRef.current);
+      if (current) markRoomSeen(current.room, current.latestMessageId);
     } catch {}
   }
   async function refreshAdmin() {
@@ -87,26 +125,87 @@ export function ChatBox({ onRequestLogin }: Props) {
   }
 
   useEffect(() => { void refreshRanks(); }, [refreshRanks]);
-  useEffect(() => { void refresh(); const t = setInterval(refresh, 4000); return () => clearInterval(t); }, [user?.username]);
-  useEffect(() => { const t = setInterval(async () => { setTyping((await fetchTyping()).filter(u => u !== user?.username)); }, 2500); return () => clearInterval(t); }, [user?.username]);
+  useEffect(() => {
+    roomRef.current = room;
+    setMessages([]);
+    setHasMore(false);
+    void refresh(room);
+    void refreshRoomStatuses();
+    const t = setInterval(() => {
+      void refresh(room);
+      void refreshRoomStatuses();
+    }, 4000);
+    return () => clearInterval(t);
+  }, [room, user?.username]);
+  useEffect(() => {
+    const t = setInterval(async () => {
+      setTyping((await fetchTyping(roomRef.current)).filter(u => u !== user?.username));
+    }, 2500);
+    return () => clearInterval(t);
+  }, [user?.username]);
   useEffect(() => { if (!isAdmin) { setTab("chat"); return; } void refreshAdmin(); }, [isAdmin]);
-  useEffect(() => { if (tab === "chat") scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight }); }, [messages.length, tab]);
+  useEffect(() => { if (tab === "chat" && !loadingOlder) scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight }); }, [messages.length, tab]);
+  useEffect(() => () => {
+    if (sendTimerRef.current !== null) window.clearTimeout(sendTimerRef.current);
+  }, []);
 
   function onTypeChange(v: string) {
     setText(v);
-    if (user && v.trim()) pingTyping();
+    if (user && v.trim()) pingTyping(room);
   }
 
   async function send() {
     if ((!text.trim() && !imageData && !videoData) || sending) return;
     if (!user) { onRequestLogin?.(); return; }
-    setSending(true); setErr(null);
+    const sendRoom = room;
+    const sendText = text;
+    const sendImage = imageData;
+    const sendVideo = videoData;
+    const sendReply = replyTo?.id ?? null;
+    setSending(true); setErr(null); setSendCountdown(5);
     try {
-      await postChat(text, imageData, videoData, replyTo?.id ?? null);
+      await new Promise<void>((resolve) => {
+        const started = Date.now();
+        const countdown = window.setInterval(() => {
+          setSendCountdown(Math.max(0, Math.ceil((5000 - (Date.now() - started)) / 1000)));
+        }, 250);
+        sendTimerRef.current = window.setTimeout(() => {
+          window.clearInterval(countdown);
+          sendTimerRef.current = null;
+          setSendCountdown(0);
+          resolve();
+        }, 5000);
+      });
+      await postChat(sendText, sendImage, sendVideo, sendReply, sendRoom);
       setText(""); setImageData(null); setVideoData(null); setGifUrl(""); setReplyTo(null);
-      await refresh();
+      await refresh(sendRoom);
     } catch (e: any) { setErr(e?.message || "Failed"); }
-    finally { setSending(false); }
+    finally { setSending(false); setSendCountdown(0); }
+  }
+
+  async function loadOlder() {
+    const oldest = messages[0];
+    if (!oldest || !hasMore || loadingOlder) return;
+    const scroll = scrollRef.current;
+    const oldHeight = scroll?.scrollHeight || 0;
+    setLoadingOlder(true);
+    try {
+      const page = await fetchChatPage(room, oldest.id);
+      if (room !== roomRef.current) return;
+      setMessages((current) => {
+        const merged = new Map(page.messages.map((message) => [message.id, message]));
+        current.forEach((message) => merged.set(message.id, message));
+        return [...merged.values()].sort((a, b) => a.id - b.id).slice(-180);
+      });
+      setHasMore(page.hasMore);
+      window.setTimeout(() => {
+        if (scroll) scroll.scrollTop += scroll.scrollHeight - oldHeight;
+      }, 0);
+    } catch {} finally { setLoadingOlder(false); }
+  }
+
+  function handleScroll() {
+    if ((scrollRef.current?.scrollTop || 0) < 32) void loadOlder();
   }
 
   async function pickImage(file: File) { try { setImageData(await fileToImageData(file)); } catch { setErr("Image failed"); } }
@@ -156,15 +255,38 @@ export function ChatBox({ onRequestLogin }: Props) {
     return userColor(cached || { username: name }, ranks) || undefined;
   }
 
+  function roomIsActive(status: ChatRoomStatus): boolean {
+    const seen = Number(localStorage.getItem(roomSeenKey(status.room)) || "0");
+    return status.typing.length > 0 || status.latestMessageId > seen;
+  }
+
   return (
     <div className="w-full h-full flex flex-col text-sm">
+      <div className="flex gap-1 mb-1 shrink-0 overflow-x-auto" aria-label="Chat rooms">
+        {CHAT_ROOMS.map((chatRoom) => {
+          const status = roomStatuses.find((entry) => entry.room === chatRoom.id);
+          const active = status ? roomIsActive(status) : false;
+          return (
+            <button
+              key={chatRoom.id}
+              className={`win98-button px-2 py-0.5 text-xs whitespace-nowrap flex items-center gap-1 ${room === chatRoom.id ? "shadow-[inset_1px_1px_#808080] border-t-black border-l-black border-r-white border-b-white" : ""}`}
+              onClick={() => { if (!sending && room !== chatRoom.id) setRoom(chatRoom.id); }}
+              disabled={sending}
+              title={active ? `${chatRoom.label} has new activity` : `${chatRoom.label} has no new activity`}
+            >
+              <span className={`inline-block w-2 h-2 rounded-full border border-black/40 ${active ? "bg-green-500" : "bg-red-600"}`} />
+              {chatRoom.label}
+            </button>
+          );
+        })}
+      </div>
       {isAdmin && (
         <div className="flex gap-1 mb-1 shrink-0">
           {(["chat", "audit", "bans"] as Tab[]).map((t) => (
             <button key={t}
               className={`win98-button px-2 py-0.5 text-xs ${tab === t ? "shadow-[inset_1px_1px_#808080] border-t-black border-l-black border-r-white border-b-white" : ""}`}
               onClick={() => { setTab(t); if (t !== "chat") void refreshAdmin(); }}>
-              {t === "chat" ? "Chat" : t === "audit" ? `Audit (${audit.length})` : `Bans (${bans.length})`}
+              {t === "chat" ? "Chat" : t === "audit" ? `Audit (${audit.length.toLocaleString()})` : `Bans (${bans.length})`}
             </button>
           ))}
         </div>
@@ -172,7 +294,12 @@ export function ChatBox({ onRequestLogin }: Props) {
 
       {tab === "chat" && (
         <>
-          <div ref={scrollRef} className="flex-1 win98-inset bg-white p-1 overflow-auto text-xs">
+          <div ref={scrollRef} onScroll={handleScroll} className="flex-1 win98-inset bg-white p-1 overflow-auto text-xs">
+            {hasMore && (
+              <button className="win98-button w-full mb-2 text-[10px]" onClick={() => void loadOlder()} disabled={loadingOlder}>
+                {loadingOlder ? "Loading older messages…" : "Scroll up or click to load older messages"}
+              </button>
+            )}
             {messages.length === 0 ? (
               <div className="text-gray-500">No messages yet.</div>
             ) : (
@@ -197,7 +324,7 @@ export function ChatBox({ onRequestLogin }: Props) {
                         )}
                       </div>
                       {replied && (
-                        <div className="text-[10px] border-l-2 border-blue-400 pl-1 my-0.5 text-gray-600 italic truncate">↪ {replied.author}: {replied.body || "[media]"}</div>
+                        <div className="text-[10px] border-l-2 border-blue-400 pl-1 my-0.5 text-gray-600 italic truncate">↪ {replied ? `${replied.author}: ${replied.body || "[media]"}` : `message #${m.replyTo}`}</div>
                       )}
                       {m.body && <div>{m.body}</div>}
                       {m.imageUrl && (
@@ -251,7 +378,7 @@ export function ChatBox({ onRequestLogin }: Props) {
               <div className="flex gap-1 mt-1 shrink-0">
                 <input type="text" className="win98-inset px-1 flex-1"
                   placeholder={`Message as ${user.username}...`}
-                  value={text} onChange={(e) => onTypeChange(e.target.value)}
+                  value={text} onChange={(e) => onTypeChange(e.target.value)} disabled={sending}
                   onKeyDown={(e) => { if (e.key === "Enter") void send(); }} />
                 <input ref={fileRef} type="file" accept="image/*,image/gif" className="hidden"
                   onChange={(e) => { const f = e.target.files?.[0]; if (f) void pickImage(f); e.target.value = ""; }} />
@@ -259,7 +386,7 @@ export function ChatBox({ onRequestLogin }: Props) {
                   onChange={(e) => { const f = e.target.files?.[0]; if (f) void pickVideo(f); e.target.value = ""; }} />
                 <button className="win98-button px-2" title="Attach image" onClick={() => fileRef.current?.click()}>📎</button>
                 <button className="win98-button px-2" title="Attach video" onClick={() => videoRef.current?.click()}>🎥</button>
-                <button className="win98-button px-3" disabled={sending} onClick={send}>Send</button>
+                 <button className="win98-button px-3" disabled={sending} onClick={send}>{sending ? `Send in ${sendCountdown}s` : "Send"}</button>
               </div>
               <div className="flex items-center gap-1 mt-1">
                 {isAdmin && (

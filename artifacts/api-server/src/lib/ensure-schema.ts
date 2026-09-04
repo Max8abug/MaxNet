@@ -80,15 +80,18 @@ export async function ensureSchema(): Promise<void> {
     CREATE TABLE IF NOT EXISTS chat_messages (
       id serial PRIMARY KEY,
       author text NOT NULL DEFAULT 'anon',
+      room text NOT NULL DEFAULT 'lobby',
       body text NOT NULL,
       image_url text,
       video_url text,
       reply_to integer,
       created_at timestamp NOT NULL DEFAULT now()
     );
+    ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS room text NOT NULL DEFAULT 'lobby';
     ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS image_url text;
     ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS video_url text;
     ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS reply_to integer;
+    CREATE INDEX IF NOT EXISTS chat_messages_room_id_idx ON chat_messages (room, id);
 
     CREATE TABLE IF NOT EXISTS visit_counter (
       id serial PRIMARY KEY,

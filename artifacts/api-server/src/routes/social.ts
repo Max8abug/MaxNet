@@ -10,7 +10,7 @@ import {
   chatAuditTable,
   usersTable,
 } from "@workspace/db";
-import { asc, desc, sql, eq, inArray } from "drizzle-orm";
+import { asc, desc, sql, eq, inArray, and, lt } from "drizzle-orm";
 import { requireAuth, requireAdmin, isAdminUsername } from "../lib/auth";
 import { getUserPermissions } from "./ranks";
 import { sendPushToUser } from "../lib/push";
@@ -173,12 +173,55 @@ router.delete("/drawings/:id", requireDeleteMessages, async (req, res) => {
 });
 
 // ---------- Chat ----------
-router.get("/chat", async (_req, res) => {
+const CHAT_ROOMS = ["lobby", "media", "games", "random"] as const;
+type ChatRoom = typeof CHAT_ROOMS[number];
+const CHAT_SEND_DELAY_MS = 5_000;
+const chatLastPostMap = new Map<string, number>();
+
+function normalizeChatRoom(value: unknown): ChatRoom {
+  return typeof value === "string" && (CHAT_ROOMS as readonly string[]).includes(value)
+    ? value as ChatRoom
+    : "lobby";
+}
+
+router.get("/chat/rooms", async (_req, res) => {
+  const statuses = await Promise.all(CHAT_ROOMS.map(async (room) => {
+    const [latest] = await db
+      .select({ id: chatMessagesTable.id, author: chatMessagesTable.author })
+      .from(chatMessagesTable)
+      .where(eq(chatMessagesTable.room, room))
+      .orderBy(desc(chatMessagesTable.id))
+      .limit(1);
+    const typing = Array.from(typingMap.entries())
+      .filter(([key, lastTyping]) => key.startsWith(`${room}:`) && Date.now() - lastTyping < 4_000)
+      .map(([key]) => key.slice(room.length + 1));
+    return {
+      room,
+      latestMessageId: latest?.id ?? 0,
+      latestAuthor: latest?.author ?? null,
+      typing,
+    };
+  }));
+  res.json(statuses);
+});
+
+router.get("/chat", async (req, res) => {
+  const room = normalizeChatRoom(req.query.room);
+  const requestedLimit = Number(req.query.limit);
+  const limit = Number.isFinite(requestedLimit) ? Math.max(20, Math.min(100, Math.floor(requestedLimit))) : 60;
+  const before = Number(req.query.before);
+  const hasBefore = Number.isFinite(before) && before > 0;
   const rows = await db
     .select()
     .from(chatMessagesTable)
-    .orderBy(desc(chatMessagesTable.createdAt))
-    .limit(100);
+    .where(hasBefore
+      ? and(eq(chatMessagesTable.room, room), lt(chatMessagesTable.id, before))
+      : eq(chatMessagesTable.room, room))
+    .orderBy(desc(chatMessagesTable.id))
+    .limit(limit + 1);
+  const hasMore = rows.length > limit;
+  res.setHeader("X-Chat-Has-More", hasMore ? "1" : "0");
+  rows.splice(limit);
   res.json(rows.reverse());
 });
 
@@ -330,6 +373,7 @@ router.get("/chat/export", requireAdmin, async (_req, res) => {
       author: message.author,
       body: message.body,
       replyTo: message.replyTo,
+      room: message.room,
       createdAt: message.createdAt,
     };
     for (const field of ["imageUrl", "videoUrl"] as const) {
@@ -440,16 +484,24 @@ router.post("/chat", requireAuth, async (req, res) => {
   }
   const replyToId = (typeof replyTo === "number" && Number.isFinite(replyTo)) ? replyTo : null;
   const author = req.session.username || "anon";
+  const room = normalizeChatRoom(req.body?.room);
+  const previousPost = chatLastPostMap.get(author) || 0;
+  const remainingDelay = CHAT_SEND_DELAY_MS - (Date.now() - previousPost);
+  if (remainingDelay > 0) {
+    res.status(429).json({ error: `Please wait ${Math.ceil(remainingDelay / 1000)}s before sending another message.` });
+    return;
+  }
   if (await isBanned(author)) {
-    await audit("chat", "blocked", author, author, trimmedBody.slice(0, 500));
+    await audit("chat", "blocked", author, room, trimmedBody.slice(0, 500));
     res.status(403).json({ error: "You are banned from chat." });
     return;
   }
   const [row] = await db
     .insert(chatMessagesTable)
-    .values({ body: trimmedBody, author, imageUrl: normalizedImageUrl, videoUrl: videoUrl || null, replyTo: replyToId })
+    .values({ body: trimmedBody, author, room, imageUrl: normalizedImageUrl, videoUrl: videoUrl || null, replyTo: replyToId })
     .returning();
-  await audit("chat", "post", author, "", trimmedBody + (normalizedImageUrl ? " [image]" : "") + (videoUrl ? " [video]" : ""));
+  chatLastPostMap.set(author, Date.now());
+  await audit("chat", "post", author, room, trimmedBody + (normalizedImageUrl ? " [image]" : "") + (videoUrl ? " [video]" : ""));
 
   // @-mention notifications: pull every @name from the body, map to real users
   // (case-insensitively), and push to anyone other than the author. Best-effort
@@ -482,17 +534,18 @@ router.post("/chat", requireAuth, async (req, res) => {
 });
 
 // ---------- Typing indicator ----------
-const typingMap = new Map<string, number>(); // username -> lastTypingMs
+const typingMap = new Map<string, number>(); // room:username -> lastTypingMs
 router.post("/chat/typing", requireAuth, (req, res) => {
-  typingMap.set(req.session.username!, Date.now());
+  typingMap.set(`${normalizeChatRoom(req.body?.room)}:${req.session.username!}`, Date.now());
   res.json({ ok: true });
 });
-router.get("/chat/typing", (_req, res) => {
+router.get("/chat/typing", (req, res) => {
+  const room = normalizeChatRoom(req.query.room);
   const now = Date.now();
   const list: string[] = [];
-  for (const [u, t] of typingMap.entries()) {
-    if (now - t < 4000) list.push(u);
-    else typingMap.delete(u);
+  for (const [key, t] of typingMap.entries()) {
+    if (now - t < 4000 && key.startsWith(`${room}:`)) list.push(key.slice(room.length + 1));
+    else if (now - t >= 4000) typingMap.delete(key);
   }
   res.json({ typing: list });
 });
@@ -531,8 +584,7 @@ router.get("/chat/audit", requireAdmin, async (_req, res) => {
     .select()
     .from(chatAuditTable)
     .where(eq(chatAuditTable.area, "chat"))
-    .orderBy(desc(chatAuditTable.createdAt))
-    .limit(500);
+    .orderBy(desc(chatAuditTable.createdAt));
   res.json(rows);
 });
 

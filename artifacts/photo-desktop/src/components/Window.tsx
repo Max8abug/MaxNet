@@ -51,10 +51,14 @@ export function Window({
   window: w,
   page,
   boundsRef,
+  mobile = false,
+  onMobileClose,
 }: {
   window: WindowData;
   page: string;
   boundsRef: React.RefObject<HTMLDivElement | null>;
+  mobile?: boolean;
+  onMobileClose?: () => void;
 }) {
   const { updateWindow, removeWindow, bringToFront, isStringMode, stringStartId, setStringStart, addString, toggleWindowState } = useDesktopStore();
   const [, setLocation] = useLocation();
@@ -84,7 +88,7 @@ export function Window({
   const isMax = winState === 'max';
 
   const handleTitleBarPointerDown = (e: React.PointerEvent) => {
-    if (isStringMode || isEditing || isMax) return;
+    if (isStringMode || isEditing || isMax || mobile) return;
     if ((e.target as HTMLElement).closest('button')) return;
     e.preventDefault();
     bringToFront(page, w.id);
@@ -170,7 +174,7 @@ export function Window({
 
   const bounds = boundsRef.current;
   const maxStyle = isMax && bounds ? {
-    width: bounds.clientWidth, height: bounds.clientHeight - 40, transform: 'translate3d(0,0,0)',
+    width: bounds.clientWidth, height: mobile ? bounds.clientHeight : bounds.clientHeight - 40, transform: 'translate3d(0,0,0)',
   } : { width: w.width, height: w.height, transform: `translate3d(${w.x}px, ${w.y}px, 0)` };
 
   return (
@@ -179,7 +183,7 @@ export function Window({
       onPointerDown={() => bringToFront(page, w.id)}
       onClick={handleWindowClick}
       className={`absolute win98-window flex flex-col ${isStringMode ? 'cursor-crosshair' : ''} ${isStringMode && stringStartId === w.id ? 'ring-4 ring-red-500' : ''}`}
-      style={{ ...maxStyle, zIndex: w.zIndex, top: 0, left: 0, willChange: 'transform', touchAction: 'none' } as React.CSSProperties}
+      style={{ ...maxStyle, zIndex: w.zIndex, top: 0, left: 0, willChange: 'transform', touchAction: mobile ? 'auto' : 'none' } as React.CSSProperties}
     >
       <div
         className={`win98-titlebar ${isActive ? '' : 'inactive'} shrink-0 cursor-move select-none`}
@@ -192,17 +196,27 @@ export function Window({
           <span className="truncate text-sm tracking-wide">{w.title}</span>
         </div>
         <div className="flex items-center gap-1 shrink-0 px-1">
-          <button className="win98-button w-5 h-5 flex items-center justify-center pointer-events-auto" onPointerDown={e => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); toggleWindowState(page, w.id, 'min'); }}>
-            <Minus className="w-3 h-3" strokeWidth={3} />
-          </button>
-          <button className="win98-button w-5 h-5 flex items-center justify-center pointer-events-auto" onPointerDown={e => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); toggleWindowState(page, w.id, 'max'); }}>
-            <Square className="w-3 h-3" strokeWidth={3} />
-          </button>
-          <button className="win98-button w-5 h-5 flex items-center justify-center pointer-events-auto"
-            onPointerDown={e => e.stopPropagation()}
-            onClick={(e) => { e.stopPropagation(); removeWindow(page, w.id); }}>
-            <X className="w-3 h-3" strokeWidth={3} />
-          </button>
+          {mobile ? (
+            <button className="win98-button w-6 h-5 flex items-center justify-center pointer-events-auto" aria-label="Back to apps"
+              onPointerDown={e => e.stopPropagation()}
+              onClick={(e) => { e.stopPropagation(); onMobileClose?.(); }}>
+              <X className="w-3 h-3" strokeWidth={3} />
+            </button>
+          ) : (
+            <>
+              <button className="win98-button w-5 h-5 flex items-center justify-center pointer-events-auto" onPointerDown={e => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); toggleWindowState(page, w.id, 'min'); }}>
+                <Minus className="w-3 h-3" strokeWidth={3} />
+              </button>
+              <button className="win98-button w-5 h-5 flex items-center justify-center pointer-events-auto" onPointerDown={e => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); toggleWindowState(page, w.id, 'max'); }}>
+                <Square className="w-3 h-3" strokeWidth={3} />
+              </button>
+              <button className="win98-button w-5 h-5 flex items-center justify-center pointer-events-auto"
+                onPointerDown={e => e.stopPropagation()}
+                onClick={(e) => { e.stopPropagation(); removeWindow(page, w.id); }}>
+                <X className="w-3 h-3" strokeWidth={3} />
+              </button>
+            </>
+          )}
         </div>
       </div>
 

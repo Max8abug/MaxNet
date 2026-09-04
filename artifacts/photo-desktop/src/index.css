@@ -283,3 +283,32 @@
   animation: cafePokeShake 600ms ease-in-out 2;
   transform-origin: 50% 100%;
 }
+
+/* The phone shell keeps the desktop's beveled surfaces, but gives the small
+ * screen a readable status bar and touch-sized launch targets. */
+.mobile-shell {
+  font-family: var(--app-font-sans);
+  background:
+    linear-gradient(135deg, rgba(255,255,255,.08) 25%, transparent 25%) 0 0 / 12px 12px,
+    #008080;
+}
+.mobile-shell .mobile-window-stage > .win98-window {
+  position: absolute;
+  inset: 0;
+  width: 100% !important;
+  height: 100% !important;
+  transform: none !important;
+}
+.mobile-shell .mobile-window-stage > .win98-window > .win98-titlebar {
+  min-height: 30px;
+}
+.mobile-shell .mobile-tile {
+  border: 2px solid rgba(255,255,255,.85);
+  box-shadow: 2px 2px 0 rgba(0,0,0,.45), inset 1px 1px rgba(255,255,255,.38);
+  transition: filter 120ms ease, transform 120ms ease;
+}
+.mobile-shell .mobile-tile:active {
+  filter: brightness(.86);
+  transform: translate(1px, 1px);
+  box-shadow: inset 1px 1px rgba(0,0,0,.45);
+}
