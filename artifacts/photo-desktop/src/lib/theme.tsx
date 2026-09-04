@@ -5,6 +5,8 @@ const STORAGE_KEY = "pd-dark-mode";
 interface ThemeContextValue {
   darkMode: boolean;
   setDarkMode: (enabled: boolean) => void;
+  needsInitialChoice: boolean;
+  chooseInitialTheme: (enabled: boolean) => void;
 }
 
 const ThemeContext = createContext<ThemeContextValue | null>(null);
@@ -16,6 +18,13 @@ function getInitialDarkMode(): boolean {
 
 export function ThemeProvider({ children }: { children: ReactNode }) {
   const [darkMode, setDarkMode] = useState(getInitialDarkMode);
+  const [needsInitialChoice] = useState(() => {
+    if (typeof window === "undefined") return false;
+    // An existing pd-dark-mode value is an explicit preference from an
+    // earlier version of the app, so don't interrupt returning visitors.
+    return window.localStorage.getItem(STORAGE_KEY) === null;
+  });
+  const [initialChoiceComplete, setInitialChoiceComplete] = useState(false);
 
   useEffect(() => {
     document.documentElement.classList.toggle("dark", darkMode);
@@ -27,8 +36,20 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     setDarkMode(enabled);
   }, []);
 
+  const chooseInitialTheme = useCallback((enabled: boolean) => {
+    setDarkMode(enabled);
+    setInitialChoiceComplete(true);
+  }, []);
+
   return (
-    <ThemeContext.Provider value={{ darkMode, setDarkMode: updateDarkMode }}>
+    <ThemeContext.Provider
+      value={{
+        darkMode,
+        setDarkMode: updateDarkMode,
+        needsInitialChoice: needsInitialChoice && !initialChoiceComplete,
+        chooseInitialTheme,
+      }}
+    >
       {children}
     </ThemeContext.Provider>
   );

@@ -11,6 +11,7 @@ import { setTimeZone, useTimeZone } from "@/lib/time-settings";
 import { syncServerClock } from "@/lib/server-clock";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { MobileShell } from "@/components/MobileShell";
+import { ThemePreferencePrompt } from "@/components/ThemePreferencePrompt";
 
 function AppLayout() {
   const [location] = useLocation();
@@ -54,6 +55,7 @@ function AppLayout() {
         </>
       )}
       <NotificationPrompt />
+      <ThemePreferencePrompt />
     </div>
   );
 }

@@ -29,6 +29,7 @@ import { UserList } from './UserList';
 import { UserBrowser } from './UserBrowser';
 import { DiagnosticsPanel } from './DiagnosticsPanel';
 import { AccountAdmin } from './AccountAdmin';
+import { MobileSettings } from './MobileSettings';
 import { useAuth } from '../lib/auth-store';
 
 function getYouTubeEmbedUrl(url: string): string | null {
@@ -328,6 +329,7 @@ export function Window({
         {w.type === 'userpage' && !isEditing && <UserPage username={w.username || ''} />}
         {w.type === 'browser' && !isEditing && <UserBrowser page={page} />}
         {w.type === 'mypage' && !isEditing && <MyPageRouter />}
+        {w.type === 'settings' && !isEditing && <MobileSettings onRequestLogin={() => setShowLogin(true)} />}
         {w.type === 'ranksadmin' && !isEditing && <RanksAdmin />}
         {w.type === 'sitesettings' && !isEditing && <SiteSettingsDialog />}
         {w.type === 'iplookup' && !isEditing && <IpLookup username={w.username || ''} />}
