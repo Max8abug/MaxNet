@@ -49,6 +49,12 @@ export const ensureDeviceCookie: RequestHandler = (req, res, next) => {
     ];
     if (cookieSecure) attributes.push("Secure");
     res.append("Set-Cookie", attributes.join("; "));
+    // Downstream auth handlers associate the device from the request cookie.
+    // Make a cookie issued on this request visible to those handlers too, so
+    // a first login after clearing browser cookies is tracked immediately.
+    req.headers.cookie = [req.headers.cookie, `${DEVICE_COOKIE}=${encodeURIComponent(token)}`]
+      .filter(Boolean)
+      .join("; ");
   }
   next();
 };
