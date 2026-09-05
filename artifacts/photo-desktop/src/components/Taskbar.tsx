@@ -14,6 +14,7 @@ import {
   showBrowserNotification,
   notificationPermission,
 } from '../lib/notifications';
+import { ChevronRight } from 'lucide-react';
 import { formatLocalTime } from '../lib/dates';
 import { useServerNow } from '../lib/server-clock';
 
@@ -236,36 +237,61 @@ export function Taskbar({ page }: { page: string }) {
   }
 
   const open = (data: any) => { addWindow(page, data); setStartOpen(false); };
-  const items: { label: string; act: () => void }[] = [
+  type StartMenuItem = {
+    label: string;
+    act: () => void;
+    badge?: 'dm' | 'chat' | 'cafe';
+  };
+
+  const infoItems: StartMenuItem[] = [
     { label: "Open Site News", act: () => open({ type: 'news', title: 'Site News', width: 520, height: 480 }) },
     { label: "Open Photo Gallery", act: () => open({ type: 'sharedphotos', title: 'Photo Gallery', width: 460, height: 460 }) },
-    { label: "Add Synced YouTube", act: () => open({ type: 'youtube', title: 'YouTube', width: 480, height: 320 }) },
-    { label: "Open Forum", act: () => open({ type: 'forum', title: 'Forum', width: 460, height: 420 }) },
-    { label: "Open Music Player", act: () => open({ type: 'music', title: 'Music Player', width: 360, height: 380 }) },
-    { label: "Open Polls", act: () => open({ type: 'polls', title: 'Polls', width: 380, height: 420 }) },
-    { label: "Open Chess Lobbies", act: () => open({ type: 'chess', title: 'Chess', width: 600, height: 520 }) },
-    { label: "Open Cafe", act: () => open({ type: 'cafe', title: 'Cafe', width: 720, height: 560 }) },
-    { label: "Open DMs", act: () => open({ type: 'dms', title: 'Direct Messages', width: 460, height: 380 }) },
     { label: "Browse Users", act: () => open({ type: 'userlist', title: 'Users', width: 240, height: 400 }) },
-    { label: "Web Browser", act: () => open({ type: 'browser', title: 'Web Browser', width: 620, height: 520 }) },
-    { label: "My Page Editor", act: () => open({ type: 'mypage', title: user ? `${user.username}'s page` : 'My Page', width: 520, height: 440 }) },
+    { label: "Add Visitor Counter", act: () => open({ type: 'visits', title: 'Visitor Counter', width: 260, height: 180 }) },
+    { label: "Add Guestbook", act: () => open({ type: 'guestbook', title: 'Guestbook', width: 320, height: 380 }) },
+  ];
+
+  const gameItems: StartMenuItem[] = [
+    { label: "Open Chess Lobbies", act: () => open({ type: 'chess', title: 'Chess', width: 600, height: 520 }) },
     { label: "Play Blackjack", act: () => open({ type: 'blackjack', title: 'Blackjack', width: 520, height: 480 }) },
     { label: "Play Flappy Bird", act: () => open({ type: 'flappy', title: 'Flappy Bird', width: 560, height: 540 }) },
     { label: "Play Geometry Dash", act: () => open({ type: 'geometry', title: 'Geometry Dash', width: 560, height: 330 }) },
     { label: "Play Poker", act: () => open({ type: 'poker', title: 'Poker', width: 560, height: 390 }) },
-    { label: "Add Chatbox", act: () => open({ type: 'chat', title: 'Chatbox', width: 360, height: 420 }) },
-    { label: "Add Drawing Pad", act: () => open({ type: 'drawing', title: 'Visitor Drawings', width: 460, height: 440 }) },
-    { label: "Add Guestbook", act: () => open({ type: 'guestbook', title: 'Guestbook', width: 320, height: 380 }) },
-    { label: "Add Visitor Counter", act: () => open({ type: 'visits', title: 'Visitor Counter', width: 260, height: 180 }) },
-    { label: "Add Text Note", act: () => open({ type: 'text', title: 'Notes', content: 'Write something here...', width: 300, height: 200 }) },
-    { label: "Add Link Shortcut", act: () => open({ type: 'link', title: 'Shortcut', linkLabel: 'Go to About', linkTarget: '/about', width: 200, height: 150 }) },
   ];
-  if (user) items.push({ label: "🔔 Enable Notifications", act: () => void turnOnNotifications() });
-  if (user?.isAdmin) items.push({ label: "★ Manage Ranks", act: () => open({ type: 'ranksadmin', title: 'Ranks Admin', width: 480, height: 500 }) });
-  if (user?.isAdmin) items.push({ label: "★ Manage Accounts", act: () => open({ type: 'accountadmin', title: 'Account Admin', width: 430, height: 470 }) });
-  if (user?.isAdmin) items.push({ label: "★ Site Settings", act: () => open({ type: 'sitesettings', title: 'Site Settings', width: 420, height: 400 }) });
-  if (user?.isAdmin) items.push({ label: "★ Site Backup / Restore", act: () => open({ type: 'sitebackup', title: 'Site Backup', width: 480, height: 420 }) });
-  if (user?.isAdmin) items.push({ label: "★ Diagnostics", act: () => open({ type: 'diagnostics', title: 'Server Diagnostics', width: 640, height: 460 }) });
+
+  const socialItems: StartMenuItem[] = [
+    { label: "My Page Editor", act: () => open({ type: 'mypage', title: user ? `${user.username}'s page` : 'My Page', width: 520, height: 440 }) },
+    { label: "Open Forum", act: () => open({ type: 'forum', title: 'Forum', width: 460, height: 420 }) },
+    { label: "Add Chatbox", badge: 'chat', act: () => open({ type: 'chat', title: 'Chatbox', width: 360, height: 420 }) },
+    { label: "Open DMs", badge: 'dm', act: () => open({ type: 'dms', title: 'Direct Messages', width: 460, height: 380 }) },
+    { label: "Add Synced YouTube", act: () => open({ type: 'youtube', title: 'YouTube', width: 480, height: 320 }) },
+    { label: "Open Cafe", badge: 'cafe', act: () => open({ type: 'cafe', title: 'Cafe', width: 720, height: 560 }) },
+    { label: "Web Browser", act: () => open({ type: 'browser', title: 'Web Browser', width: 620, height: 520 }) },
+    { label: "Open Polls", act: () => open({ type: 'polls', title: 'Polls', width: 380, height: 420 }) },
+    { label: "Open Music Player", act: () => open({ type: 'music', title: 'Music Player', width: 360, height: 380 }) },
+    { label: "Add Drawing Pad", act: () => open({ type: 'drawing', title: 'Visitor Drawings', width: 460, height: 440 }) },
+  ];
+
+  const settingsItems: StartMenuItem[] = [
+    { label: "Settings", act: () => open({ type: 'settings', title: 'Settings', width: 420, height: 460 }) },
+    { label: "Add Link Shortcut", act: () => open({ type: 'link', title: 'Shortcut', linkLabel: 'Go to About', linkTarget: '/about', width: 200, height: 150 }) },
+    { label: "Add Text Note", act: () => open({ type: 'text', title: 'Notes', content: 'Write something here...', width: 300, height: 200 }) },
+    { label: "Reset All Desktops", act: () => { resetState(); setStartOpen(false); } },
+  ];
+  if (user) settingsItems.push({ label: "🔔 Enable Notifications", act: () => void turnOnNotifications() });
+  if (user?.isAdmin) settingsItems.push({ label: "★ Manage Ranks", act: () => open({ type: 'ranksadmin', title: 'Ranks Admin', width: 480, height: 500 }) });
+  if (user?.isAdmin) settingsItems.push({ label: "★ Manage Accounts", act: () => open({ type: 'accountadmin', title: 'Account Admin', width: 430, height: 470 }) });
+  if (user?.isAdmin) settingsItems.push({ label: "★ Site Settings", act: () => open({ type: 'sitesettings', title: 'Site Settings', width: 420, height: 400 }) });
+  if (user?.isAdmin) settingsItems.push({ label: "★ Site Backup / Restore", act: () => open({ type: 'sitebackup', title: 'Site Backup', width: 480, height: 420 }) });
+  if (user?.isAdmin) settingsItems.push({ label: "★ Diagnostics", act: () => open({ type: 'diagnostics', title: 'Server Diagnostics', width: 640, height: 460 }) });
+
+  const categoryMenus: { label: string; items: StartMenuItem[] }[] = [
+    { label: 'Info', items: infoItems },
+    { label: 'Games', items: gameItems },
+    { label: 'Social', items: socialItems },
+    { label: 'Settings', items: settingsItems },
+  ];
+  const [openCategory, setOpenCategory] = useState<string | null>(null);
 
   const colorStyle = user ? { color: userColor(user, ranks) || undefined } : {};
   const totalUnread = dmUnread + chatUnread;
@@ -319,7 +345,10 @@ export function Taskbar({ page }: { page: string }) {
       <div className="relative">
         <button
           className={`win98-button h-8 px-2 mr-2 flex items-center gap-2 font-bold ${startOpen ? 'border-t-black border-l-black border-r-white border-b-white shadow-[inset_1px_1px_#808080]' : ''}`}
-          onClick={() => setStartOpen(!startOpen)}
+          onClick={() => {
+            setStartOpen(!startOpen);
+            setOpenCategory(null);
+          }}
         >
           {startMenuLogo
             ? <img src={startMenuLogo} alt="logo" className="w-5 h-5 object-contain" />
@@ -332,21 +361,57 @@ export function Taskbar({ page }: { page: string }) {
             <div className="w-8 bg-gradient-to-b from-[#000080] to-[#1084d0] flex flex-col justify-end p-1 shrink-0">
               <span className="text-white font-bold -rotate-90 transform origin-bottom-left whitespace-nowrap mb-8 text-xl">{siteSettings.siteName || 'Portfolio 98'}</span>
             </div>
-            <div className="flex-1 flex flex-col p-1 gap-0.5 overflow-y-auto" style={{ maxHeight: 'calc(100dvh - 4.5rem)' }}>
-              {items.map((it, i) => (
-                <button key={i} className="text-left px-3 py-1 hover:bg-[#000080] hover:text-white text-sm relative" onClick={it.act}>
-                  {it.label}
-                  {it.label === 'Open DMs' && <span className="absolute right-2 top-1/2 -translate-y-1/2"><Badge count={dmUnread} /></span>}
-                  {it.label === 'Add Chatbox' && <span className="absolute right-2 top-1/2 -translate-y-1/2"><Badge count={chatUnread} /></span>}
-                  {it.label === 'Open Cafe' && <span className="absolute right-2 top-1/2 -translate-y-1/2"><Badge count={cafeCount} tone="green" /></span>}
-                </button>
+            <div
+              className="flex-1 flex flex-col p-1 gap-0.5"
+              style={{ maxHeight: 'calc(100dvh - 4.5rem)' }}
+              onMouseLeave={() => setOpenCategory(null)}
+            >
+              {categoryMenus.map((category) => (
+                <div
+                  key={category.label}
+                  className="relative"
+                  onMouseEnter={() => setOpenCategory(category.label)}
+                  onFocus={() => setOpenCategory(category.label)}
+                >
+                  <button
+                    type="button"
+                    className="w-full text-left px-3 py-1 hover:bg-[#000080] hover:text-white text-sm relative flex items-center justify-between gap-6"
+                    aria-haspopup="menu"
+                    aria-expanded={openCategory === category.label}
+                    onClick={() => setOpenCategory(openCategory === category.label ? null : category.label)}
+                  >
+                    <span>{category.label}</span>
+                    <ChevronRight className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                  </button>
+                  {openCategory === category.label && (
+                    <div
+                      className="absolute left-[calc(100%-1px)] top-[-2px] z-50 w-64 bg-[#c0c0c0] win98-window p-1"
+                      role="menu"
+                      aria-label={`${category.label} menu`}
+                      style={{ maxHeight: 'calc(100dvh - 4.5rem)', overflowY: 'auto' }}
+                    >
+                      {category.items.map((it) => (
+                        <button
+                          key={it.label}
+                          type="button"
+                          role="menuitem"
+                          className="w-full text-left px-3 py-1 hover:bg-[#000080] hover:text-white text-sm relative whitespace-nowrap"
+                          onClick={it.act}
+                        >
+                          {it.label}
+                          {it.badge === 'dm' && <span className="absolute right-2 top-1/2 -translate-y-1/2"><Badge count={dmUnread} /></span>}
+                          {it.badge === 'chat' && <span className="absolute right-2 top-1/2 -translate-y-1/2"><Badge count={chatUnread} /></span>}
+                          {it.badge === 'cafe' && <span className="absolute right-2 top-1/2 -translate-y-1/2"><Badge count={cafeCount} tone="green" /></span>}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
               ))}
               <div className="h-[2px] w-full border-t border-t-[#808080] border-b border-b-white my-1" />
               <button className="text-left px-3 py-1 hover:bg-[#000080] hover:text-white text-sm" onClick={() => { setLocation('/'); setStartOpen(false); }}>Go to Home</button>
               <button className="text-left px-3 py-1 hover:bg-[#000080] hover:text-white text-sm" onClick={() => { setLocation('/street'); setStartOpen(false); }}>Go to Street</button>
               <button className="text-left px-3 py-1 hover:bg-[#000080] hover:text-white text-sm" onClick={() => { setLocation('/about'); setStartOpen(false); }}>Go to About</button>
-              <div className="h-[2px] w-full border-t border-t-[#808080] border-b border-b-white my-1" />
-              <button className="text-left px-3 py-1 hover:bg-[#000080] hover:text-white text-sm" onClick={() => { resetState(); setStartOpen(false); }}>Reset All Desktops</button>
             </div>
           </div>
         )}
