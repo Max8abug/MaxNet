@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import {
   adminUpdateAccount,
+  adminRemoveAvatar,
   fetchDeviceAppeals,
   fetchUserDevices,
   fetchUsers,
@@ -14,6 +15,7 @@ import { useAuth } from "../lib/auth-store";
 
 export function AccountAdmin() {
   const me = useAuth((s) => s.user);
+  const refreshAuth = useAuth((s) => s.refresh);
   const [users, setUsers] = useState<PublicUser[]>([]);
   const [selected, setSelected] = useState<string>("");
   const [nextUsername, setNextUsername] = useState("");
@@ -134,6 +136,24 @@ export function AccountAdmin() {
     }
   }
 
+  async function removeAvatar() {
+    if (!selectedUser?.avatarUrl) return;
+    if (!confirm(`Remove ${selectedUser.username}'s profile picture?`)) return;
+    setBusy(true);
+    setErr(null);
+    setNotice(null);
+    try {
+      await adminRemoveAvatar(selectedUser.username);
+      if (selectedUser.username === me?.username) await refreshAuth();
+      setNotice(`Removed ${selectedUser.username}'s profile picture.`);
+      await load();
+    } catch (e: any) {
+      setErr(e?.message || "Could not remove profile picture");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function resolveAppeal(appeal: DeviceAppeal, decision: "approved" | "denied") {
     const action = decision === "approved" ? "approve" : "deny";
     const response = prompt(`${action === "approve" ? "Approval note" : "Reason for denial"} for ${appeal.username}:`, "");
@@ -224,6 +244,19 @@ export function AccountAdmin() {
       {!loading && !selectedUser && <div className="text-gray-500">No accounts found.</div>}
       {selectedUser && (
         <div className="win98-inset bg-white p-2 flex flex-col gap-2">
+          <div className="border-b border-gray-300 pb-2">
+            <div className="font-bold mb-1">Profile Picture</div>
+            {selectedUser.avatarUrl ? (
+              <div className="flex items-center gap-2">
+                <img src={selectedUser.avatarUrl} alt={`${selectedUser.username}'s profile picture`} className="w-16 h-16 object-cover win98-inset" />
+                <button className="win98-button px-2 py-1 text-red-700" disabled={busy} onClick={() => void removeAvatar()}>
+                  Remove profile picture
+                </button>
+              </div>
+            ) : (
+              <div className="text-gray-500">This user has no profile picture.</div>
+            )}
+          </div>
           <label className="flex flex-col gap-1">
             <span>Username</span>
             <input

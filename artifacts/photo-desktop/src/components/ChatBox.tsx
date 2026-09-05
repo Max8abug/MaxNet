@@ -73,6 +73,8 @@ export function ChatBox({ onRequestLogin }: Props) {
   const isAdmin = !!user?.isAdmin;
   const canDelete = !!user && (isAdmin || hasPermission(user, "deleteMessages", ranks));
   const canBan = !!user && (isAdmin || hasPermission(user, "ban", ranks));
+  const canStaffRoom = !!user && (isAdmin || hasPermission(user, "staffChat", ranks));
+  const visibleChatRooms = CHAT_ROOMS.filter((chatRoom) => chatRoom.id !== "staff" || canStaffRoom);
 
   const [tab, setTab] = useState<Tab>("chat");
   const [audit, setAudit] = useState<ChatAuditEntry[]>([]);
@@ -139,6 +141,9 @@ export function ChatBox({ onRequestLogin }: Props) {
 
   useEffect(() => { void refreshRanks(); }, [refreshRanks]);
   useEffect(() => {
+    if (room === "staff" && !canStaffRoom) setRoom("lobby");
+  }, [room, canStaffRoom]);
+  useEffect(() => {
     roomRef.current = room;
     setMessages([]);
     setHasMore(false);
@@ -149,7 +154,7 @@ export function ChatBox({ onRequestLogin }: Props) {
       void refreshRoomStatuses();
     }, 4000);
     return () => clearInterval(t);
-  }, [room, user?.username]);
+  }, [room, user?.username, canStaffRoom]);
   useEffect(() => {
     const t = setInterval(async () => {
       setTyping((await fetchTyping(roomRef.current)).filter(u => u !== user?.username));
@@ -314,7 +319,7 @@ export function ChatBox({ onRequestLogin }: Props) {
   return (
     <div className="w-full h-full flex flex-col text-sm">
       <div className="flex gap-1 mb-1 shrink-0 overflow-x-auto" aria-label="Chat rooms">
-        {CHAT_ROOMS.map((chatRoom) => {
+        {visibleChatRooms.map((chatRoom) => {
           const status = roomStatuses.find((entry) => entry.room === chatRoom.id);
           const active = status ? roomIsActive(status) : false;
           return (

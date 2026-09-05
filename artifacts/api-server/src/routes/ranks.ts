@@ -7,11 +7,11 @@ import { audit } from "./social";
 const router: IRouter = Router();
 
 const BUILTIN_RANKS = [
-  { name: "admin", color: "#ff3030", tier: 100, permissions: ["deleteMessages", "ban", "dm", "manageRanks", "cafeTheme", "youtubeMaster"] },
+  { name: "admin", color: "#ff3030", tier: 100, permissions: ["deleteMessages", "ban", "dm", "manageRanks", "cafeTheme", "youtubeMaster", "staffChat"] },
   { name: "mod", color: "#3070ff", tier: 50, permissions: ["deleteMessages", "ban", "dm"] },
   { name: "vip", color: "#a040ff", tier: 20, permissions: ["dm"] },
 ];
-const VALID_PERMISSIONS = new Set(["deleteMessages", "ban", "dm", "manageRanks", "cafeTheme", "postNews", "youtubeMaster"]);
+const VALID_PERMISSIONS = new Set(["deleteMessages", "ban", "dm", "manageRanks", "cafeTheme", "postNews", "youtubeMaster", "staffChat"]);
 
 async function ensureBuiltins() {
   for (const r of BUILTIN_RANKS) {
@@ -109,7 +109,7 @@ router.post("/ranks/assign", requireAdmin, async (req, res) => {
 
 export async function getUserPermissions(username: string | undefined): Promise<string[]> {
   if (!username) return [];
-  if (isAdminUsername(username)) return ["deleteMessages", "ban", "dm", "manageRanks", "cafeTheme", "youtubeMaster"];
+  if (isAdminUsername(username)) return ["deleteMessages", "ban", "dm", "manageRanks", "cafeTheme", "youtubeMaster", "staffChat"];
   const [u] = await db.select().from(usersTable).where(eq(usersTable.username, username)).limit(1);
   if (!u || !u.rank) return [];
   await ensureBuiltins();

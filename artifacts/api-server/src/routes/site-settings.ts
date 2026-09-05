@@ -2,6 +2,7 @@ import { Router, type IRouter } from "express";
 import { db, siteSettingsTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { requireAdmin } from "../lib/auth";
+import { normalizeBlockedPhrases } from "../lib/content-filter";
 
 const router: IRouter = Router();
 
@@ -35,6 +36,9 @@ async function ensureRow() {
     chatCooldownEnabled: true,
     siteName: "Portfolio 98",
     customButtons: [],
+    usernameBlockedPhrases: [],
+    chatBlockedPhrases: [],
+    forumBlockedPhrases: [],
   });
   const [created] = await db.select().from(siteSettingsTable).limit(1);
   return created!;
@@ -52,6 +56,9 @@ router.get("/site-settings", async (_req, res) => {
     chatCooldownEnabled: row.chatCooldownEnabled !== false,
     siteName: row.siteName || "Portfolio 98",
     customButtons: cleanCustomButtons(row.customButtons),
+    usernameBlockedPhrases: normalizeBlockedPhrases(row.usernameBlockedPhrases),
+    chatBlockedPhrases: normalizeBlockedPhrases(row.chatBlockedPhrases),
+    forumBlockedPhrases: normalizeBlockedPhrases(row.forumBlockedPhrases),
   });
 });
 
@@ -94,6 +101,14 @@ router.put("/site-settings", requireAdmin, async (req, res) => {
     }
     update.customButtons = buttons;
   }
+  for (const key of ["usernameBlockedPhrases", "chatBlockedPhrases", "forumBlockedPhrases"] as const) {
+    if (!Object.prototype.hasOwnProperty.call(req.body || {}, key)) continue;
+    if (!Array.isArray(req.body[key])) {
+      res.status(400).json({ error: `${key} must be an array of words or phrases.` });
+      return;
+    }
+    update[key] = normalizeBlockedPhrases(req.body[key]);
+  }
   if (Object.keys(update).length === 0) {
     res.json({
       ok: true,
@@ -106,6 +121,9 @@ router.put("/site-settings", requireAdmin, async (req, res) => {
       chatCooldownEnabled: row.chatCooldownEnabled !== false,
       siteName: row.siteName,
        customButtons: cleanCustomButtons(row.customButtons),
+       usernameBlockedPhrases: normalizeBlockedPhrases(row.usernameBlockedPhrases),
+       chatBlockedPhrases: normalizeBlockedPhrases(row.chatBlockedPhrases),
+       forumBlockedPhrases: normalizeBlockedPhrases(row.forumBlockedPhrases),
     });
     return;
   }
@@ -123,6 +141,9 @@ router.put("/site-settings", requireAdmin, async (req, res) => {
     chatCooldownEnabled: fresh!.chatCooldownEnabled !== false,
     siteName: fresh!.siteName,
      customButtons: cleanCustomButtons(fresh!.customButtons),
+     usernameBlockedPhrases: normalizeBlockedPhrases(fresh!.usernameBlockedPhrases),
+     chatBlockedPhrases: normalizeBlockedPhrases(fresh!.chatBlockedPhrases),
+     forumBlockedPhrases: normalizeBlockedPhrases(fresh!.forumBlockedPhrases),
   });
 });
 

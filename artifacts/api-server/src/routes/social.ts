@@ -17,8 +17,9 @@ import { requireAuth, requireAdmin, isAdminUsername } from "../lib/auth";
 import { getUserPermissions } from "./ranks";
 import { sendPushToUser } from "../lib/push";
 import { flagDevicesForUsername } from "../lib/device-tracking";
+import { findBlockedPhrase, getBlockedPhrases } from "../lib/content-filter";
 
-import type { RequestHandler } from "express";
+import type { Request, RequestHandler, Response } from "express";
 export const requireDeleteMessages: RequestHandler = async (req, res, next) => {
   if (!req.session.userId) { res.status(401).json({ error: "Login required" }); return; }
   if (req.session.isAdmin) { next(); return; }
@@ -185,7 +186,7 @@ router.delete("/drawings/:id", requireDeleteMessages, async (req, res) => {
 });
 
 // ---------- Chat ----------
-const CHAT_ROOMS = ["lobby", "media", "games", "random"] as const;
+const CHAT_ROOMS = ["lobby", "media", "games", "random", "staff"] as const;
 type ChatRoom = typeof CHAT_ROOMS[number];
 const CHAT_SEND_DELAY_MS = 5_000;
 const chatLastPostMap = new Map<string, number>();
@@ -196,8 +197,18 @@ function normalizeChatRoom(value: unknown): ChatRoom {
     : "lobby";
 }
 
-router.get("/chat/rooms", async (_req, res) => {
-  const statuses = await Promise.all(CHAT_ROOMS.map(async (room) => {
+async function canAccessStaffRoom(req: Request): Promise<boolean> {
+  if (!req.session.userId) return false;
+  if (req.session.isAdmin) return true;
+  const permissions = await getUserPermissions(req.session.username);
+  return permissions.includes("staffChat");
+}
+
+router.get("/chat/rooms", async (req, res) => {
+  const visibleRooms = (await canAccessStaffRoom(req))
+    ? CHAT_ROOMS
+    : CHAT_ROOMS.filter((room) => room !== "staff");
+  const statuses = await Promise.all(visibleRooms.map(async (room) => {
     const [latest] = await db
       .select({ id: chatMessagesTable.id, author: chatMessagesTable.author })
       .from(chatMessagesTable)
@@ -219,6 +230,10 @@ router.get("/chat/rooms", async (_req, res) => {
 
 router.get("/chat", async (req, res) => {
   const room = normalizeChatRoom(req.query.room);
+  if (room === "staff" && !(await canAccessStaffRoom(req))) {
+    res.status(403).json({ error: "Staff room access required." });
+    return;
+  }
   const requestedLimit = Number(req.query.limit);
   const limit = Number.isFinite(requestedLimit) ? Math.max(20, Math.min(100, Math.floor(requestedLimit))) : 60;
   const before = Number(req.query.before);
@@ -497,6 +512,10 @@ router.post("/chat", requireAuth, async (req, res) => {
   const replyToId = (typeof replyTo === "number" && Number.isFinite(replyTo)) ? replyTo : null;
   const author = req.session.username || "anon";
   const room = normalizeChatRoom(req.body?.room);
+  if (room === "staff" && !(await canAccessStaffRoom(req))) {
+    res.status(403).json({ error: "Staff room access required." });
+    return;
+  }
   const previousPost = chatLastPostMap.get(author) || 0;
   if (await isChatMuted(author)) {
     await audit("chat", "muted", author, room, trimmedBody.slice(0, 500));
@@ -517,6 +536,11 @@ router.post("/chat", requireAuth, async (req, res) => {
   if (await isBanned(author)) {
     await audit("chat", "blocked", author, room, trimmedBody.slice(0, 500));
     res.status(403).json({ error: "You are banned from chat." });
+    return;
+  }
+  if (findBlockedPhrase(trimmedBody, await getBlockedPhrases("chat"))) {
+    await audit("chat", "blocked-word", author, room, trimmedBody.slice(0, 500));
+    res.status(400).json({ error: "Your message contains a blocked word or phrase." });
     return;
   }
   const [row] = await db
@@ -558,12 +582,24 @@ router.post("/chat", requireAuth, async (req, res) => {
 
 // ---------- Typing indicator ----------
 const typingMap = new Map<string, number>(); // room:username -> lastTypingMs
-router.post("/chat/typing", requireAuth, (req, res) => {
-  typingMap.set(`${normalizeChatRoom(req.body?.room)}:${req.session.username!}`, Date.now());
+router.post("/chat/typing", requireAuth, async (req, res) => {
+  const room = normalizeChatRoom(req.body?.room);
+  if (room === "staff" && !(await canAccessStaffRoom(req))) {
+    res.status(403).json({ error: "Staff room access required." });
+    return;
+  }
+  typingMap.set(`${room}:${req.session.username!}`, Date.now());
   res.json({ ok: true });
 });
-router.get("/chat/typing", (req, res) => {
+router.get("/chat/typing", async (req, res) => {
   const room = normalizeChatRoom(req.query.room);
+  if (room === "staff" && !(await canAccessStaffRoom(req))) {
+    res.status(403).json({ error: "Staff room access required." });
+    return;
+  }
+  sendTypingResponse(room, res);
+});
+function sendTypingResponse(room: ChatRoom, res: Response) {
   const now = Date.now();
   const list: string[] = [];
   for (const [key, t] of typingMap.entries()) {
@@ -571,7 +607,7 @@ router.get("/chat/typing", (req, res) => {
     else if (now - t >= 4000) typingMap.delete(key);
   }
   res.json({ typing: list });
-});
+}
 
 router.delete("/chat", requireDeleteMessages, async (req, res) => {
   const all = await db.select().from(chatMessagesTable);

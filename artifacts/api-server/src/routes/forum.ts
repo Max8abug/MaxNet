@@ -3,6 +3,7 @@ import { db, forumThreadsTable, forumPostsTable } from "@workspace/db";
 import { desc, eq, sql } from "drizzle-orm";
 import { requireAuth, requireAdmin, hashPassword, verifyPassword } from "../lib/auth";
 import { isBanned, audit, requireDeleteMessages } from "./social";
+import { findBlockedPhrase, getBlockedPhrases } from "../lib/content-filter";
 
 const router: IRouter = Router();
 
@@ -43,6 +44,12 @@ router.post("/forum/threads", requireAuth, async (req, res) => {
   if (title.length > 120) { res.status(413).json({ error: "Title too long" }); return; }
   if (body.length > 2000) { res.status(413).json({ error: "Body too long" }); return; }
   const author = req.session.username!;
+  const forumBlocked = await getBlockedPhrases("forum");
+  if (findBlockedPhrase(title, forumBlocked) || findBlockedPhrase(body, forumBlocked)) {
+    await audit("forum", "blocked-word", author, author, title.trim().slice(0, 200));
+    res.status(400).json({ error: "Your thread contains a blocked word or phrase." });
+    return;
+  }
   if (await isBanned(author)) {
     await audit("forum", "blocked", author, author, title.trim().slice(0, 200));
     res.status(403).json({ error: "You are banned." });
@@ -107,6 +114,11 @@ router.post("/forum/threads/:id/posts", requireAuth, async (req, res) => {
     }
   }
   const author = req.session.username!;
+  if (findBlockedPhrase(trimmed, await getBlockedPhrases("forum"))) {
+    await audit("forum", "blocked-word", author, author, trimmed.slice(0, 200));
+    res.status(400).json({ error: "Your post contains a blocked word or phrase." });
+    return;
+  }
   if (await isBanned(author)) {
     await audit("forum", "blocked", author, author, trimmed.slice(0, 200));
     res.status(403).json({ error: "You are banned." });

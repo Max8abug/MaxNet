@@ -68,6 +68,9 @@ export function SiteSettingsDialog() {
   const [mobileDarkBackgroundPreview, setMobileDarkBackgroundPreview] = useState(settings.mobileDarkBackgroundDataUrl);
   const [chatCooldownEnabled, setChatCooldownEnabled] = useState(settings.chatCooldownEnabled);
   const [customButtons, setCustomButtons] = useState<CustomSiteButton[]>(settings.customButtons);
+  const [usernameBlockedPhrases, setUsernameBlockedPhrases] = useState<string[]>(settings.usernameBlockedPhrases);
+  const [chatBlockedPhrases, setChatBlockedPhrases] = useState<string[]>(settings.chatBlockedPhrases);
+  const [forumBlockedPhrases, setForumBlockedPhrases] = useState<string[]>(settings.forumBlockedPhrases);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
@@ -89,6 +92,9 @@ export function SiteSettingsDialog() {
     setMobileDarkBackgroundPreview(settings.mobileDarkBackgroundDataUrl);
     setChatCooldownEnabled(settings.chatCooldownEnabled);
     setCustomButtons(settings.customButtons);
+    setUsernameBlockedPhrases(settings.usernameBlockedPhrases);
+    setChatBlockedPhrases(settings.chatBlockedPhrases);
+    setForumBlockedPhrases(settings.forumBlockedPhrases);
   }, [
     settings.siteName,
     settings.logoDataUrl,
@@ -99,6 +105,9 @@ export function SiteSettingsDialog() {
     settings.mobileDarkBackgroundDataUrl,
     settings.chatCooldownEnabled,
     settings.customButtons,
+    settings.usernameBlockedPhrases,
+    settings.chatBlockedPhrases,
+    settings.forumBlockedPhrases,
   ]);
 
   if (!user?.isAdmin) {
@@ -152,6 +161,9 @@ export function SiteSettingsDialog() {
         chatCooldownEnabled,
         siteName,
          customButtons,
+         usernameBlockedPhrases,
+         chatBlockedPhrases,
+         forumBlockedPhrases,
       });
       await refreshSiteSettings();
       setMsg("Saved! The new logo will appear for all visitors.");
@@ -404,6 +416,48 @@ export function SiteSettingsDialog() {
           >
             + Add external button
           </button>
+        </div>
+      </div>
+
+      <div className="border-t border-gray-400 pt-2">
+        <div className="font-bold mb-1">Blocked Words &amp; Phrases</div>
+        <div className="text-[11px] text-gray-700 mb-2">
+          Enter one word or phrase per line. Matching is case-insensitive and blocks the whole submission.
+        </div>
+        <div className="flex flex-col gap-2">
+          <label className="flex flex-col gap-0.5">
+            <span className="font-bold">Usernames</span>
+            <textarea
+              className="win98-inset px-1 py-0.5 resize-y"
+              rows={3}
+              placeholder={"badname\nblocked phrase"}
+              disabled={busy}
+              value={usernameBlockedPhrases.join("\n")}
+              onChange={(e) => setUsernameBlockedPhrases(e.target.value.split("\n"))}
+            />
+          </label>
+          <label className="flex flex-col gap-0.5">
+            <span className="font-bold">Chatbox</span>
+            <textarea
+              className="win98-inset px-1 py-0.5 resize-y"
+              rows={3}
+              placeholder={"blocked word\nblocked phrase"}
+              disabled={busy}
+              value={chatBlockedPhrases.join("\n")}
+              onChange={(e) => setChatBlockedPhrases(e.target.value.split("\n"))}
+            />
+          </label>
+          <label className="flex flex-col gap-0.5">
+            <span className="font-bold">Forums</span>
+            <textarea
+              className="win98-inset px-1 py-0.5 resize-y"
+              rows={3}
+              placeholder={"blocked word\nblocked phrase"}
+              disabled={busy}
+              value={forumBlockedPhrases.join("\n")}
+              onChange={(e) => setForumBlockedPhrases(e.target.value.split("\n"))}
+            />
+          </label>
         </div>
       </div>
 

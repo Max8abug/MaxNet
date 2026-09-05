@@ -30,6 +30,9 @@ export const useAuth = create<AuthState>((set, get) => ({
     chatCooldownEnabled: true,
     siteName: "Portfolio 98",
     customButtons: [],
+    usernameBlockedPhrases: [],
+    chatBlockedPhrases: [],
+    forumBlockedPhrases: [],
   },
   refresh: async () => {
       try {

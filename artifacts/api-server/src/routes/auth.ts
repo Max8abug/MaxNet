@@ -4,6 +4,7 @@ import { eq } from "drizzle-orm";
 import { hashPassword, verifyPassword, isAdminUsername, findUserByUsername, requireAdmin } from "../lib/auth";
 import { getClientIp, isIpBanned, recordUserIp } from "../lib/ip-tracking";
 import { flagDevicesForUsername, getDeviceReview, getDeviceStatus, recordDeviceAssociation, getDeviceIdForRequest } from "../lib/device-tracking";
+import { findBlockedPhrase, getBlockedPhrases } from "../lib/content-filter";
 
 const router: IRouter = Router();
 
@@ -48,6 +49,10 @@ router.post("/auth/signup", async (req, res, next) => {
     const u = username.trim();
     if (u.length < 2 || u.length > 32) {
       res.status(400).json({ error: "Username must be 2-32 chars" });
+      return;
+    }
+    if (findBlockedPhrase(u, await getBlockedPhrases("username"))) {
+      res.status(400).json({ error: "That username contains a blocked word or phrase." });
       return;
     }
     if (password.length < 4 || password.length > 128) {
@@ -334,6 +339,10 @@ router.patch("/auth/username", async (req, res, next) => {
       res.status(400).json({ error: "Username must be 2-32 chars" });
       return;
     }
+    if (findBlockedPhrase(nextUsername, await getBlockedPhrases("username"))) {
+      res.status(400).json({ error: "That username contains a blocked word or phrase." });
+      return;
+    }
     if (isAdminUsername(req.session.username)) {
       res.status(400).json({ error: "The site owner username cannot be changed." });
       return;
@@ -465,6 +474,10 @@ router.patch("/users/:username/credentials", requireAdmin, async (req, res) => {
       res.status(400).json({ error: "Username must be 2-32 chars" });
       return;
     }
+    if (findBlockedPhrase(nextUsername, await getBlockedPhrases("username"))) {
+      res.status(400).json({ error: "That username contains a blocked word or phrase." });
+      return;
+    }
     if (nextUsername !== target.username && isAdminUsername(target.username)) {
       res.status(400).json({ error: "The site owner username cannot be changed." });
       return;
@@ -535,6 +548,23 @@ router.patch("/users/:username/credentials", requireAdmin, async (req, res) => {
     req.session.username = nextUsername;
   }
   res.json({ ok: true, username: nextUsername });
+});
+
+// Admin moderation action: remove a user's profile picture without changing
+// any other account data.
+router.patch("/users/:username/avatar", requireAdmin, async (req, res) => {
+  const username = String(req.params.username || "").trim();
+  const target = await findUserByUsername(username);
+  if (!target) { res.status(404).json({ error: "User not found" }); return; }
+  await db.update(usersTable).set({ avatarUrl: null }).where(eq(usersTable.id, target.id));
+  await db.insert(chatAuditTable).values({
+    area: "user",
+    action: "avatar-remove",
+    actor: req.session.username || "admin",
+    target: target.username,
+    body: "Profile picture removed by admin",
+  });
+  res.json({ ok: true, username: target.username });
 });
 
 // Admin: permanently delete a user (also bans them so they can't immediately re-register).

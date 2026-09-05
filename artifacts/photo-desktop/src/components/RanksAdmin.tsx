@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { fetchRanks, createRank, updateRank, deleteRank, assignRank, fetchUsers, type Rank, type PublicUser } from "../lib/api";
 import { useAuth } from "../lib/auth-store";
 
-const PERMS = ["deleteMessages", "ban", "dm", "manageRanks", "cafeTheme", "postNews", "youtubeMaster"];
+const PERMS = ["deleteMessages", "ban", "dm", "manageRanks", "cafeTheme", "postNews", "youtubeMaster", "staffChat"];
 const BUILTINS = ["admin", "mod", "vip"];
 
 export function RanksAdmin() {

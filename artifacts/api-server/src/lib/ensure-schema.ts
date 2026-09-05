@@ -361,6 +361,9 @@ export async function ensureSchema(): Promise<void> {
       chat_cooldown_enabled boolean NOT NULL DEFAULT true,
       site_name text NOT NULL DEFAULT 'Portfolio 98',
        custom_buttons jsonb NOT NULL DEFAULT '[]'::jsonb,
+       username_blocked_phrases jsonb NOT NULL DEFAULT '[]'::jsonb,
+       chat_blocked_phrases jsonb NOT NULL DEFAULT '[]'::jsonb,
+       forum_blocked_phrases jsonb NOT NULL DEFAULT '[]'::jsonb,
       updated_at timestamp NOT NULL DEFAULT now()
     );
     ALTER TABLE site_settings ADD COLUMN IF NOT EXISTS dark_logo_data_url text NOT NULL DEFAULT '';
@@ -371,6 +374,9 @@ export async function ensureSchema(): Promise<void> {
     ALTER TABLE site_settings ADD COLUMN IF NOT EXISTS chat_cooldown_enabled boolean NOT NULL DEFAULT true;
     ALTER TABLE site_settings ADD COLUMN IF NOT EXISTS site_name text NOT NULL DEFAULT 'Portfolio 98';
     ALTER TABLE site_settings ADD COLUMN IF NOT EXISTS custom_buttons jsonb NOT NULL DEFAULT '[]'::jsonb;
+    ALTER TABLE site_settings ADD COLUMN IF NOT EXISTS username_blocked_phrases jsonb NOT NULL DEFAULT '[]'::jsonb;
+    ALTER TABLE site_settings ADD COLUMN IF NOT EXISTS chat_blocked_phrases jsonb NOT NULL DEFAULT '[]'::jsonb;
+    ALTER TABLE site_settings ADD COLUMN IF NOT EXISTS forum_blocked_phrases jsonb NOT NULL DEFAULT '[]'::jsonb;
     ALTER TABLE site_settings ADD COLUMN IF NOT EXISTS updated_at timestamp NOT NULL DEFAULT now();
     ALTER TABLE site_settings ADD COLUMN IF NOT EXISTS vapid_public_key text NOT NULL DEFAULT '';
     ALTER TABLE site_settings ADD COLUMN IF NOT EXISTS vapid_private_key text NOT NULL DEFAULT '';

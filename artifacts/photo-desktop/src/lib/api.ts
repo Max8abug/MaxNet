@@ -27,6 +27,7 @@ export const CHAT_ROOMS = [
   { id: "media", label: "Media" },
   { id: "games", label: "Games" },
   { id: "random", label: "Random" },
+  { id: "staff", label: "Staff Room" },
 ] as const;
 export type ChatRoom = typeof CHAT_ROOMS[number]["id"];
 export interface ChatRoomStatus {
@@ -188,6 +189,9 @@ export interface SiteSettings {
   chatCooldownEnabled: boolean;
   siteName: string;
   customButtons: CustomSiteButton[];
+  usernameBlockedPhrases: string[];
+  chatBlockedPhrases: string[];
+  forumBlockedPhrases: string[];
 }
 export interface CustomSiteButton { label: string; url: string; }
 export async function fetchSiteSettings(): Promise<SiteSettings> {
@@ -283,6 +287,13 @@ export async function adminUpdateAccount(username: string, data: { username?: st
     ...opts, method: "PATCH",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(data),
+  }));
+}
+export async function adminRemoveAvatar(username: string): Promise<void> {
+  await jsonOrThrow(await fetch(`${BASE}/users/${encodeURIComponent(username)}/avatar`, {
+    ...opts,
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
   }));
 }
 export interface DeviceAppeal {
