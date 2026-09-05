@@ -7,8 +7,10 @@ import {
   guestbookTable,
   photosTable,
   bannedUsersTable,
+  chatMutesTable,
   chatAuditTable,
   usersTable,
+  siteSettingsTable,
 } from "@workspace/db";
 import { asc, desc, sql, eq, inArray, and, lt } from "drizzle-orm";
 import { requireAuth, requireAdmin, isAdminUsername } from "../lib/auth";
@@ -37,6 +39,15 @@ export async function isBanned(username: string): Promise<boolean> {
     .select()
     .from(bannedUsersTable)
     .where(eq(bannedUsersTable.username, username))
+    .limit(1);
+  return !!row;
+}
+
+export async function isChatMuted(username: string): Promise<boolean> {
+  const [row] = await db
+    .select({ id: chatMutesTable.id })
+    .from(chatMutesTable)
+    .where(eq(chatMutesTable.username, username))
     .limit(1);
   return !!row;
 }
@@ -487,10 +498,21 @@ router.post("/chat", requireAuth, async (req, res) => {
   const author = req.session.username || "anon";
   const room = normalizeChatRoom(req.body?.room);
   const previousPost = chatLastPostMap.get(author) || 0;
-  const remainingDelay = CHAT_SEND_DELAY_MS - (Date.now() - previousPost);
-  if (remainingDelay > 0) {
-    res.status(429).json({ error: `Please wait ${Math.ceil(remainingDelay / 1000)}s before sending another message.` });
+  if (await isChatMuted(author)) {
+    await audit("chat", "muted", author, room, trimmedBody.slice(0, 500));
+    res.status(403).json({ error: "You are muted in chat." });
     return;
+  }
+  const [siteSettings] = await db
+    .select({ chatCooldownEnabled: siteSettingsTable.chatCooldownEnabled })
+    .from(siteSettingsTable)
+    .limit(1);
+  if (siteSettings?.chatCooldownEnabled !== false) {
+    const remainingDelay = CHAT_SEND_DELAY_MS - (Date.now() - previousPost);
+    if (remainingDelay > 0) {
+      res.status(429).json({ error: `Please wait ${Math.ceil(remainingDelay / 1000)}s before sending another message.` });
+      return;
+    }
   }
   if (await isBanned(author)) {
     await audit("chat", "blocked", author, room, trimmedBody.slice(0, 500));
@@ -606,11 +628,19 @@ router.post("/bans", requireBan, async (req, res) => {
   const safeReason = typeof reason === "string" ? reason.slice(0, 200) : "";
   const actor = req.session.username || "admin";
   try {
-    const [row] = await db.insert(bannedUsersTable).values({ username: u, bannedBy: actor, reason: safeReason }).returning();
+    const [row] = await db.insert(bannedUsersTable)
+      .values({ username: u, bannedBy: actor, reason: safeReason })
+      .onConflictDoUpdate({
+        target: bannedUsersTable.username,
+        set: { bannedBy: actor, reason: safeReason },
+      })
+      .returning();
     const flaggedDevices = await flagDevicesForUsername(u, actor, safeReason || `Account ${u} was banned`);
     await audit("global", "ban", actor, u, safeReason);
     res.json({ ...row, flaggedDevices });
-  } catch { res.status(409).json({ error: "User already banned" }); }
+  } catch (e: any) {
+    res.status(500).json({ error: e?.message || "Failed to ban user" });
+  }
 });
 
 router.delete("/bans/:username", requireBan, async (req, res) => {
@@ -619,6 +649,72 @@ router.delete("/bans/:username", requireBan, async (req, res) => {
   await db.delete(bannedUsersTable).where(eq(bannedUsersTable.username, u));
   await audit("global", "unban", req.session.username || "admin", u, "");
   res.json({ ok: true });
+});
+
+// ---------- Chat mutes (staff with ban permission) ----------
+router.get("/chat-mutes", requireBan, async (_req, res) => {
+  const rows = await db
+    .select()
+    .from(chatMutesTable)
+    .orderBy(desc(chatMutesTable.createdAt));
+  res.json(rows);
+});
+
+router.post("/chat-mutes", requireBan, async (req, res) => {
+  const { username, reason } = req.body ?? {};
+  if (typeof username !== "string" || !username.trim()) {
+    res.status(400).json({ error: "username required" });
+    return;
+  }
+  const u = username.trim().slice(0, 32);
+  if (isAdminUsername(u)) {
+    res.status(400).json({ error: "Cannot mute the admin account" });
+    return;
+  }
+  const actor = req.session.username || "staff";
+  const safeReason = typeof reason === "string" ? reason.slice(0, 200) : "";
+  try {
+    const [row] = await db.insert(chatMutesTable).values({
+      username: u,
+      mutedBy: actor,
+      reason: safeReason,
+    }).returning();
+    await audit("chat", "mute", actor, u, safeReason);
+    res.json(row);
+  } catch {
+    res.status(409).json({ error: "User is already muted" });
+  }
+});
+
+router.delete("/chat-mutes/:username", requireBan, async (req, res) => {
+  const username = String(req.params.username || "").trim();
+  if (!username) {
+    res.status(400).json({ error: "username required" });
+    return;
+  }
+  await db.delete(chatMutesTable).where(eq(chatMutesTable.username, username));
+  await audit("chat", "unmute", req.session.username || "staff", username, "");
+  res.json({ ok: true });
+});
+
+router.patch("/chat-settings", requireBan, async (req, res) => {
+  if (typeof req.body?.chatCooldownEnabled !== "boolean") {
+    res.status(400).json({ error: "chatCooldownEnabled must be boolean" });
+    return;
+  }
+  const enabled = req.body.chatCooldownEnabled;
+  const [row] = await db.select({ id: siteSettingsTable.id })
+    .from(siteSettingsTable)
+    .limit(1);
+  if (row) {
+    await db.update(siteSettingsTable)
+      .set({ chatCooldownEnabled: enabled, updatedAt: new Date() })
+      .where(eq(siteSettingsTable.id, row.id));
+  } else {
+    await db.insert(siteSettingsTable).values({ chatCooldownEnabled: enabled });
+  }
+  await audit("chat", enabled ? "cooldown-on" : "cooldown-off", req.session.username || "staff", "", "");
+  res.json({ ok: true, chatCooldownEnabled: enabled });
 });
 
 // ---------- Guestbook ----------

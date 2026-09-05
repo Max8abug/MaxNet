@@ -185,6 +185,7 @@ export interface SiteSettings {
   darkBackgroundDataUrl: string;
   mobileBackgroundDataUrl: string;
   mobileDarkBackgroundDataUrl: string;
+  chatCooldownEnabled: boolean;
   siteName: string;
 }
 export async function fetchSiteSettings(): Promise<SiteSettings> {
@@ -296,8 +297,21 @@ export interface DeviceAppeal {
   deviceStatus: string;
   deviceReason: string;
 }
+export interface UserDevice {
+  deviceId: number;
+  status: "active" | "flagged" | "blocked" | string;
+  reason: string;
+  firstSeen: string;
+  lastSeen: string;
+  associationFirstSeen: string;
+  associationLastSeen: string;
+}
 export async function fetchDeviceAppeals(): Promise<DeviceAppeal[]> {
   return jsonOrThrow(await fetch(`${BASE}/device-appeals`, opts));
+}
+export async function fetchUserDevices(username: string): Promise<UserDevice[]> {
+  const j = await jsonOrThrow(await fetch(`${BASE}/users/${encodeURIComponent(username)}/devices`, opts));
+  return j.devices || [];
 }
 export async function resolveDeviceAppeal(id: number, decision: "approved" | "denied", response: string): Promise<void> {
   await jsonOrThrow(await fetch(`${BASE}/device-appeals/${id}/resolve`, {
@@ -392,6 +406,36 @@ export async function addBan(username: string, reason: string): Promise<BannedUs
 export async function removeBan(username: string): Promise<void> {
   await jsonOrThrow(await fetch(`${BASE}/bans/${encodeURIComponent(username)}`, {
     ...opts, method: "DELETE",
+  }));
+}
+
+export interface ChatMute {
+  id: number;
+  username: string;
+  mutedBy: string;
+  reason: string;
+  createdAt: string;
+}
+export async function fetchChatMutes(): Promise<ChatMute[]> {
+  return jsonOrThrow(await fetch(`${BASE}/chat-mutes`, opts));
+}
+export async function addChatMute(username: string, reason: string): Promise<ChatMute> {
+  return jsonOrThrow(await fetch(`${BASE}/chat-mutes`, {
+    ...opts, method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ username, reason }),
+  }));
+}
+export async function removeChatMute(username: string): Promise<void> {
+  await jsonOrThrow(await fetch(`${BASE}/chat-mutes/${encodeURIComponent(username)}`, {
+    ...opts, method: "DELETE",
+  }));
+}
+export async function updateChatCooldown(chatCooldownEnabled: boolean): Promise<{ chatCooldownEnabled: boolean }> {
+  return jsonOrThrow(await fetch(`${BASE}/chat-settings`, {
+    ...opts, method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ chatCooldownEnabled }),
   }));
 }
 

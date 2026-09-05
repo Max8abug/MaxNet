@@ -15,6 +15,7 @@ async function ensureRow() {
     darkBackgroundDataUrl: "",
     mobileBackgroundDataUrl: "",
     mobileDarkBackgroundDataUrl: "",
+    chatCooldownEnabled: true,
     siteName: "Portfolio 98",
   });
   const [created] = await db.select().from(siteSettingsTable).limit(1);
@@ -30,6 +31,7 @@ router.get("/site-settings", async (_req, res) => {
     darkBackgroundDataUrl: row.darkBackgroundDataUrl || "",
     mobileBackgroundDataUrl: row.mobileBackgroundDataUrl || "",
     mobileDarkBackgroundDataUrl: row.mobileDarkBackgroundDataUrl || "",
+    chatCooldownEnabled: row.chatCooldownEnabled !== false,
     siteName: row.siteName || "Portfolio 98",
   });
 });
@@ -58,6 +60,9 @@ router.put("/site-settings", requireAdmin, async (req, res) => {
       update[key] = req.body[key];
     }
   }
+  if (typeof req.body?.chatCooldownEnabled === "boolean") {
+    update.chatCooldownEnabled = req.body.chatCooldownEnabled;
+  }
   if (typeof req.body?.siteName === "string") {
     const name = req.body.siteName.trim().slice(0, 60);
     if (name.length > 0) update.siteName = name;
@@ -71,6 +76,7 @@ router.put("/site-settings", requireAdmin, async (req, res) => {
       darkBackgroundDataUrl: row.darkBackgroundDataUrl,
       mobileBackgroundDataUrl: row.mobileBackgroundDataUrl,
       mobileDarkBackgroundDataUrl: row.mobileDarkBackgroundDataUrl,
+      chatCooldownEnabled: row.chatCooldownEnabled !== false,
       siteName: row.siteName,
     });
     return;
@@ -86,6 +92,7 @@ router.put("/site-settings", requireAdmin, async (req, res) => {
     darkBackgroundDataUrl: fresh!.darkBackgroundDataUrl,
     mobileBackgroundDataUrl: fresh!.mobileBackgroundDataUrl,
     mobileDarkBackgroundDataUrl: fresh!.mobileDarkBackgroundDataUrl,
+    chatCooldownEnabled: fresh!.chatCooldownEnabled !== false,
     siteName: fresh!.siteName,
   });
 });

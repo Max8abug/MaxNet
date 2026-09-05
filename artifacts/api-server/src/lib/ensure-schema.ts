@@ -358,6 +358,7 @@ export async function ensureSchema(): Promise<void> {
       dark_background_data_url text NOT NULL DEFAULT '',
       mobile_background_data_url text NOT NULL DEFAULT '',
       mobile_dark_background_data_url text NOT NULL DEFAULT '',
+      chat_cooldown_enabled boolean NOT NULL DEFAULT true,
       site_name text NOT NULL DEFAULT 'Portfolio 98',
       updated_at timestamp NOT NULL DEFAULT now()
     );
@@ -366,6 +367,7 @@ export async function ensureSchema(): Promise<void> {
     ALTER TABLE site_settings ADD COLUMN IF NOT EXISTS dark_background_data_url text NOT NULL DEFAULT '';
     ALTER TABLE site_settings ADD COLUMN IF NOT EXISTS mobile_background_data_url text NOT NULL DEFAULT '';
     ALTER TABLE site_settings ADD COLUMN IF NOT EXISTS mobile_dark_background_data_url text NOT NULL DEFAULT '';
+    ALTER TABLE site_settings ADD COLUMN IF NOT EXISTS chat_cooldown_enabled boolean NOT NULL DEFAULT true;
     ALTER TABLE site_settings ADD COLUMN IF NOT EXISTS site_name text NOT NULL DEFAULT 'Portfolio 98';
     ALTER TABLE site_settings ADD COLUMN IF NOT EXISTS updated_at timestamp NOT NULL DEFAULT now();
     ALTER TABLE site_settings ADD COLUMN IF NOT EXISTS vapid_public_key text NOT NULL DEFAULT '';
@@ -381,6 +383,14 @@ export async function ensureSchema(): Promise<void> {
       created_at timestamp NOT NULL DEFAULT now()
     );
     ALTER TABLE chat_audit_log ADD COLUMN IF NOT EXISTS area text NOT NULL DEFAULT 'chat';
+
+    CREATE TABLE IF NOT EXISTS chat_mutes (
+      id serial PRIMARY KEY,
+      username text NOT NULL UNIQUE,
+      muted_by text NOT NULL,
+      reason text NOT NULL DEFAULT '',
+      created_at timestamp NOT NULL DEFAULT now()
+    );
 
     CREATE TABLE IF NOT EXISTS forum_threads (
       id serial PRIMARY KEY,

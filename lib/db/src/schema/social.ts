@@ -211,6 +211,14 @@ export const bannedUsersTable = pgTable("banned_users", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
+export const chatMutesTable = pgTable("chat_mutes", {
+  id: serial("id").primaryKey(),
+  username: text("username").notNull().unique(),
+  mutedBy: text("muted_by").notNull(),
+  reason: text("reason").notNull().default(""),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
 // Track which IPs each registered username has logged in from. Used by the admin
 // "scan IPs" tool to detect alts (multiple usernames coming from the same address).
 export const userIpsTable = pgTable("user_ips", {
@@ -315,6 +323,7 @@ export const siteSettingsTable = pgTable("site_settings", {
   darkBackgroundDataUrl: text("dark_background_data_url").notNull().default(""),
   mobileBackgroundDataUrl: text("mobile_background_data_url").notNull().default(""),
   mobileDarkBackgroundDataUrl: text("mobile_dark_background_data_url").notNull().default(""),
+  chatCooldownEnabled: boolean("chat_cooldown_enabled").notNull().default(true),
   siteName: text("site_name").notNull().default("Portfolio 98"),
   vapidPublicKey: text("vapid_public_key").notNull().default(""),
   vapidPrivateKey: text("vapid_private_key").notNull().default(""),

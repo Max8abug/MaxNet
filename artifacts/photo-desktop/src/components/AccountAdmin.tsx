@@ -2,10 +2,13 @@ import { useEffect, useState } from "react";
 import {
   adminUpdateAccount,
   fetchDeviceAppeals,
+  fetchUserDevices,
   fetchUsers,
   resolveDeviceAppeal,
+  setDeviceStatus,
   type DeviceAppeal,
   type PublicUser,
+  type UserDevice,
 } from "../lib/api";
 import { useAuth } from "../lib/auth-store";
 
@@ -23,6 +26,9 @@ export function AccountAdmin() {
   const [appeals, setAppeals] = useState<DeviceAppeal[]>([]);
   const [appealsLoading, setAppealsLoading] = useState(false);
   const [appealBusy, setAppealBusy] = useState<number | null>(null);
+  const [devices, setDevices] = useState<UserDevice[]>([]);
+  const [devicesLoading, setDevicesLoading] = useState(false);
+  const [deviceBusy, setDeviceBusy] = useState<number | null>(null);
 
   async function load() {
     setLoading(true);
@@ -62,6 +68,37 @@ export function AccountAdmin() {
     setErr(null);
     setNotice(null);
   }, [selectedUser?.username]);
+
+  useEffect(() => {
+    if (!selected) {
+      setDevices([]);
+      return;
+    }
+    setDevicesLoading(true);
+    void fetchUserDevices(selected)
+      .then(setDevices)
+      .catch(() => setDevices([]))
+      .finally(() => setDevicesLoading(false));
+  }, [selected]);
+
+  async function updateDevice(device: UserDevice, status: "active" | "flagged" | "blocked") {
+    const reason = prompt(
+      `${status === "active" ? "Restore" : status === "blocked" ? "Block" : "Flag"} device #${device.deviceId}? Optional reason:`,
+      device.reason || "",
+    );
+    if (reason === null) return;
+    setDeviceBusy(device.deviceId);
+    setErr(null);
+    try {
+      await setDeviceStatus(device.deviceId, status, reason);
+      setNotice(`Device #${device.deviceId} is now ${status}.`);
+      setDevices(await fetchUserDevices(selected));
+    } catch (e: any) {
+      setErr(e?.message || "Could not update device");
+    } finally {
+      setDeviceBusy(null);
+    }
+  }
 
   if (!me?.isAdmin) return <div className="p-2 text-xs">Admin only.</div>;
 
@@ -213,6 +250,49 @@ export function AccountAdmin() {
           <button className="win98-button px-3 py-1 self-end" disabled={busy} onClick={() => void save()}>
             {busy ? "Saving…" : "Save Account"}
           </button>
+        </div>
+      )}
+      {selectedUser && (
+        <div className="win98-inset bg-white p-2 flex flex-col gap-1">
+          <div className="font-bold">Known devices</div>
+          <div className="text-[10px] text-gray-600">
+            Blocked or flagged devices cannot sign in to this account until restored or an appeal is approved.
+          </div>
+          {devicesLoading && <div className="text-gray-500">Loading devices…</div>}
+          {!devicesLoading && devices.length === 0 && (
+            <div className="text-gray-500">No device has signed into this account yet.</div>
+          )}
+          {devices.map((device) => (
+            <div key={device.deviceId} className="border-t border-dashed border-gray-300 pt-1 mt-1">
+              <div className="flex items-center gap-1">
+                <span className="font-bold">Device #{device.deviceId}</span>
+                <span className={`px-1 text-[10px] font-bold ${device.status === "active" ? "bg-green-200 text-green-900" : device.status === "blocked" ? "bg-red-200 text-red-900" : "bg-yellow-200 text-yellow-900"}`}>
+                  {device.status}
+                </span>
+                <span className="ml-auto text-[10px] text-gray-500">
+                  last seen {new Date(device.lastSeen).toLocaleString()}
+                </span>
+              </div>
+              {device.reason && <div className="text-[10px] text-gray-600 break-words">{device.reason}</div>}
+              <div className="flex gap-1 justify-end mt-1">
+                {device.status !== "active" && (
+                  <button className="win98-button px-1 text-[10px]" disabled={deviceBusy === device.deviceId} onClick={() => void updateDevice(device, "active")}>
+                    Restore
+                  </button>
+                )}
+                {device.status !== "flagged" && (
+                  <button className="win98-button px-1 text-[10px] text-yellow-800" disabled={deviceBusy === device.deviceId} onClick={() => void updateDevice(device, "flagged")}>
+                    Flag
+                  </button>
+                )}
+                {device.status !== "blocked" && (
+                  <button className="win98-button px-1 text-[10px] text-red-800" disabled={deviceBusy === device.deviceId} onClick={() => void updateDevice(device, "blocked")}>
+                    Block
+                  </button>
+                )}
+              </div>
+            </div>
+          ))}
         </div>
       )}
       {err && <div className="text-red-700">{err}</div>}

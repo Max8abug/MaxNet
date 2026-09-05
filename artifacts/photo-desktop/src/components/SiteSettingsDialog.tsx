@@ -66,6 +66,7 @@ export function SiteSettingsDialog() {
   const [darkBackgroundPreview, setDarkBackgroundPreview] = useState(settings.darkBackgroundDataUrl);
   const [mobileBackgroundPreview, setMobileBackgroundPreview] = useState(settings.mobileBackgroundDataUrl);
   const [mobileDarkBackgroundPreview, setMobileDarkBackgroundPreview] = useState(settings.mobileDarkBackgroundDataUrl);
+  const [chatCooldownEnabled, setChatCooldownEnabled] = useState(settings.chatCooldownEnabled);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
@@ -85,6 +86,7 @@ export function SiteSettingsDialog() {
     setDarkBackgroundPreview(settings.darkBackgroundDataUrl);
     setMobileBackgroundPreview(settings.mobileBackgroundDataUrl);
     setMobileDarkBackgroundPreview(settings.mobileDarkBackgroundDataUrl);
+    setChatCooldownEnabled(settings.chatCooldownEnabled);
   }, [
     settings.siteName,
     settings.logoDataUrl,
@@ -93,6 +95,7 @@ export function SiteSettingsDialog() {
     settings.darkBackgroundDataUrl,
     settings.mobileBackgroundDataUrl,
     settings.mobileDarkBackgroundDataUrl,
+    settings.chatCooldownEnabled,
   ]);
 
   if (!user?.isAdmin) {
@@ -143,6 +146,7 @@ export function SiteSettingsDialog() {
         darkBackgroundDataUrl: darkBackgroundPreview,
         mobileBackgroundDataUrl: mobileBackgroundPreview,
         mobileDarkBackgroundDataUrl: mobileDarkBackgroundPreview,
+        chatCooldownEnabled,
         siteName,
       });
       await refreshSiteSettings();
@@ -351,6 +355,23 @@ export function SiteSettingsDialog() {
             <button className="win98-button px-2 py-0.5 text-red-700" disabled={busy || !mobileDarkBackgroundPreview} onClick={() => void clearMobileBackground(true)}>Reset mobile dark</button>
           </div>
         </div>
+      </div>
+
+      <div>
+        <label className="flex items-start gap-2 border-t border-gray-400 pt-2">
+          <input
+            type="checkbox"
+            checked={chatCooldownEnabled}
+            disabled={busy}
+            onChange={(e) => setChatCooldownEnabled(e.target.checked)}
+          />
+          <span>
+            <span className="font-bold block">Require a 5-second chat cooldown</span>
+            <span className="text-[11px] text-gray-700 block">
+              When enabled, users must wait five seconds after each successful chat message before sending another.
+            </span>
+          </span>
+        </label>
       </div>
 
       <div>

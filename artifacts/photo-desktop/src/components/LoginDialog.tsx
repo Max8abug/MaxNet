@@ -44,6 +44,14 @@ export function LoginDialog({ onClose }: Props) {
     }
   }
 
+  function switchMode() {
+    setMode(mode === "login" ? "signup" : "login");
+    setAppealRequired(false);
+    setAppealSent(false);
+    setAppealMessage("");
+    setErr(null);
+  }
+
   return (
     <div
       className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/30"
@@ -75,7 +83,7 @@ export function LoginDialog({ onClose }: Props) {
             />
           </label>
           {err && <div className="text-red-700 text-xs">{err}</div>}
-          {appealRequired && (
+          {appealRequired && mode === "login" && (
             <div className="win98-inset bg-[#fffbe6] p-2 flex flex-col gap-2 text-xs">
               <div className="font-bold text-[#7a4b00]">Admin review required</div>
               {appealSent ? (
@@ -107,7 +115,7 @@ export function LoginDialog({ onClose }: Props) {
             </button>
             <button
               className="win98-button px-3 py-1"
-              onClick={() => setMode(mode === "login" ? "signup" : "login")}
+              onClick={switchMode}
             >
               {mode === "login" ? "Need an account?" : "Have an account?"}
             </button>

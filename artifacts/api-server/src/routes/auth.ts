@@ -11,6 +11,18 @@ router.get("/auth/me", async (req, res) => {
   if (!req.session.userId) { res.json({ user: null }); return; }
   const [u] = await db.select().from(usersTable).where(eq(usersTable.id, req.session.userId)).limit(1);
   if (!u) { res.json({ user: null }); return; }
+  if (!u.isAdmin) {
+    const [accountBan] = await db.select({ id: bannedUsersTable.id })
+      .from(bannedUsersTable)
+      .where(eq(bannedUsersTable.username, u.username))
+      .limit(1);
+    const deviceReview = await getDeviceReview(req, u.id);
+    if (accountBan || deviceReview) {
+      req.session.destroy(() => {});
+      res.json({ user: null });
+      return;
+    }
+  }
   res.json({
     user: {
       id: u.id,
@@ -45,6 +57,14 @@ router.post("/auth/signup", async (req, res, next) => {
     const ip = getClientIp(req);
     if (await isIpBanned(ip)) {
       res.status(403).json({ error: "Your network is banned from creating accounts on this site." });
+      return;
+    }
+    const [bannedUsername] = await db.select({ id: bannedUsersTable.id })
+      .from(bannedUsersTable)
+      .where(eq(bannedUsersTable.username, u))
+      .limit(1);
+    if (bannedUsername) {
+      res.status(403).json({ error: "That username is banned from this site.", code: "ACCOUNT_BANNED" });
       return;
     }
     const existing = await findUserByUsername(u);
@@ -93,6 +113,14 @@ router.post("/auth/login", async (req, res, next) => {
     const ok = await verifyPassword(password, user.passwordHash);
     if (!ok) {
       res.status(401).json({ error: "Invalid credentials" });
+      return;
+    }
+    const [accountBan] = await db.select({ id: bannedUsersTable.id })
+      .from(bannedUsersTable)
+      .where(eq(bannedUsersTable.username, user.username))
+      .limit(1);
+    if (accountBan && !user.isAdmin) {
+      res.status(403).json({ error: "This account is banned from this site.", code: "ACCOUNT_BANNED" });
       return;
     }
     // Auto-promote if username matches admin name (in case flag was missed)

@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import {
   fetchChatPage, fetchChatRoomStatuses, postChat, clearChat, deleteChatMessage,
-  fetchChatAudit, fetchBans, addBan, removeBan, pingTyping, fetchTyping,
-  CHAT_ROOMS, type ChatRoom, type ChatRoomStatus, type ChatMessage, type ChatAuditEntry, type BannedUser,
+  fetchChatAudit, fetchBans, addBan, removeBan, fetchChatMutes, addChatMute, removeChatMute, updateChatCooldown,
+  pingTyping, fetchTyping,
+  CHAT_ROOMS, type ChatRoom, type ChatRoomStatus, type ChatMessage, type ChatAuditEntry, type BannedUser, type ChatMute,
 } from "../lib/api";
 import { useAuth, userColor, hasPermission } from "../lib/auth-store";
 import { Avatar, getCachedAvatar, getCachedUser } from "./Avatar";
@@ -11,7 +12,7 @@ import { pushToast } from "./Toast";
 import { formatLocalTime, formatLocalDate } from "../lib/dates";
 
 interface Props { onRequestLogin?: () => void; }
-type Tab = "chat" | "audit" | "bans";
+type Tab = "chat" | "audit" | "bans" | "mutes";
 
 function fileToImageData(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -66,6 +67,8 @@ export function ChatBox({ onRequestLogin }: Props) {
   const [sendCooldown, setSendCooldown] = useState(false);
   const user = useAuth((s) => s.user);
   const ranks = useAuth((s) => s.ranks);
+  const siteSettings = useAuth((s) => s.siteSettings);
+  const refreshSiteSettings = useAuth((s) => s.refreshSiteSettings);
   const refreshRanks = useAuth((s) => s.refreshRanks);
   const isAdmin = !!user?.isAdmin;
   const canDelete = !!user && (isAdmin || hasPermission(user, "deleteMessages", ranks));
@@ -76,6 +79,10 @@ export function ChatBox({ onRequestLogin }: Props) {
   const [bans, setBans] = useState<BannedUser[]>([]);
   const [banName, setBanName] = useState("");
   const [banReason, setBanReason] = useState("");
+  const [mutes, setMutes] = useState<ChatMute[]>([]);
+  const [muteName, setMuteName] = useState("");
+  const [muteReason, setMuteReason] = useState("");
+  const [cooldownSaving, setCooldownSaving] = useState(false);
 
   function roomSeenKey(name: ChatRoom): string {
     return `chatRoomLastSeen:${name}`;
@@ -121,9 +128,13 @@ export function ChatBox({ onRequestLogin }: Props) {
     } catch {}
   }
   async function refreshAdmin() {
-    if (!isAdmin) return;
-    try { setAudit(await fetchChatAudit()); } catch {}
-    try { setBans(await fetchBans()); } catch {}
+    if (isAdmin) {
+      try { setAudit(await fetchChatAudit()); } catch {}
+      try { setBans(await fetchBans()); } catch {}
+    }
+    if (canBan) {
+      try { setMutes(await fetchChatMutes()); } catch {}
+    }
   }
 
   useEffect(() => { void refreshRanks(); }, [refreshRanks]);
@@ -145,7 +156,10 @@ export function ChatBox({ onRequestLogin }: Props) {
     }, 2500);
     return () => clearInterval(t);
   }, [user?.username]);
-  useEffect(() => { if (!isAdmin) { setTab("chat"); return; } void refreshAdmin(); }, [isAdmin]);
+  useEffect(() => {
+    if (!isAdmin && !canBan) { setTab("chat"); return; }
+    void refreshAdmin();
+  }, [isAdmin, canBan]);
   useEffect(() => { if (tab === "chat" && !loadingOlder) scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight }); }, [messages.length, tab]);
   useEffect(() => () => {
     if (sendTimerRef.current !== null) window.clearTimeout(sendTimerRef.current);
@@ -168,21 +182,23 @@ export function ChatBox({ onRequestLogin }: Props) {
     setSending(true); setErr(null);
     try {
       await postChat(sendText, sendImage, sendVideo, sendReply, sendRoom);
-      setSendCooldown(true);
-      setSendCountdown(5);
-      const started = Date.now();
-      sendCountdownTimerRef.current = window.setInterval(() => {
-        setSendCountdown(Math.max(0, Math.ceil((5000 - (Date.now() - started)) / 1000)));
-      }, 250);
-      sendTimerRef.current = window.setTimeout(() => {
-        if (sendCountdownTimerRef.current !== null) {
-          window.clearInterval(sendCountdownTimerRef.current);
-          sendCountdownTimerRef.current = null;
-        }
-        sendTimerRef.current = null;
-        setSendCooldown(false);
-        setSendCountdown(0);
-      }, 5000);
+      if (siteSettings.chatCooldownEnabled) {
+        setSendCooldown(true);
+        setSendCountdown(5);
+        const started = Date.now();
+        sendCountdownTimerRef.current = window.setInterval(() => {
+          setSendCountdown(Math.max(0, Math.ceil((5000 - (Date.now() - started)) / 1000)));
+        }, 250);
+        sendTimerRef.current = window.setTimeout(() => {
+          if (sendCountdownTimerRef.current !== null) {
+            window.clearInterval(sendCountdownTimerRef.current);
+            sendCountdownTimerRef.current = null;
+          }
+          sendTimerRef.current = null;
+          setSendCooldown(false);
+          setSendCountdown(0);
+        }, 5000);
+      }
       setText(""); setImageData(null); setVideoData(null); setGifUrl(""); setReplyTo(null);
       await refresh(sendRoom);
     } catch (e: any) { setErr(e?.message || "Failed"); }
@@ -255,6 +271,35 @@ export function ChatBox({ onRequestLogin }: Props) {
     catch (e: any) { alert(e?.message || "Failed"); }
   }
   async function unban(username: string) { try { await removeBan(username); await refreshAdmin(); } catch {} }
+  async function quickMute(username: string) {
+    const reason = prompt(`Mute ${username} in chat? Optional reason:`, "");
+    if (reason === null) return;
+    try { await addChatMute(username, reason); await refreshAdmin(); }
+    catch (e: any) { alert(e?.message || "Failed"); }
+  }
+  async function submitMute() {
+    const u = muteName.trim(); if (!u) return;
+    try {
+      await addChatMute(u, muteReason);
+      setMuteName("");
+      setMuteReason("");
+      await refreshAdmin();
+    } catch (e: any) { alert(e?.message || "Failed"); }
+  }
+  async function unmute(username: string) {
+    try { await removeChatMute(username); await refreshAdmin(); } catch {}
+  }
+  async function toggleCooldown(enabled: boolean) {
+    setCooldownSaving(true);
+    try {
+      await updateChatCooldown(enabled);
+      await refreshSiteSettings();
+    } catch (e: any) {
+      alert(e?.message || "Could not update chat cooldown");
+    } finally {
+      setCooldownSaving(false);
+    }
+  }
 
   function authorColor(name: string): string | undefined {
     const cached = getCachedUser(name);
@@ -286,13 +331,19 @@ export function ChatBox({ onRequestLogin }: Props) {
           );
         })}
       </div>
-      {isAdmin && (
+      {(isAdmin || canBan) && (
         <div className="flex gap-1 mb-1 shrink-0">
-          {(["chat", "audit", "bans"] as Tab[]).map((t) => (
+          {(["chat", ...(isAdmin ? ["audit", "bans"] : []), ...(canBan ? ["mutes"] : [])] as Tab[]).map((t) => (
             <button key={t}
               className={`win98-button px-2 py-0.5 text-xs ${tab === t ? "shadow-[inset_1px_1px_#808080] border-t-black border-l-black border-r-white border-b-white" : ""}`}
               onClick={() => { setTab(t); if (t !== "chat") void refreshAdmin(); }}>
-              {t === "chat" ? "Chat" : t === "audit" ? `Audit (${audit.length.toLocaleString()})` : `Bans (${bans.length})`}
+              {t === "chat"
+                ? "Chat"
+                : t === "audit"
+                  ? `Audit (${audit.length.toLocaleString()})`
+                  : t === "bans"
+                    ? `Bans (${bans.length})`
+                    : `Mutes (${mutes.length})`}
             </button>
           ))}
         </div>
@@ -346,6 +397,7 @@ export function ChatBox({ onRequestLogin }: Props) {
                       <span className="opacity-0 group-hover:opacity-100 flex gap-0.5 shrink-0">
                         {canDelete && <button className="win98-button px-1 text-[10px]" onClick={(e) => { e.stopPropagation(); deleteOne(m.id); }}>x</button>}
                         {canBan && <button className="win98-button px-1 text-[10px]" onClick={(e) => { e.stopPropagation(); quickBan(m.author); }}>ban</button>}
+                        {canBan && <button className="win98-button px-1 text-[10px]" onClick={(e) => { e.stopPropagation(); void quickMute(m.author); }}>mute</button>}
                       </span>
                     )}
                   </div>
@@ -466,6 +518,41 @@ export function ChatBox({ onRequestLogin }: Props) {
             <input className="win98-inset px-1 text-xs" placeholder="username to ban" value={banName} onChange={(e) => setBanName(e.target.value)} />
             <input className="win98-inset px-1 text-xs" placeholder="reason (optional)" value={banReason} onChange={(e) => setBanReason(e.target.value)} />
             <button className="win98-button px-2 self-end text-xs" onClick={submitBan}>Ban User</button>
+          </div>
+        </div>
+      )}
+
+      {tab === "mutes" && canBan && (
+        <div className="flex-1 flex flex-col gap-1 overflow-hidden">
+          <div className="flex-1 win98-inset bg-white p-1 overflow-auto text-xs">
+            {mutes.length === 0 ? <div className="text-gray-500">No muted users.</div> :
+              mutes.map((mute) => (
+                <div key={mute.id} className="flex items-center gap-1 border-b border-dashed border-gray-300 py-0.5">
+                  <div className="flex-1">
+                    <span className="font-bold">{mute.username}</span>
+                    {mute.reason && <span className="text-gray-600"> — {mute.reason}</span>}
+                    <div className="text-[10px] text-gray-500">muted by {mute.mutedBy} on {formatLocalDate(mute.createdAt, { dateStyle: "short" })}</div>
+                  </div>
+                  <button className="win98-button px-1 text-[10px]" onClick={() => void unmute(mute.username)}>unmute</button>
+                </div>
+              ))}
+          </div>
+          <div className="shrink-0 flex flex-col gap-1">
+            <label className="flex items-start gap-1 border-b border-gray-300 pb-1 mb-1">
+              <input
+                type="checkbox"
+                checked={siteSettings.chatCooldownEnabled}
+                disabled={cooldownSaving}
+                onChange={(e) => void toggleCooldown(e.target.checked)}
+              />
+              <span>
+                <span className="font-bold block">5-second cooldown</span>
+                <span className="text-[10px] text-gray-600">Applies after each successful message.</span>
+              </span>
+            </label>
+            <input className="win98-inset px-1 text-xs" placeholder="username to mute" value={muteName} onChange={(e) => setMuteName(e.target.value)} />
+            <input className="win98-inset px-1 text-xs" placeholder="reason (optional)" value={muteReason} onChange={(e) => setMuteReason(e.target.value)} />
+            <button className="win98-button px-2 self-end text-xs" onClick={() => void submitMute()}>Mute User</button>
           </div>
         </div>
       )}
