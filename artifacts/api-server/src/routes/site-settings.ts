@@ -5,6 +5,23 @@ import { requireAdmin } from "../lib/auth";
 
 const router: IRouter = Router();
 
+type CustomButton = { label: string; url: string };
+
+function cleanCustomButtons(value: unknown): CustomButton[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .filter((button): button is Record<string, unknown> => !!button && typeof button === "object" && !Array.isArray(button))
+    .map((button) => ({
+      label: typeof button.label === "string" ? button.label.trim().slice(0, 32) : "",
+      url: typeof button.url === "string" ? button.url.trim().slice(0, 500) : "",
+    }))
+    .filter((button) => (
+      button.label.length > 0 &&
+      /^https?:\/\/[^\s]+$/i.test(button.url)
+    ))
+    .slice(0, 8);
+}
+
 async function ensureRow() {
   const [row] = await db.select().from(siteSettingsTable).limit(1);
   if (row) return row;
@@ -17,6 +34,7 @@ async function ensureRow() {
     mobileDarkBackgroundDataUrl: "",
     chatCooldownEnabled: true,
     siteName: "Portfolio 98",
+    customButtons: [],
   });
   const [created] = await db.select().from(siteSettingsTable).limit(1);
   return created!;
@@ -33,6 +51,7 @@ router.get("/site-settings", async (_req, res) => {
     mobileDarkBackgroundDataUrl: row.mobileDarkBackgroundDataUrl || "",
     chatCooldownEnabled: row.chatCooldownEnabled !== false,
     siteName: row.siteName || "Portfolio 98",
+    customButtons: cleanCustomButtons(row.customButtons),
   });
 });
 
@@ -67,6 +86,14 @@ router.put("/site-settings", requireAdmin, async (req, res) => {
     const name = req.body.siteName.trim().slice(0, 60);
     if (name.length > 0) update.siteName = name;
   }
+  if (req.body && Object.prototype.hasOwnProperty.call(req.body, "customButtons")) {
+    const buttons = cleanCustomButtons(req.body.customButtons);
+    if (Array.isArray(req.body.customButtons) && buttons.length !== req.body.customButtons.length) {
+      res.status(400).json({ error: "Each custom button needs a label and a valid http(s) URL." });
+      return;
+    }
+    update.customButtons = buttons;
+  }
   if (Object.keys(update).length === 0) {
     res.json({
       ok: true,
@@ -78,6 +105,7 @@ router.put("/site-settings", requireAdmin, async (req, res) => {
       mobileDarkBackgroundDataUrl: row.mobileDarkBackgroundDataUrl,
       chatCooldownEnabled: row.chatCooldownEnabled !== false,
       siteName: row.siteName,
+       customButtons: cleanCustomButtons(row.customButtons),
     });
     return;
   }
@@ -94,6 +122,7 @@ router.put("/site-settings", requireAdmin, async (req, res) => {
     mobileDarkBackgroundDataUrl: fresh!.mobileDarkBackgroundDataUrl,
     chatCooldownEnabled: fresh!.chatCooldownEnabled !== false,
     siteName: fresh!.siteName,
+     customButtons: cleanCustomButtons(fresh!.customButtons),
   });
 });
 

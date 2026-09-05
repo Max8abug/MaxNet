@@ -106,6 +106,11 @@ export function SyncedYouTube({ onRequestLogin }: Props) {
 
   async function applyNew() {
     setErr(null);
+    if (!user) { onRequestLogin?.(); return; }
+    if (!state?.canManage) {
+      setErr("You need the YouTube Master permission to play a video for everyone.");
+      return;
+    }
     const id = parseYouTubeId(input);
     if (!id) { setErr("Couldn't parse a YouTube URL or ID"); return; }
     setQueueBusy(true);
@@ -151,7 +156,7 @@ export function SyncedYouTube({ onRequestLogin }: Props) {
   }
 
   async function moveQueueItem(index: number, direction: -1 | 1) {
-    if (!state?.isStaff || !state.queue[index]) return;
+    if (!state?.canManage || !state.queue[index]) return;
     const nextIndex = index + direction;
     if (nextIndex < 0 || nextIndex >= state.queue.length) return;
     const ids = state.queue.map((item) => item.id);
@@ -283,7 +288,12 @@ export function SyncedYouTube({ onRequestLogin }: Props) {
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => { if (e.key === "Enter") void applyNew(); }}
           />
-          <button className="win98-button px-2 text-[10px]" disabled={!user || queueBusy} onClick={() => void applyNew()}>
+          <button
+            className="win98-button px-2 text-[10px]"
+            disabled={!user || !state?.canManage || queueBusy}
+            title={!user ? "Log in to play a video for everyone" : !state?.canManage ? "A rank administrator must enable YouTube Master for your rank" : "Start this video for everyone"}
+            onClick={() => void applyNew()}
+          >
             Play For All
           </button>
         </div>
@@ -304,7 +314,7 @@ export function SyncedYouTube({ onRequestLogin }: Props) {
         <div className="border-t border-gray-500 pt-1 min-h-0">
           <div className="flex items-center justify-between text-[10px] font-bold text-gray-700">
             <span>Up next ({state?.queue.length || 0})</span>
-            <span className="font-normal">{state?.isStaff ? "Staff can reorder" : "Users can add"}</span>
+            <span className="font-normal">{state?.canManage ? "You can manage playback" : "Users can add"}</span>
           </div>
           <div className="max-h-[58px] overflow-auto win98-inset bg-white text-[10px]">
             {!state?.queue.length ? (
@@ -314,7 +324,7 @@ export function SyncedYouTube({ onRequestLogin }: Props) {
                 <span className="flex-1 truncate" title={`${item.videoId} added by ${item.addedBy}`}>
                   {index + 1}. {item.videoId} <span className="text-gray-500">({item.addedBy})</span>
                 </span>
-                {state.isStaff && (
+                {state.canManage && (
                   <>
                     <button className="win98-button px-1 leading-none" disabled={queueBusy || index === 0} onClick={() => void moveQueueItem(index, -1)} title="Move up">↑</button>
                     <button className="win98-button px-1 leading-none" disabled={queueBusy || index === state.queue.length - 1} onClick={() => void moveQueueItem(index, 1)} title="Move down">↓</button>

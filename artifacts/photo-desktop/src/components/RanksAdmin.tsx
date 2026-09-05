@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
-import { fetchRanks, createRank, deleteRank, assignRank, fetchUsers, type Rank, type PublicUser } from "../lib/api";
+import { fetchRanks, createRank, updateRank, deleteRank, assignRank, fetchUsers, type Rank, type PublicUser } from "../lib/api";
 import { useAuth } from "../lib/auth-store";
 
-const PERMS = ["deleteMessages", "ban", "dm", "manageRanks", "cafeTheme", "postNews"];
+const PERMS = ["deleteMessages", "ban", "dm", "manageRanks", "cafeTheme", "postNews", "youtubeMaster"];
 const BUILTINS = ["admin", "mod", "vip"];
 
 export function RanksAdmin() {
@@ -13,6 +13,11 @@ export function RanksAdmin() {
   const [color, setColor] = useState("#888888");
   const [tier, setTier] = useState(10);
   const [perms, setPerms] = useState<string[]>([]);
+  const [editing, setEditing] = useState<string | null>(null);
+  const [editName, setEditName] = useState("");
+  const [editColor, setEditColor] = useState("#888888");
+  const [editTier, setEditTier] = useState(10);
+  const [editPerms, setEditPerms] = useState<string[]>([]);
   const [err, setErr] = useState<string | null>(null);
 
   async function refresh() {
@@ -28,6 +33,27 @@ export function RanksAdmin() {
     catch (e: any) { setErr(e?.message || "Failed"); }
   }
   async function del(n: string) { if (!confirm(`Delete rank ${n}?`)) return; try { await deleteRank(n); await refresh(); } catch {} }
+  function beginEdit(rank: Rank) {
+    setErr(null);
+    setEditing(rank.name);
+    setEditName(rank.name);
+    setEditColor(rank.color);
+    setEditTier(rank.tier);
+    setEditPerms(rank.permissions);
+  }
+  function cancelEdit() {
+    setEditing(null);
+    setErr(null);
+  }
+  async function saveEdit() {
+    if (!editing) return;
+    setErr(null);
+    try {
+      await updateRank(editing, { name: editName, color: editColor, permissions: editPerms, tier: editTier });
+      setEditing(null);
+      await refresh();
+    } catch (e: any) { setErr(e?.message || "Failed to update rank"); }
+  }
   async function assign(u: string, rank: string) {
     try { await assignRank(u, rank === "" ? null : rank); await refresh(); } catch (e: any) { alert(e?.message || "Failed"); }
   }
@@ -37,12 +63,35 @@ export function RanksAdmin() {
       <div className="font-bold">Ranks</div>
       <div className="win98-inset bg-white p-1 flex flex-col gap-1">
         {ranks.map(r => (
-          <div key={r.id} className="flex items-center gap-1">
-            <span className="font-bold w-20" style={{ color: r.color }}>{r.name}</span>
-            <span className="text-[10px] text-gray-500">tier {r.tier}</span>
-            <span className="text-[10px] flex-1 truncate">{r.permissions.join(", ")}</span>
-            {!BUILTINS.includes(r.name) && <button className="win98-button px-1 text-[10px]" onClick={() => del(r.name)}>x</button>}
-          </div>
+            editing === r.name ? (
+              <div key={r.id} className="win98-inset bg-[#e8e8e8] p-1 flex flex-col gap-1">
+                <div className="flex gap-1 items-center">
+                  <span className="font-bold">Edit rank</span>
+                  <input className="win98-inset px-1 flex-1" value={editName} maxLength={24} onChange={e => setEditName(e.target.value)} disabled={BUILTINS.includes(r.name)} />
+                </div>
+                <div className="flex gap-1 items-center">
+                  <span>color</span><input type="color" value={editColor} onChange={e => setEditColor(e.target.value)} />
+                  <span>tier</span><input type="number" min={1} max={100} className="win98-inset px-1 w-14" value={editTier} onChange={e => setEditTier(Number(e.target.value))} />
+                </div>
+                <div className="flex flex-wrap gap-1">
+                  {PERMS.map(p => (
+                    <label key={p} className="flex items-center gap-0.5"><input type="checkbox" checked={editPerms.includes(p)} onChange={e => setEditPerms(e.target.checked ? [...editPerms, p] : editPerms.filter(x => x !== p))} />{p}</label>
+                  ))}
+                </div>
+                <div className="flex gap-1 justify-end">
+                  <button className="win98-button px-2 text-[10px]" onClick={saveEdit}>Save</button>
+                  <button className="win98-button px-2 text-[10px]" onClick={cancelEdit}>Cancel</button>
+                </div>
+              </div>
+            ) : (
+              <div key={r.id} className="flex items-center gap-1">
+                <span className="font-bold w-20" style={{ color: r.color }}>{r.name}</span>
+                <span className="text-[10px] text-gray-500">tier {r.tier}</span>
+                <span className="text-[10px] flex-1 truncate">{r.permissions.join(", ")}</span>
+                <button className="win98-button px-1 text-[10px]" onClick={() => beginEdit(r)}>Edit</button>
+                {!BUILTINS.includes(r.name) && <button className="win98-button px-1 text-[10px]" onClick={() => del(r.name)}>x</button>}
+              </div>
+            )
         ))}
       </div>
       <div className="font-bold mt-2">+ New Rank</div>

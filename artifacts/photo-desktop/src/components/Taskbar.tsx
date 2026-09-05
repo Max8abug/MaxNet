@@ -463,6 +463,19 @@ export function Taskbar({ page }: { page: string }) {
         ))}
       </div>
 
+      {siteSettings.customButtons.map((button) => (
+        <a
+          key={`${button.label}-${button.url}`}
+          className="win98-button h-8 px-2 text-xs max-w-[132px] truncate"
+          href={button.url}
+          target="_blank"
+          rel="noopener noreferrer"
+          title={button.url}
+        >
+          {button.label}
+        </a>
+      ))}
+
       {user ? (
         <div className="flex items-center gap-1 mr-2">
           {user.avatarUrl ? (

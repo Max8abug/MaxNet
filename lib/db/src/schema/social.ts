@@ -325,6 +325,7 @@ export const siteSettingsTable = pgTable("site_settings", {
   mobileDarkBackgroundDataUrl: text("mobile_dark_background_data_url").notNull().default(""),
   chatCooldownEnabled: boolean("chat_cooldown_enabled").notNull().default(true),
   siteName: text("site_name").notNull().default("Portfolio 98"),
+  customButtons: jsonb("custom_buttons").notNull().default([]),
   vapidPublicKey: text("vapid_public_key").notNull().default(""),
   vapidPrivateKey: text("vapid_private_key").notNull().default(""),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),

@@ -187,7 +187,9 @@ export interface SiteSettings {
   mobileDarkBackgroundDataUrl: string;
   chatCooldownEnabled: boolean;
   siteName: string;
+  customButtons: CustomSiteButton[];
 }
+export interface CustomSiteButton { label: string; url: string; }
 export async function fetchSiteSettings(): Promise<SiteSettings> {
   return jsonOrThrow(await fetch(`${BASE}/site-settings`, opts));
 }
@@ -538,7 +540,7 @@ export interface YouTubeSync {
   skipCount: number;
   totalVotes: number;
   myVote: "skip" | "keep" | null;
-  isStaff: boolean;
+  canManage: boolean;
 }
 export async function getYouTubeSync(): Promise<YouTubeSync> {
   return jsonOrThrow(await fetch(`${BASE}/youtube/sync`, opts));
@@ -622,6 +624,14 @@ export interface Rank { id: number; name: string; color: string; permissions: st
 export async function fetchRanks(): Promise<Rank[]> { return jsonOrThrow(await fetch(`${BASE}/ranks`, opts)); }
 export async function createRank(name: string, color: string, permissions: string[], tier: number): Promise<Rank> {
   return jsonOrThrow(await fetch(`${BASE}/ranks`, { ...opts, method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name, color, permissions, tier }) }));
+}
+export async function updateRank(currentName: string, data: { name?: string; color: string; permissions: string[]; tier: number }): Promise<Rank> {
+  return jsonOrThrow(await fetch(`${BASE}/ranks/${encodeURIComponent(currentName)}`, {
+    ...opts,
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  }));
 }
 export async function deleteRank(name: string): Promise<void> {
   await jsonOrThrow(await fetch(`${BASE}/ranks/${encodeURIComponent(name)}`, { ...opts, method: "DELETE" }));

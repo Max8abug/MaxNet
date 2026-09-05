@@ -45,11 +45,11 @@ function cleanVotes(value: unknown): Record<string, Vote> {
   return result;
 }
 
-async function isStaff(req: Request): Promise<boolean> {
+async function canManagePlayback(req: Request): Promise<boolean> {
   if (!req.session.userId) return false;
   if (req.session.isAdmin) return true;
   const permissions = await getUserPermissions(req.session.username);
-  return permissions.includes("ban") || permissions.includes("manageRanks");
+  return permissions.includes("youtubeMaster");
 }
 
 async function ensureRow() {
@@ -75,7 +75,7 @@ async function responseFor(req: Request, row: typeof youtubeSyncTable.$inferSele
     skipCount: voteValues.filter((vote) => vote === "skip").length,
     totalVotes: voteValues.length,
     myVote: req.session.username ? (votes[req.session.username] || null) : null,
-    isStaff: await isStaff(req),
+    canManage: await canManagePlayback(req),
   };
 }
 
@@ -85,6 +85,10 @@ router.get("/youtube/sync", async (req, res) => {
 });
 
 router.post("/youtube/sync", requireAuth, async (req, res) => {
+  if (!(await canManagePlayback(req))) {
+    res.status(403).json({ error: "You need the YouTube Master permission to play a video for everyone." });
+    return;
+  }
   const videoId = cleanVideoId(req.body?.videoId);
   if (!videoId) {
     res.status(400).json({ error: "A valid YouTube video ID is required" });
@@ -146,8 +150,8 @@ router.post("/youtube/queue", requireAuth, async (req, res) => {
 });
 
 router.patch("/youtube/queue", requireAuth, async (req, res) => {
-  if (!(await isStaff(req))) {
-    res.status(403).json({ error: "Staff only" });
+  if (!(await canManagePlayback(req))) {
+    res.status(403).json({ error: "You need the YouTube Master permission to manage the queue." });
     return;
   }
   const requestedIds = req.body?.queue;
@@ -176,8 +180,8 @@ router.patch("/youtube/queue", requireAuth, async (req, res) => {
 });
 
 router.delete("/youtube/queue/:itemId", requireAuth, async (req, res) => {
-  if (!(await isStaff(req))) {
-    res.status(403).json({ error: "Staff only" });
+  if (!(await canManagePlayback(req))) {
+    res.status(403).json({ error: "You need the YouTube Master permission to manage the queue." });
     return;
   }
   const row = await ensureRow();

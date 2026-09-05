@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { updateSiteSettings } from "../lib/api";
+import { updateSiteSettings, type CustomSiteButton } from "../lib/api";
 import { useAuth } from "../lib/auth-store";
 
 // Downscale and convert any image file to a small data URL so the logo stays
@@ -67,6 +67,7 @@ export function SiteSettingsDialog() {
   const [mobileBackgroundPreview, setMobileBackgroundPreview] = useState(settings.mobileBackgroundDataUrl);
   const [mobileDarkBackgroundPreview, setMobileDarkBackgroundPreview] = useState(settings.mobileDarkBackgroundDataUrl);
   const [chatCooldownEnabled, setChatCooldownEnabled] = useState(settings.chatCooldownEnabled);
+  const [customButtons, setCustomButtons] = useState<CustomSiteButton[]>(settings.customButtons);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
@@ -87,6 +88,7 @@ export function SiteSettingsDialog() {
     setMobileBackgroundPreview(settings.mobileBackgroundDataUrl);
     setMobileDarkBackgroundPreview(settings.mobileDarkBackgroundDataUrl);
     setChatCooldownEnabled(settings.chatCooldownEnabled);
+    setCustomButtons(settings.customButtons);
   }, [
     settings.siteName,
     settings.logoDataUrl,
@@ -96,6 +98,7 @@ export function SiteSettingsDialog() {
     settings.mobileBackgroundDataUrl,
     settings.mobileDarkBackgroundDataUrl,
     settings.chatCooldownEnabled,
+    settings.customButtons,
   ]);
 
   if (!user?.isAdmin) {
@@ -148,6 +151,7 @@ export function SiteSettingsDialog() {
         mobileDarkBackgroundDataUrl: mobileDarkBackgroundPreview,
         chatCooldownEnabled,
         siteName,
+         customButtons,
       });
       await refreshSiteSettings();
       setMsg("Saved! The new logo will appear for all visitors.");
@@ -354,6 +358,52 @@ export function SiteSettingsDialog() {
             <button className="win98-button px-2 py-0.5" disabled={busy} onClick={() => mobileDarkBackgroundFileRef.current?.click()}>Choose Mobile Dark…</button>
             <button className="win98-button px-2 py-0.5 text-red-700" disabled={busy || !mobileDarkBackgroundPreview} onClick={() => void clearMobileBackground(true)}>Reset mobile dark</button>
           </div>
+        </div>
+      </div>
+
+      <div className="border-t border-gray-400 pt-2">
+        <div className="font-bold mb-1">Bottom-right External Buttons</div>
+        <div className="text-[11px] text-gray-700 mb-2">
+          Add up to 8 buttons that appear to the left of the Profile area for every visitor. Use a full http:// or https:// link.
+        </div>
+        <div className="flex flex-col gap-1">
+          {customButtons.map((button, index) => (
+            <div key={index} className="flex gap-1 items-center">
+              <input
+                className="win98-inset px-1 w-28"
+                placeholder="Button label"
+                maxLength={32}
+                value={button.label}
+                disabled={busy}
+                onChange={(e) => setCustomButtons((current) => current.map((item, i) => i === index ? { ...item, label: e.target.value } : item))}
+              />
+              <input
+                className="win98-inset px-1 flex-1 min-w-0"
+                placeholder="https://example.com"
+                maxLength={500}
+                value={button.url}
+                disabled={busy}
+                onChange={(e) => setCustomButtons((current) => current.map((item, i) => i === index ? { ...item, url: e.target.value } : item))}
+              />
+              <button
+                className="win98-button px-1 text-red-700"
+                type="button"
+                disabled={busy}
+                onClick={() => setCustomButtons((current) => current.filter((_, i) => i !== index))}
+                aria-label={`Remove ${button.label || "button"}`}
+              >
+                ×
+              </button>
+            </div>
+          ))}
+          <button
+            className="win98-button px-2 py-0.5 self-start"
+            type="button"
+            disabled={busy || customButtons.length >= 8}
+            onClick={() => setCustomButtons((current) => [...current, { label: "", url: "" }])}
+          >
+            + Add external button
+          </button>
         </div>
       </div>
 

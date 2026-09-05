@@ -29,6 +29,7 @@ export const useAuth = create<AuthState>((set, get) => ({
     mobileDarkBackgroundDataUrl: "",
     chatCooldownEnabled: true,
     siteName: "Portfolio 98",
+    customButtons: [],
   },
   refresh: async () => {
       try {
