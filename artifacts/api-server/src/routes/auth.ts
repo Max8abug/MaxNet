@@ -3,7 +3,7 @@ import { db, usersTable, bannedUsersTable, userPagesTable, chatAuditTable, devic
 import { eq } from "drizzle-orm";
 import { hashPassword, verifyPassword, isAdminUsername, findUserByUsername, requireAdmin } from "../lib/auth";
 import { getClientIp, isIpBanned, recordUserIp } from "../lib/ip-tracking";
-import { flagDevicesForUsername, getDeviceReview, recordDeviceAssociation, getDeviceIdForRequest } from "../lib/device-tracking";
+import { flagDevicesForUsername, getDeviceReview, getDeviceStatus, recordDeviceAssociation, getDeviceIdForRequest } from "../lib/device-tracking";
 
 const router: IRouter = Router();
 
@@ -56,7 +56,17 @@ router.post("/auth/signup", async (req, res, next) => {
     }
     const ip = getClientIp(req);
     if (await isIpBanned(ip)) {
-      res.status(403).json({ error: "Your network is banned from creating accounts on this site." });
+      res.status(403).json({
+        error: "This device or network appears to be banned. Switch to Log In and sign in to the banned account to submit an appeal.",
+        code: "BANNED_SIGNUP_APPEAL",
+      });
+      return;
+    }
+    if (await getDeviceStatus(req)) {
+      res.status(403).json({
+        error: "This device appears to be banned. Switch to Log In and sign in to the banned account to submit an appeal.",
+        code: "BANNED_SIGNUP_APPEAL",
+      });
       return;
     }
     const [bannedUsername] = await db.select({ id: bannedUsersTable.id })
@@ -64,7 +74,10 @@ router.post("/auth/signup", async (req, res, next) => {
       .where(eq(bannedUsersTable.username, u))
       .limit(1);
     if (bannedUsername) {
-      res.status(403).json({ error: "That username is banned from this site.", code: "ACCOUNT_BANNED" });
+      res.status(403).json({
+        error: "That account is banned. Switch to Log In and sign in to the banned account to submit an appeal.",
+        code: "BANNED_SIGNUP_APPEAL",
+      });
       return;
     }
     const existing = await findUserByUsername(u);

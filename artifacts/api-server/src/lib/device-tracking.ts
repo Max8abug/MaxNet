@@ -138,6 +138,20 @@ export async function getDeviceReview(req: Request, userId: number) {
   };
 }
 
+export async function getDeviceStatus(req: Request) {
+  const token = getDeviceToken(req);
+  if (!token) return null;
+  const [device] = await db.select({
+    id: deviceTokensTable.id,
+    status: deviceTokensTable.status,
+    reason: deviceTokensTable.reason,
+  }).from(deviceTokensTable)
+    .where(eq(deviceTokensTable.tokenHash, hashToken(token)))
+    .limit(1);
+  if (!device || (device.status !== "flagged" && device.status !== "blocked")) return null;
+  return device;
+}
+
 export async function flagDevicesForUser(userId: number, actor: string, reason: string): Promise<number> {
   if (!userId) return 0;
   const associations = await db.select({ deviceTokenId: deviceAssociationsTable.deviceTokenId })

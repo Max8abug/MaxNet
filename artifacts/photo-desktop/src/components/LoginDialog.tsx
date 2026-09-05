@@ -14,15 +14,23 @@ export function LoginDialog({ onClose }: Props) {
   const [appealRequired, setAppealRequired] = useState(false);
   const [appealMessage, setAppealMessage] = useState("");
   const [appealSent, setAppealSent] = useState(false);
+  const [signupBlocked, setSignupBlocked] = useState(false);
 
   async function submit() {
-    setBusy(true); setErr(null);
+    setBusy(true); setErr(null); setSignupBlocked(false);
     try {
       if (mode === "login") await login(username, password);
       else await signup(username, password);
       onClose();
     } catch (e: any) {
-      setErr(e?.message || "Failed");
+      const blockedSignup = mode === "signup" && (
+        e?.code === "BANNED_SIGNUP_APPEAL" ||
+        e?.code === "ACCOUNT_BANNED"
+      );
+      setSignupBlocked(blockedSignup);
+      setErr(blockedSignup
+        ? "This device or account appears to be banned. Switch to Log In and sign in to the banned account to submit an appeal."
+        : e?.message || "Failed");
       if (e?.code === "DEVICE_APPEAL_REQUIRED") setAppealRequired(true);
     } finally { setBusy(false); }
   }
@@ -49,6 +57,7 @@ export function LoginDialog({ onClose }: Props) {
     setAppealRequired(false);
     setAppealSent(false);
     setAppealMessage("");
+    setSignupBlocked(false);
     setErr(null);
   }
 
@@ -83,6 +92,11 @@ export function LoginDialog({ onClose }: Props) {
             />
           </label>
           {err && <div className="text-red-700 text-xs">{err}</div>}
+          {signupBlocked && (
+            <button className="win98-button px-2 py-1 text-xs self-start font-bold" onClick={switchMode}>
+              Switch to Log In to appeal
+            </button>
+          )}
           {appealRequired && mode === "login" && (
             <div className="win98-inset bg-[#fffbe6] p-2 flex flex-col gap-2 text-xs">
               <div className="font-bold text-[#7a4b00]">Admin review required</div>
