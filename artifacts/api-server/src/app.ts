@@ -6,6 +6,7 @@ import pinoHttp from "pino-http";
 import router from "./routes";
 import { logger } from "./lib/logger";
 import { sessionMiddleware, trackPresence } from "./lib/auth";
+import { ensureDeviceCookie } from "./lib/device-tracking";
 import { recordError, describeError } from "./lib/error-buffer";
 
 const app: Express = express();
@@ -43,6 +44,7 @@ app.use((req, res, next) => {
   return globalJson(req, res, next);
 });
 app.use(express.urlencoded({ extended: true, limit: "10mb" }));
+app.use(ensureDeviceCookie);
 app.use(sessionMiddleware);
 app.use(trackPresence);
 

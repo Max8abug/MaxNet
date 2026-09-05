@@ -1,4 +1,4 @@
-import { pgTable, serial, text, timestamp, integer, boolean, varchar, jsonb, index } from "drizzle-orm/pg-core";
+import { pgTable, serial, text, timestamp, integer, boolean, varchar, jsonb, index, uniqueIndex } from "drizzle-orm/pg-core";
 
 export const drawingsTable = pgTable("drawings", {
   id: serial("id").primaryKey(),
@@ -236,6 +236,52 @@ export const ipBansTable = pgTable("ip_bans", {
   reason: text("reason").notNull().default(""),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
+
+// Browser-scoped moderation signals. The server stores only a hash of the
+// opaque cookie value; this is not a hardware identifier or fingerprint.
+export const deviceTokensTable = pgTable("device_tokens", {
+  id: serial("id").primaryKey(),
+  tokenHash: text("token_hash").notNull().unique(),
+  status: text("status").notNull().default("active"),
+  reason: text("reason").notNull().default(""),
+  flaggedBy: text("flagged_by"),
+  firstSeen: timestamp("first_seen").defaultNow().notNull(),
+  lastSeen: timestamp("last_seen").defaultNow().notNull(),
+  reviewedAt: timestamp("reviewed_at"),
+  reviewedBy: text("reviewed_by"),
+}, (t) => ({
+  statusIdx: index("device_tokens_status_idx").on(t.status),
+}));
+
+export const deviceAssociationsTable = pgTable("device_associations", {
+  id: serial("id").primaryKey(),
+  deviceTokenId: integer("device_token_id").notNull(),
+  userId: integer("user_id").notNull(),
+  username: text("username").notNull(),
+  firstSeen: timestamp("first_seen").defaultNow().notNull(),
+  lastSeen: timestamp("last_seen").defaultNow().notNull(),
+}, (t) => ({
+  deviceIdx: index("device_associations_device_idx").on(t.deviceTokenId),
+  userIdx: index("device_associations_user_idx").on(t.userId),
+  uniqueAssociation: uniqueIndex("device_associations_device_user_idx").on(t.deviceTokenId, t.userId),
+}));
+
+export const deviceAppealsTable = pgTable("device_appeals", {
+  id: serial("id").primaryKey(),
+  deviceTokenId: integer("device_token_id").notNull(),
+  userId: integer("user_id").notNull(),
+  username: text("username").notNull(),
+  message: text("message").notNull(),
+  status: text("status").notNull().default("open"),
+  adminResponse: text("admin_response").notNull().default(""),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  reviewedAt: timestamp("reviewed_at"),
+  reviewedBy: text("reviewed_by"),
+}, (t) => ({
+  deviceIdx: index("device_appeals_device_idx").on(t.deviceTokenId),
+  statusIdx: index("device_appeals_status_idx").on(t.status),
+  userIdx: index("device_appeals_user_idx").on(t.userId),
+}));
 
 // Site news / announcements posted by moderators+. Each post can carry an
 // arbitrary number of inline image attachments stored as data URLs (capped on

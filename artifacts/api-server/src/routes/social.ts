@@ -14,6 +14,7 @@ import { asc, desc, sql, eq, inArray, and, lt } from "drizzle-orm";
 import { requireAuth, requireAdmin, isAdminUsername } from "../lib/auth";
 import { getUserPermissions } from "./ranks";
 import { sendPushToUser } from "../lib/push";
+import { flagDevicesForUsername } from "../lib/device-tracking";
 
 import type { RequestHandler } from "express";
 export const requireDeleteMessages: RequestHandler = async (req, res, next) => {
@@ -606,8 +607,9 @@ router.post("/bans", requireBan, async (req, res) => {
   const actor = req.session.username || "admin";
   try {
     const [row] = await db.insert(bannedUsersTable).values({ username: u, bannedBy: actor, reason: safeReason }).returning();
+    const flaggedDevices = await flagDevicesForUsername(u, actor, safeReason || `Account ${u} was banned`);
     await audit("global", "ban", actor, u, safeReason);
-    res.json(row);
+    res.json({ ...row, flaggedDevices });
   } catch { res.status(409).json({ error: "User already banned" }); }
 });
 

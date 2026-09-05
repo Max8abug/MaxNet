@@ -286,6 +286,47 @@ export async function ensureSchema(): Promise<void> {
       created_at timestamp NOT NULL DEFAULT now()
     );
 
+    CREATE TABLE IF NOT EXISTS device_tokens (
+      id serial PRIMARY KEY,
+      token_hash text NOT NULL UNIQUE,
+      status text NOT NULL DEFAULT 'active',
+      reason text NOT NULL DEFAULT '',
+      flagged_by text,
+      first_seen timestamp NOT NULL DEFAULT now(),
+      last_seen timestamp NOT NULL DEFAULT now(),
+      reviewed_at timestamp,
+      reviewed_by text
+    );
+    CREATE INDEX IF NOT EXISTS device_tokens_status_idx ON device_tokens (status);
+
+    CREATE TABLE IF NOT EXISTS device_associations (
+      id serial PRIMARY KEY,
+      device_token_id integer NOT NULL,
+      user_id integer NOT NULL,
+      username text NOT NULL,
+      first_seen timestamp NOT NULL DEFAULT now(),
+      last_seen timestamp NOT NULL DEFAULT now(),
+      CONSTRAINT device_associations_device_user_unique UNIQUE (device_token_id, user_id)
+    );
+    CREATE INDEX IF NOT EXISTS device_associations_device_idx ON device_associations (device_token_id);
+    CREATE INDEX IF NOT EXISTS device_associations_user_idx ON device_associations (user_id);
+
+    CREATE TABLE IF NOT EXISTS device_appeals (
+      id serial PRIMARY KEY,
+      device_token_id integer NOT NULL,
+      user_id integer NOT NULL,
+      username text NOT NULL,
+      message text NOT NULL,
+      status text NOT NULL DEFAULT 'open',
+      admin_response text NOT NULL DEFAULT '',
+      created_at timestamp NOT NULL DEFAULT now(),
+      reviewed_at timestamp,
+      reviewed_by text
+    );
+    CREATE INDEX IF NOT EXISTS device_appeals_device_idx ON device_appeals (device_token_id);
+    CREATE INDEX IF NOT EXISTS device_appeals_status_idx ON device_appeals (status);
+    CREATE INDEX IF NOT EXISTS device_appeals_user_idx ON device_appeals (user_id);
+
     CREATE TABLE IF NOT EXISTS news_posts (
       id serial PRIMARY KEY,
       author text NOT NULL,

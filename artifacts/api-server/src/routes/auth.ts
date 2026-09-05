@@ -1,8 +1,9 @@
 import { Router, type IRouter } from "express";
-import { db, usersTable, bannedUsersTable, userPagesTable, chatAuditTable } from "@workspace/db";
+import { db, usersTable, bannedUsersTable, userPagesTable, chatAuditTable, deviceAppealsTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { hashPassword, verifyPassword, isAdminUsername, findUserByUsername, requireAdmin } from "../lib/auth";
 import { getClientIp, isIpBanned, recordUserIp } from "../lib/ip-tracking";
+import { flagDevicesForUsername, getDeviceReview, recordDeviceAssociation, getDeviceIdForRequest } from "../lib/device-tracking";
 
 const router: IRouter = Router();
 
@@ -61,6 +62,7 @@ router.post("/auth/signup", async (req, res, next) => {
     req.session.username = created.username;
     req.session.isAdmin = created.isAdmin;
     void recordUserIp(created.username, ip);
+    await recordDeviceAssociation(req, created.id, created.username);
     res.json({ user: { id: created.id, username: created.username, isAdmin: created.isAdmin } });
   } catch (err) {
     // Forward to the central error handler so the underlying cause (DB
@@ -98,11 +100,77 @@ router.post("/auth/login", async (req, res, next) => {
       await db.update(usersTable).set({ isAdmin: true }).where(eq(usersTable.id, user.id));
       user.isAdmin = true;
     }
+    if (!user.isAdmin) {
+      const review = await getDeviceReview(req, user.id);
+      if (review) {
+        res.status(403).json({
+          error: "This device needs admin review before this account can sign in.",
+          code: "DEVICE_APPEAL_REQUIRED",
+          appeal: review.appeal
+            ? { status: review.appeal.status, createdAt: review.appeal.createdAt, adminResponse: review.appeal.adminResponse }
+            : null,
+        });
+        return;
+      }
+    }
     req.session.userId = user.id;
     req.session.username = user.username;
     req.session.isAdmin = user.isAdmin;
     void recordUserIp(user.username, ip);
+    await recordDeviceAssociation(req, user.id, user.username);
     res.json({ user: { id: user.id, username: user.username, isAdmin: user.isAdmin } });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// A flagged device can submit an appeal after proving ownership of the
+// account. No session is created until an admin approves the appeal.
+router.post("/auth/device-appeals", async (req, res, next) => {
+  try {
+    const { username, password, message } = req.body ?? {};
+    if (typeof username !== "string" || typeof password !== "string" || typeof message !== "string") {
+      res.status(400).json({ error: "username, password, and appeal message are required" });
+      return;
+    }
+    const user = await findUserByUsername(username.trim());
+    if (!user || !(await verifyPassword(password, user.passwordHash))) {
+      res.status(401).json({ error: "Invalid credentials" });
+      return;
+    }
+    const review = await getDeviceReview(req, user.id);
+    if (!review) {
+      res.status(400).json({ error: "This device is not currently awaiting an appeal." });
+      return;
+    }
+    if (review.appeal?.status === "open") {
+      res.json({ ok: true, status: "open", appealId: review.appeal.id });
+      return;
+    }
+    const deviceTokenId = await getDeviceIdForRequest(req);
+    if (!deviceTokenId) {
+      res.status(400).json({ error: "Device identity unavailable. Refresh and try again." });
+      return;
+    }
+    const cleanMessage = message.trim().slice(0, 2000);
+    if (!cleanMessage) {
+      res.status(400).json({ error: "Please explain why this device should be restored." });
+      return;
+    }
+    const [appeal] = await db.insert(deviceAppealsTable).values({
+      deviceTokenId,
+      userId: user.id,
+      username: user.username,
+      message: cleanMessage,
+    }).returning({ id: deviceAppealsTable.id, status: deviceAppealsTable.status });
+    await db.insert(chatAuditTable).values({
+      area: "device",
+      action: "appeal",
+      actor: user.username,
+      target: String(deviceTokenId),
+      body: "device access appeal submitted",
+    });
+    res.json({ ok: true, appealId: appeal.id, status: appeal.status });
   } catch (err) {
     next(err);
   }
@@ -440,6 +508,7 @@ router.delete("/users/:username", requireAdmin, async (req, res) => {
   // Ban first so the seat is locked even if a stray session existed.
   const actor = req.session.username || "admin";
   const reason = String((req.body && (req.body as any).reason) || "Account deleted by admin");
+  const flaggedDevices = await flagDevicesForUsername(username, actor, reason);
   try {
     await db.insert(bannedUsersTable).values({ username, bannedBy: actor, reason });
   } catch {
@@ -451,8 +520,8 @@ router.delete("/users/:username", requireAdmin, async (req, res) => {
   // individually from each surface.
   await db.delete(userPagesTable).where(eq(userPagesTable.username, username));
   await db.delete(usersTable).where(eq(usersTable.id, target.id));
-  await db.insert(chatAuditTable).values({ area: "user", action: "delete", actor, target: username, body: reason });
-  res.json({ ok: true });
+  await db.insert(chatAuditTable).values({ area: "user", action: "delete", actor, target: username, body: `${reason}${flaggedDevices ? `; flagged ${flaggedDevices} device(s)` : ""}` });
+  res.json({ ok: true, flaggedDevices });
 });
 
 router.post("/auth/logout", (req, res) => {

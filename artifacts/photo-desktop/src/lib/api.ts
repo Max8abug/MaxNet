@@ -102,8 +102,15 @@ export async function fetchUserProfile(username: string): Promise<PublicUser | n
 async function jsonOrThrow(r: Response) {
   if (!r.ok) {
     let msg = `HTTP ${r.status}`;
-    try { const j = await r.json(); if (j?.error) msg = j.error; } catch {}
-    throw new Error(msg);
+    let payload: any = null;
+    try {
+      payload = await r.json();
+      if (payload?.error) msg = payload.error;
+    } catch {}
+    const error = new Error(msg) as Error & { code?: string; payload?: any };
+    error.code = payload?.code;
+    error.payload = payload;
+    throw error;
   }
   return r.json();
 }
@@ -122,6 +129,19 @@ export async function login(username: string, password: string): Promise<AuthUse
   });
   const j = await jsonOrThrow(r);
   return j.user;
+}
+export interface DeviceAppealSubmission {
+  ok: true;
+  appealId: number;
+  status: string;
+}
+export async function submitDeviceAppeal(username: string, password: string, message: string): Promise<DeviceAppealSubmission> {
+  return jsonOrThrow(await fetch(`${BASE}/auth/device-appeals`, {
+    ...opts,
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ username, password, message }),
+  }));
 }
 export async function signup(username: string, password: string): Promise<AuthUser> {
   const r = await fetch(`${BASE}/auth/signup`, {
@@ -260,6 +280,39 @@ export async function adminUpdateAccount(username: string, data: { username?: st
     ...opts, method: "PATCH",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(data),
+  }));
+}
+export interface DeviceAppeal {
+  id: number;
+  deviceId: number;
+  userId: number;
+  username: string;
+  message: string;
+  status: string;
+  adminResponse: string;
+  createdAt: string;
+  reviewedAt: string | null;
+  reviewedBy: string | null;
+  deviceStatus: string;
+  deviceReason: string;
+}
+export async function fetchDeviceAppeals(): Promise<DeviceAppeal[]> {
+  return jsonOrThrow(await fetch(`${BASE}/device-appeals`, opts));
+}
+export async function resolveDeviceAppeal(id: number, decision: "approved" | "denied", response: string): Promise<void> {
+  await jsonOrThrow(await fetch(`${BASE}/device-appeals/${id}/resolve`, {
+    ...opts,
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ decision, response }),
+  }));
+}
+export async function setDeviceStatus(deviceId: number, status: "active" | "flagged" | "blocked", reason = ""): Promise<void> {
+  await jsonOrThrow(await fetch(`${BASE}/devices/${deviceId}/status`, {
+    ...opts,
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ status, reason }),
   }));
 }
 export async function voteDrawing(id: number, vote: -1 | 0 | 1): Promise<{ ok: true; score: number; myVote: number }> {
