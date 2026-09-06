@@ -292,12 +292,12 @@ export function Taskbar({ page }: { page: string }) {
     { label: 'Settings', items: settingsItems },
   ];
   const [openCategory, setOpenCategory] = useState<string | null>(null);
-  const [submenuPosition, setSubmenuPosition] = useState<{ top: number; left: number } | null>(null);
+  const [submenuTop, setSubmenuTop] = useState<number | null>(null);
   const submenuRef = useRef<HTMLDivElement | null>(null);
 
   useLayoutEffect(() => {
     if (!openCategory) {
-      setSubmenuPosition(null);
+      setSubmenuTop(null);
       return;
     }
 
@@ -318,13 +318,14 @@ export function Taskbar({ page }: { page: string }) {
         bottomLimit - submenuRect.height,
       );
 
-      setSubmenuPosition({
-        left: anchorRect.right - 1,
-        top: Math.min(
+      const top = Math.min(
           Math.max(viewportPadding, anchorRect.top - 2),
           highestAllowedTop,
-        ),
-      });
+        );
+
+      // Keep the submenu as a descendant of its category so pointer events
+      // continue to work even when the folder is shifted upward.
+      setSubmenuTop(top - anchorRect.top);
     };
 
     placeSubmenu();
@@ -345,7 +346,7 @@ export function Taskbar({ page }: { page: string }) {
 
   const selectCategory = (category: string | null) => {
     setOpenCategory(category);
-    setSubmenuPosition(null);
+    setSubmenuTop(null);
   };
 
   const colorStyle = user ? { color: userColor(user, ranks) || undefined } : {};
@@ -419,7 +420,11 @@ export function Taskbar({ page }: { page: string }) {
             <div
               className="flex-1 flex flex-col p-1 gap-0.5"
               style={{ maxHeight: 'calc(100dvh - 4.5rem)' }}
-              onMouseLeave={() => selectCategory(null)}
+              onMouseLeave={(event) => {
+                const nextTarget = event.relatedTarget;
+                if (nextTarget instanceof Node && submenuRef.current?.contains(nextTarget)) return;
+                selectCategory(null);
+              }}
             >
               {categoryMenus.map((category) => (
                 <div
@@ -441,15 +446,14 @@ export function Taskbar({ page }: { page: string }) {
                   {openCategory === category.label && (
                     <div
                       ref={submenuRef}
-                      className="fixed z-50 w-64 bg-[#c0c0c0] win98-window p-1"
+                      className="absolute left-[calc(100%-1px)] z-50 w-64 bg-[#c0c0c0] win98-window p-1"
                       role="menu"
                       aria-label={`${category.label} menu`}
                       style={{
-                        top: submenuPosition?.top ?? 4,
-                        left: submenuPosition?.left ?? 4,
+                        top: submenuTop ?? -2,
                         maxHeight: 'calc(100dvh - 4.5rem)',
                         overflowY: 'auto',
-                        visibility: submenuPosition ? 'visible' : 'hidden',
+                        visibility: submenuTop !== null ? 'visible' : 'hidden',
                       }}
                     >
                       {category.items.map((it) => (
