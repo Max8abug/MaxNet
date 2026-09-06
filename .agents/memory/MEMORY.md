@@ -1,3 +1,4 @@
 - [Workspace dependency state](development-environment.md) — declared packages can still need a clean pnpm install before an API restart.
 - [Device appeal cookie association](device-appeals.md) — newly issued browser cookies must be visible to same-request auth association.
 - [Moderation enforcement](moderation-enforcement.md) — account and device moderation must be enforced at login and on active-session refresh, not only in chat.
+- [Shifted hover submenus](shifted-hover-submenus.md) — upward-repositioned cascading menus must guard sibling hover transitions so item activation is not interrupted.

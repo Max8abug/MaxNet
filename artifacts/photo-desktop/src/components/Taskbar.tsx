@@ -349,6 +349,15 @@ export function Taskbar({ page }: { page: string }) {
     setSubmenuTop(null);
   };
 
+  const hoverCategory = (category: string) => {
+    // When a lower folder is shifted upward, the pointer can pass over other
+    // category rows on its way to the folder. Do not let those rows replace
+    // the folder the user is already navigating.
+    if (openCategory === category) return;
+    if (submenuTop !== null && submenuTop < -2) return;
+    selectCategory(category);
+  };
+
   const colorStyle = user ? { color: userColor(user, ranks) || undefined } : {};
   const totalUnread = dmUnread + chatUnread;
   // Keep the light logo out of dark mode. When no alternate logo is configured,
@@ -430,8 +439,8 @@ export function Taskbar({ page }: { page: string }) {
                 <div
                   key={category.label}
                   className="relative"
-                  onMouseEnter={() => selectCategory(category.label)}
-                  onFocus={() => selectCategory(category.label)}
+                  onMouseEnter={() => hoverCategory(category.label)}
+                  onFocus={() => hoverCategory(category.label)}
                 >
                   <button
                     type="button"
@@ -462,7 +471,20 @@ export function Taskbar({ page }: { page: string }) {
                           type="button"
                           role="menuitem"
                           className="w-full text-left px-3 py-1 hover:bg-[#000080] hover:text-white text-sm relative whitespace-nowrap"
-                          onClick={it.act}
+                          onPointerDown={(event) => {
+                            // Activate before the parent hover cleanup can
+                            // dismiss a submenu that has been shifted upward.
+                            event.preventDefault();
+                            event.stopPropagation();
+                            it.act();
+                          }}
+                          onKeyDown={(event) => {
+                            if (event.key === 'Enter' || event.key === ' ') {
+                              event.preventDefault();
+                              event.stopPropagation();
+                              it.act();
+                            }
+                          }}
                         >
                           {it.label}
                           {it.badge === 'dm' && <span className="absolute right-2 top-1/2 -translate-y-1/2"><Badge count={dmUnread} /></span>}
