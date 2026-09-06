@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useDesktopStore } from '../store';
 import { useLocation } from 'wouter';
 import { useAuth, userColor } from '../lib/auth-store';
@@ -292,6 +292,61 @@ export function Taskbar({ page }: { page: string }) {
     { label: 'Settings', items: settingsItems },
   ];
   const [openCategory, setOpenCategory] = useState<string | null>(null);
+  const [submenuPosition, setSubmenuPosition] = useState<{ top: number; left: number } | null>(null);
+  const submenuRef = useRef<HTMLDivElement | null>(null);
+
+  useLayoutEffect(() => {
+    if (!openCategory) {
+      setSubmenuPosition(null);
+      return;
+    }
+
+    const placeSubmenu = () => {
+      const submenu = submenuRef.current;
+      const anchor = submenu?.parentElement;
+      if (!submenu || !anchor) return;
+
+      const anchorRect = anchor.getBoundingClientRect();
+      const submenuRect = submenu.getBoundingClientRect();
+      const viewportPadding = 4;
+      // Keep the folder above the taskbar instead of letting it overlap or
+      // continue below the visible desktop.
+      const taskbarHeight = 40;
+      const bottomLimit = Math.max(viewportPadding, window.innerHeight - taskbarHeight);
+      const highestAllowedTop = Math.max(
+        viewportPadding,
+        bottomLimit - submenuRect.height,
+      );
+
+      setSubmenuPosition({
+        left: anchorRect.right - 1,
+        top: Math.min(
+          Math.max(viewportPadding, anchorRect.top - 2),
+          highestAllowedTop,
+        ),
+      });
+    };
+
+    placeSubmenu();
+    window.addEventListener('resize', placeSubmenu);
+    window.addEventListener('scroll', placeSubmenu, true);
+
+    const resizeObserver = typeof ResizeObserver !== 'undefined' && submenuRef.current
+      ? new ResizeObserver(placeSubmenu)
+      : null;
+    if (resizeObserver && submenuRef.current) resizeObserver.observe(submenuRef.current);
+
+    return () => {
+      window.removeEventListener('resize', placeSubmenu);
+      window.removeEventListener('scroll', placeSubmenu, true);
+      resizeObserver?.disconnect();
+    };
+  }, [openCategory]);
+
+  const selectCategory = (category: string | null) => {
+    setOpenCategory(category);
+    setSubmenuPosition(null);
+  };
 
   const colorStyle = user ? { color: userColor(user, ranks) || undefined } : {};
   const totalUnread = dmUnread + chatUnread;
@@ -364,31 +419,38 @@ export function Taskbar({ page }: { page: string }) {
             <div
               className="flex-1 flex flex-col p-1 gap-0.5"
               style={{ maxHeight: 'calc(100dvh - 4.5rem)' }}
-              onMouseLeave={() => setOpenCategory(null)}
+              onMouseLeave={() => selectCategory(null)}
             >
               {categoryMenus.map((category) => (
                 <div
                   key={category.label}
                   className="relative"
-                  onMouseEnter={() => setOpenCategory(category.label)}
-                  onFocus={() => setOpenCategory(category.label)}
+                  onMouseEnter={() => selectCategory(category.label)}
+                  onFocus={() => selectCategory(category.label)}
                 >
                   <button
                     type="button"
                     className="w-full text-left px-3 py-1 hover:bg-[#000080] hover:text-white text-sm relative flex items-center justify-between gap-6"
                     aria-haspopup="menu"
                     aria-expanded={openCategory === category.label}
-                    onClick={() => setOpenCategory(openCategory === category.label ? null : category.label)}
+                    onClick={() => selectCategory(openCategory === category.label ? null : category.label)}
                   >
                     <span>{category.label}</span>
                     <ChevronRight className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
                   </button>
                   {openCategory === category.label && (
                     <div
-                      className="absolute left-[calc(100%-1px)] top-[-2px] z-50 w-64 bg-[#c0c0c0] win98-window p-1"
+                      ref={submenuRef}
+                      className="fixed z-50 w-64 bg-[#c0c0c0] win98-window p-1"
                       role="menu"
                       aria-label={`${category.label} menu`}
-                      style={{ maxHeight: 'calc(100dvh - 4.5rem)', overflowY: 'auto' }}
+                      style={{
+                        top: submenuPosition?.top ?? 4,
+                        left: submenuPosition?.left ?? 4,
+                        maxHeight: 'calc(100dvh - 4.5rem)',
+                        overflowY: 'auto',
+                        visibility: submenuPosition ? 'visible' : 'hidden',
+                      }}
                     >
                       {category.items.map((it) => (
                         <button
