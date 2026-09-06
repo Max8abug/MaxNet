@@ -14,6 +14,17 @@ import { formatLocalTime, formatLocalDate } from "../lib/dates";
 interface Props { onRequestLogin?: () => void; }
 type Tab = "chat" | "audit" | "bans" | "mutes";
 
+function sameChatMessage(a: ChatMessage, b: ChatMessage): boolean {
+  return a.id === b.id
+    && a.author === b.author
+    && a.room === b.room
+    && a.body === b.body
+    && a.imageUrl === b.imageUrl
+    && a.videoUrl === b.videoUrl
+    && a.replyTo === b.replyTo
+    && a.createdAt === b.createdAt;
+}
+
 function fileToImageData(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
     const r = new FileReader();
@@ -61,6 +72,7 @@ export function ChatBox({ onRequestLogin }: Props) {
   const videoRef = useRef<HTMLInputElement>(null);
   const lastSeenIdRef = useRef<Record<string, number>>({});
   const roomRef = useRef<ChatRoom>("lobby");
+  const typingTimerRef = useRef<number | null>(null);
   const sendTimerRef = useRef<number | null>(null);
   const sendCountdownTimerRef = useRef<number | null>(null);
   const [sendCountdown, setSendCountdown] = useState(0);
@@ -111,7 +123,10 @@ export function ChatBox({ onRequestLogin }: Props) {
       setMessages((current) => {
         const merged = new Map(current.map((message) => [message.id, message]));
         m.forEach((message) => merged.set(message.id, message));
-        return [...merged.values()].sort((a, b) => a.id - b.id).slice(-180);
+        const next = [...merged.values()].sort((a, b) => a.id - b.id).slice(-180);
+        return current.length === next.length && current.every((message, index) => sameChatMessage(message, next[index]!))
+          ? current
+          : next;
       });
       setHasMore(page.hasMore || hasMore);
       if (activeRoom === room) markRoomSeen(activeRoom, Math.max(...m.map(x => x.id), 0));
@@ -147,19 +162,41 @@ export function ChatBox({ onRequestLogin }: Props) {
     roomRef.current = room;
     setMessages([]);
     setHasMore(false);
-    void refresh(room);
-    void refreshRoomStatuses();
-    const t = setInterval(() => {
+    if (typingTimerRef.current !== null) {
+      window.clearTimeout(typingTimerRef.current);
+      typingTimerRef.current = null;
+    }
+    const poll = () => {
+      if (document.visibilityState !== "visible") return;
       void refresh(room);
       void refreshRoomStatuses();
-    }, 4000);
-    return () => clearInterval(t);
+    };
+    poll();
+    const t = setInterval(poll, 4000);
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "visible") poll();
+    };
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    return () => {
+      clearInterval(t);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+    };
   }, [room, user?.username, canStaffRoom]);
   useEffect(() => {
     const t = setInterval(async () => {
+      if (document.visibilityState !== "visible") return;
       setTyping((await fetchTyping(roomRef.current)).filter(u => u !== user?.username));
     }, 2500);
-    return () => clearInterval(t);
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        void fetchTyping(roomRef.current).then((users) => setTyping(users.filter(u => u !== user?.username)));
+      }
+    };
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    return () => {
+      clearInterval(t);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+    };
   }, [user?.username]);
   useEffect(() => {
     if (!isAdmin && !canBan) { setTab("chat"); return; }
@@ -167,13 +204,22 @@ export function ChatBox({ onRequestLogin }: Props) {
   }, [isAdmin, canBan]);
   useEffect(() => { if (tab === "chat" && !loadingOlder) scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight }); }, [messages.length, tab]);
   useEffect(() => () => {
+    if (typingTimerRef.current !== null) window.clearTimeout(typingTimerRef.current);
     if (sendTimerRef.current !== null) window.clearTimeout(sendTimerRef.current);
     if (sendCountdownTimerRef.current !== null) window.clearInterval(sendCountdownTimerRef.current);
   }, []);
 
   function onTypeChange(v: string) {
     setText(v);
-    if (user && v.trim()) pingTyping(room);
+    if (typingTimerRef.current !== null) window.clearTimeout(typingTimerRef.current);
+    typingTimerRef.current = null;
+    if (user && v.trim()) {
+      const typingRoom = room;
+      typingTimerRef.current = window.setTimeout(() => {
+        typingTimerRef.current = null;
+        void pingTyping(typingRoom);
+      }, 350);
+    }
   }
 
   async function send() {

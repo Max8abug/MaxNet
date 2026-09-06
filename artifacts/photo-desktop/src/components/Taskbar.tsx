@@ -262,7 +262,7 @@ export function Taskbar({ page }: { page: string }) {
   const socialItems: StartMenuItem[] = [
     { label: "My Page Editor", act: () => open({ type: 'mypage', title: user ? `${user.username}'s page` : 'My Page', width: 520, height: 440 }) },
     { label: "Open Forum", act: () => open({ type: 'forum', title: 'Forum', width: 460, height: 420 }) },
-    { label: "Add Chatbox", badge: 'chat', act: () => open({ type: 'chat', title: 'Chatbox', width: 360, height: 420 }) },
+    { label: "Add Chatbox", badge: 'chat', act: openChat },
     { label: "Open DMs", badge: 'dm', act: () => open({ type: 'dms', title: 'Direct Messages', width: 460, height: 380 }) },
     { label: "Add Synced YouTube", act: () => open({ type: 'youtube', title: 'YouTube', width: 480, height: 320 }) },
     { label: "Open Cafe", badge: 'cafe', act: () => open({ type: 'cafe', title: 'Cafe', width: 720, height: 560 }) },
@@ -394,6 +394,7 @@ export function Taskbar({ page }: { page: string }) {
     } else {
       addWindow(page, { type: 'chat', title: 'Chatbox', width: 360, height: 420 });
     }
+    setStartOpen(false);
   }
   function openCafe() {
     const existing = wins.find(w => w.type === 'cafe');
