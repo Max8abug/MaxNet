@@ -78,6 +78,7 @@ const APPS: AppDefinition[] = [
   { label: 'Flappy Bird', type: 'flappy', icon: Bird, tone: 'bg-[#80c4d7]', size: 'small' },
   { label: 'Geometry Dash', type: 'geometry', icon: Gamepad2, tone: 'bg-[#d8b760]', size: 'small' },
   { label: 'Poker', type: 'poker', icon: Hash, tone: 'bg-[#bc8fd2]', size: 'small' },
+  { label: 'Eaglercraft', type: 'eaglercraft', icon: Gamepad2, tone: 'bg-[#7c9e8d]', size: 'small' },
   { label: 'Drawings', type: 'drawing', icon: Pencil, tone: 'bg-[#e5a279]', size: 'small' },
   { label: 'Guestbook', type: 'guestbook', icon: BookOpen, tone: 'bg-[#b2c889]', size: 'small' },
   { label: 'Visitor Counter', type: 'visits', icon: BarChart3, tone: 'bg-[#dfc276]', size: 'small' },
