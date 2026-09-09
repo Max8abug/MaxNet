@@ -17,6 +17,7 @@ import { SyncedYouTube } from './SyncedYouTube';
 import { MusicPlayer } from './MusicPlayer';
 import { Polls } from './Polls';
 import { Chess } from './Chess';
+import { Eaglercraft } from './Eaglercraft';
 import { Cafe } from './Cafe';
 import { DMs } from './DMs';
 import { UserPage } from './UserPage';
@@ -324,6 +325,7 @@ export function Window({
         {w.type === 'music' && !isEditing && <MusicPlayer />}
         {w.type === 'polls' && !isEditing && <Polls />}
         {w.type === 'chess' && !isEditing && <Chess />}
+        {w.type === 'eaglercraft' && !isEditing && <Eaglercraft />}
         {w.type === 'cafe' && !isEditing && <Cafe />}
         {w.type === 'dms' && !isEditing && <DMs initialPeer={w.dmPeer} />}
         {w.type === 'userpage' && !isEditing && <UserPage username={w.username || ''} />}
