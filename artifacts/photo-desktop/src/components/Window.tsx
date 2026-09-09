@@ -162,18 +162,6 @@ export function Window({
 
   const isActive = useDesktopStore(state => state.maxZIndex === w.zIndex);
 
-  if (isMin) {
-    return (
-      <div
-        className="absolute win98-window flex items-center cursor-pointer"
-        style={{ top: 0, left: 0, transform: `translate3d(${w.x}px, ${(boundsRef.current?.clientHeight || 600) - 64}px, 0)`, width: 160, zIndex: w.zIndex }}
-        onClick={() => { toggleWindowState(page, w.id, 'min'); bringToFront(page, w.id); }}
-      >
-        <div className="win98-titlebar shrink-0 w-full px-1 truncate text-xs">{w.title}</div>
-      </div>
-    );
-  }
-
   const bounds = boundsRef.current;
   // Mobile windows are app screens, not floating desktop windows. The mobile
   // shell gives us a stage whose size already accounts for the top app bar, so
@@ -184,13 +172,31 @@ export function Window({
       ? { width: bounds.clientWidth, height: bounds.clientHeight - 40, transform: 'translate3d(0,0,0)' }
       : { width: w.width, height: w.height, transform: `translate3d(${w.x}px, ${w.y}px, 0)` };
 
+  // For Eaglercraft, keep the iframe in DOM when minimized to preserve game state
+  const shouldPreserveState = w.type === 'eaglercraft';
+  const windowStyle = isMin && !shouldPreserveState
+    ? { top: 0, left: 0, transform: `translate3d(${w.x}px, ${(boundsRef.current?.clientHeight || 600) - 64}px, 0)`, width: 160, zIndex: w.zIndex }
+    : { ...maxStyle, zIndex: w.zIndex, top: 0, left: 0, willChange: 'transform', touchAction: mobile ? 'auto' : 'none', visibility: isMin && shouldPreserveState ? 'hidden' : 'visible' };
+
+  if (isMin && !shouldPreserveState) {
+    return (
+      <div
+        className="absolute win98-window flex items-center cursor-pointer"
+        style={windowStyle}
+        onClick={() => { toggleWindowState(page, w.id, 'min'); bringToFront(page, w.id); }}
+      >
+        <div className="win98-titlebar shrink-0 w-full px-1 truncate text-xs">{w.title}</div>
+      </div>
+    );
+  }
+
   return (
     <div
       ref={elRef}
       onPointerDown={() => bringToFront(page, w.id)}
       onClick={handleWindowClick}
       className={`absolute win98-window flex flex-col ${isStringMode ? 'cursor-crosshair' : ''} ${isStringMode && stringStartId === w.id ? 'ring-4 ring-red-500' : ''}`}
-      style={{ ...maxStyle, zIndex: w.zIndex, top: 0, left: 0, willChange: 'transform', touchAction: mobile ? 'auto' : 'none' } as React.CSSProperties}
+      style={windowStyle as React.CSSProperties}
     >
       <div
         className={`win98-titlebar ${isActive ? '' : 'inactive'} shrink-0 cursor-move select-none`}
