@@ -257,6 +257,7 @@ export function Taskbar({ page }: { page: string }) {
     { label: "Play Flappy Bird", act: () => open({ type: 'flappy', title: 'Flappy Bird', width: 560, height: 540 }) },
     { label: "Play Geometry Dash", act: () => open({ type: 'geometry', title: 'Geometry Dash', width: 560, height: 330 }) },
     { label: "Play Poker", act: () => open({ type: 'poker', title: 'Poker', width: 560, height: 390 }) },
+    { label: "Play Eaglercraft", act: () => open({ type: 'eaglercraft', title: 'Eaglercraft', width: 900, height: 600 }) },
   ];
 
   const socialItems: StartMenuItem[] = [
