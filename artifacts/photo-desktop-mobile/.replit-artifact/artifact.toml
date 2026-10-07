@@ -1,0 +1,24 @@
+kind = "mobile"
+previewPath = "/mobile/"
+title = "Photo Desktop Mobile"
+description = "A native iOS companion app for the Photo Desktop community, with account sign-in, mobile-ready community features, and push notifications."
+version = "1.0.0"
+id = "artifacts/photo-desktop-mobile"
+router = "expo-domain"
+
+[[services]]
+name = "expo"
+ensurePreviewReachable = "/status"
+paths = [ "/mobile/" ]
+localPort = 22084
+
+[services.development]
+run = "pnpm --filter @workspace/photo-desktop-mobile run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/photo-desktop-mobile", "run", "build" ]
+run = [ "pnpm", "--filter", "@workspace/photo-desktop-mobile", "run", "serve" ]
+
+[services.env]
+PORT = "22084"
+BASE_PATH = "/mobile/"
