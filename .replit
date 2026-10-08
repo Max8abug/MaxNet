@@ -62,3 +62,8 @@ externalPort = 3001
 [[ports]]
 localPort = 24911
 externalPort = 80
+
+[userenv]
+
+[userenv.production]
+EXPO_PUBLIC_API_BASE_URL = "https://moonbat.ddns.net"
