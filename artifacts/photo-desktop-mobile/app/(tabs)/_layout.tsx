@@ -17,9 +17,21 @@ function NativeTabLayout() {
     <NativeTabs>
       <NativeTabs.Trigger name="index">
         <NativeTabs.Trigger.Icon
-          sf={{ default: 'house', selected: 'house.fill' }}
+          sf={{ default: 'newspaper', selected: 'newspaper.fill' }}
         />
-        <NativeTabs.Trigger.Label>Home</NativeTabs.Trigger.Label>
+        <NativeTabs.Trigger.Label>News</NativeTabs.Trigger.Label>
+      </NativeTabs.Trigger>
+      <NativeTabs.Trigger name="browser">
+        <NativeTabs.Trigger.Icon sf={{ default: 'person.3', selected: 'person.3.fill' }} />
+        <NativeTabs.Trigger.Label>Browse</NativeTabs.Trigger.Label>
+      </NativeTabs.Trigger>
+      <NativeTabs.Trigger name="wiki">
+        <NativeTabs.Trigger.Icon sf={{ default: 'book.closed', selected: 'book.closed.fill' }} />
+        <NativeTabs.Trigger.Label>Wiki</NativeTabs.Trigger.Label>
+      </NativeTabs.Trigger>
+      <NativeTabs.Trigger name="profile">
+        <NativeTabs.Trigger.Icon sf={{ default: 'person.crop.circle', selected: 'person.crop.circle.fill' }} />
+        <NativeTabs.Trigger.Label>Profile</NativeTabs.Trigger.Label>
       </NativeTabs.Trigger>
     </NativeTabs>
   );
@@ -66,13 +78,40 @@ function ClassicTabLayout() {
       <Tabs.Screen
         name="index"
         options={{
-          title: 'Home',
+          title: 'News',
           tabBarIcon: ({ color }) =>
             isIOS ? (
-              <SymbolView name="house" tintColor={color} size={24} />
+              <SymbolView name="newspaper" tintColor={color} size={24} />
             ) : (
-              <Feather name="home" size={22} color={color} />
+              <Feather name="file-text" size={22} color={color} />
             ),
+        }}
+      />
+      <Tabs.Screen
+        name="browser"
+        options={{
+          title: 'Browse',
+          tabBarIcon: ({ color }) => isIOS
+            ? <SymbolView name="person.3" tintColor={color} size={24} />
+            : <Feather name="users" size={22} color={color} />,
+        }}
+      />
+      <Tabs.Screen
+        name="wiki"
+        options={{
+          title: 'Wiki',
+          tabBarIcon: ({ color }) => isIOS
+            ? <SymbolView name="book.closed" tintColor={color} size={24} />
+            : <Feather name="book-open" size={22} color={color} />,
+        }}
+      />
+      <Tabs.Screen
+        name="profile"
+        options={{
+          title: 'Profile',
+          tabBarIcon: ({ color }) => isIOS
+            ? <SymbolView name="person.crop.circle" tintColor={color} size={24} />
+            : <Feather name="user" size={22} color={color} />,
         }}
       />
     </Tabs>

@@ -3,6 +3,7 @@ import { fetchUsers, voteUserPage, type PublicUser } from "../lib/api";
 import { useAuth } from "../lib/auth-store";
 import { useDesktopStore } from "../store";
 import { Avatar } from "./Avatar";
+import { WikiBrowser } from "./WikiBrowser";
 
 type UserBrowserProps = {
   page?: string;
@@ -41,6 +42,7 @@ function UserCard({
   onVote: (username: string, vote: boolean) => void;
   canVote: boolean;
 }) {
+  const hasPersonalContent = !!user.hasPage || !!user.hasHostedSite;
   return (
     <div
       role="button"
@@ -75,11 +77,12 @@ function UserCard({
           />
         </span>
         <span className="flex min-h-0 flex-1 flex-col justify-between px-1.5 py-1 text-[10px]">
-          <span className="text-gray-700">{user.hasPage ? displayActivity(user.lastSeen) : "No personal page yet"}</span>
+          <span className="text-gray-700">{hasPersonalContent ? displayActivity(user.lastSeen) : "No personal page yet"}</span>
           <span className="flex items-center justify-between gap-1">
             <span className="font-bold text-[#000080] group-hover:underline">
-              {user.hasPage ? "Open personal page" : "View profile"}
+              {hasPersonalContent ? "Open personal page" : "View profile"}
             </span>
+            {user.hasHostedSite && <span className="shrink-0 border border-[#808080] bg-[#e6e6e6] px-1 text-[9px]">HTML site</span>}
             {user.hasPage && (
               <button
                 type="button"
@@ -127,6 +130,7 @@ export function UserBrowser({ page = "/" }: UserBrowserProps) {
   const [users, setUsers] = useState<PublicUser[]>([]);
   const [query, setQuery] = useState("");
   const [sortMode, setSortMode] = useState<"popular" | "alphabetical">("popular");
+  const [activeView, setActiveView] = useState<"people" | "wiki">("people");
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -156,7 +160,7 @@ export function UserBrowser({ page = "/" }: UserBrowserProps) {
   const visibleUsers = useMemo(() => {
     const normalizedQuery = query.trim().toLocaleLowerCase();
     return [...users].sort((first, second) => sortMode === "popular"
-      ? Number(second.hasPage) - Number(first.hasPage)
+      ? Number(!!second.hasPage || !!second.hasHostedSite) - Number(!!first.hasPage || !!first.hasHostedSite)
         || (second.upvotes || 0) - (first.upvotes || 0)
         || first.username.localeCompare(second.username)
       : first.username.localeCompare(second.username))
@@ -200,6 +204,22 @@ export function UserBrowser({ page = "/" }: UserBrowserProps) {
         <span className="px-1 font-bold text-[#000080]">Web</span>
         <button
           type="button"
+          className={`win98-button px-2 ${activeView === "wiki" ? "font-bold" : ""}`}
+          onClick={() => setActiveView("wiki")}
+          data-testid="button-browser-wiki"
+        >
+          Wiki
+        </button>
+        <button
+          type="button"
+          className={`win98-button px-2 ${activeView === "people" ? "font-bold" : ""}`}
+          onClick={() => setActiveView("people")}
+          data-testid="button-browser-people"
+        >
+          People
+        </button>
+        <button
+          type="button"
           className="win98-button px-2"
           onClick={() => void loadUsers(true)}
           disabled={loading || refreshing}
@@ -214,14 +234,15 @@ export function UserBrowser({ page = "/" }: UserBrowserProps) {
           <input
             id="user-browser-address"
             className="win98-inset min-w-0 flex-1 bg-white px-1 py-0.5 text-[11px]"
-            value="http://photo.local/users/"
+            value={`http://photo.local/${activeView === "wiki" ? "wiki/" : "users/"}`}
             readOnly
             data-testid="input-browser-address"
-            aria-label="Directory address"
+            aria-label={activeView === "wiki" ? "Wiki address" : "Directory address"}
           />
         </label>
       </div>
 
+      {activeView === "wiki" ? <WikiBrowser /> : <>
       <div className="flex shrink-0 flex-wrap items-end justify-between gap-2 border-b border-[#808080] bg-[#d8d8d8] p-2">
         <div>
           <div className="text-base font-bold text-[#000080]">Personal Web Directory</div>
@@ -346,6 +367,7 @@ export function UserBrowser({ page = "/" }: UserBrowserProps) {
         </span>
         <span>{me ? `Signed in as ${me.username}` : "Visitor mode"}</span>
       </div>
+      </>}
     </div>
   );
 }

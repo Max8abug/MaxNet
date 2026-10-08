@@ -174,7 +174,7 @@ export function Window({
 
   // For Eaglercraft, keep the iframe in DOM when minimized to preserve game state
   const shouldPreserveState = w.type === 'eaglercraft';
-  const windowStyle = isMin && !shouldPreserveState
+  const windowStyle: React.CSSProperties = isMin && !shouldPreserveState
     ? { top: 0, left: 0, transform: `translate3d(${w.x}px, ${(boundsRef.current?.clientHeight || 600) - 64}px, 0)`, width: 160, zIndex: w.zIndex }
     : { ...maxStyle, zIndex: w.zIndex, top: 0, left: 0, willChange: 'transform', touchAction: mobile ? 'auto' : 'none', visibility: isMin && shouldPreserveState ? 'hidden' : 'visible' };
 

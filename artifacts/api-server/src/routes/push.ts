@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { db, pushSubscriptionsTable } from "@workspace/db";
+import { db, pushSubscriptionsTable, expoPushTokensTable } from "@workspace/db";
 import { and, eq } from "drizzle-orm";
 import { requireAuth } from "../lib/auth";
 import { ensureVapid, getPublicKey } from "../lib/push";
@@ -49,6 +49,37 @@ router.post("/push/unsubscribe", requireAuth, async (req, res) => {
   await db.delete(pushSubscriptionsTable).where(and(
     eq(pushSubscriptionsTable.username, me),
     eq(pushSubscriptionsTable.endpoint, endpoint),
+  ));
+  res.json({ ok: true });
+});
+
+router.post("/push/expo/register", requireAuth, async (req, res) => {
+  const token = typeof req.body?.token === "string" ? req.body.token.trim() : "";
+  const platform = req.body?.platform === "android" ? "android" : "ios";
+  if (!/^Expo(?:nent)?PushToken\[[\w-]{20,200}\]$/.test(token)) {
+    res.status(400).json({ error: "Invalid Expo push token" });
+    return;
+  }
+  await db.insert(expoPushTokensTable).values({
+    username: req.session.username!,
+    token,
+    platform,
+  }).onConflictDoUpdate({
+    target: expoPushTokensTable.token,
+    set: { username: req.session.username!, platform },
+  });
+  res.json({ ok: true });
+});
+
+router.post("/push/expo/unregister", requireAuth, async (req, res) => {
+  const token = typeof req.body?.token === "string" ? req.body.token.trim() : "";
+  if (!token) {
+    res.status(400).json({ error: "token required" });
+    return;
+  }
+  await db.delete(expoPushTokensTable).where(and(
+    eq(expoPushTokensTable.username, req.session.username!),
+    eq(expoPushTokensTable.token, token),
   ));
   res.json({ ok: true });
 });

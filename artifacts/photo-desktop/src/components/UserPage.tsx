@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { fetchUserPage, saveUserPage, clearUserPage, type UserPageElement } from "../lib/api";
 import { useAuth, hasPermission } from "../lib/auth-store";
+import { HostedSitePanel } from "./HostedSitePanel";
 
 interface Props { username: string; }
 
@@ -30,6 +31,7 @@ export function UserPage({ username }: Props) {
   const refreshRanks = useAuth((s) => s.refreshRanks);
   const isMe = me?.username === username;
   const canModerate = !!me && (me.isAdmin || hasPermission(me, "deleteMessages", ranks));
+  const [showHostedSite, setShowHostedSite] = useState(false);
   useEffect(() => { void refreshRanks(); }, [refreshRanks]);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const drawing = useRef(false);
@@ -58,14 +60,14 @@ export function UserPage({ username }: Props) {
       setElements([]);
     }
   }
-  useEffect(() => { void load(); }, [username]);
+  useEffect(() => { void load(); }, [username, showHostedSite]);
   // Poll for updates so other viewers see changes without reopening the page.
   // Pause polling while the owner is editing so we don't clobber unsaved work.
   useEffect(() => {
-    if (edit) return;
+    if (edit || showHostedSite) return;
     const t = setInterval(() => { void load(); }, 6000);
     return () => clearInterval(t);
-  }, [username, edit]);
+  }, [username, edit, showHostedSite]);
 
   function getPos(e: React.PointerEvent) {
     const c = canvasRef.current!; const r = c.getBoundingClientRect();
@@ -159,8 +161,10 @@ export function UserPage({ username }: Props) {
     <div className="w-full h-full flex flex-col text-xs gap-1">
       <div className="flex gap-1 shrink-0 flex-wrap">
         <div className="font-bold flex-1">{username}'s personal page</div>
-        {canModerate && !isMe && <button className="win98-button px-2" onClick={adminClear}>Mod Clear</button>}
-        {isMe && (
+        <button className={`win98-button px-2 ${!showHostedSite ? "font-bold" : ""}`} onClick={() => { setShowHostedSite(false); setEdit(false); }}>Canvas</button>
+        <button className={`win98-button px-2 ${showHostedSite ? "font-bold" : ""}`} onClick={() => { setShowHostedSite(true); setEdit(false); }}>HTML site</button>
+        {!showHostedSite && canModerate && !isMe && <button className="win98-button px-2" onClick={adminClear}>Mod Clear</button>}
+        {!showHostedSite && isMe && (
           edit ? (
             <>
               <button className="win98-button px-2" onClick={() => setErase(false)}>{!erase ? "✓ " : ""}Pen</button>
@@ -181,6 +185,9 @@ export function UserPage({ username }: Props) {
           )
         )}
       </div>
+      {showHostedSite ? (
+        <HostedSitePanel username={username} isOwner={isMe} />
+      ) : <>
       <div className="flex-1 win98-inset bg-white overflow-hidden relative" onClick={() => setSelIdx(null)}>
         <canvas
           ref={canvasRef}
@@ -247,6 +254,7 @@ export function UserPage({ username }: Props) {
       </div>
       {edit && isMe && <div className="text-[10px] text-gray-600 shrink-0">Drag elements to move · click to select · drag the blue corner to resize · double-click text to edit · click outside to deselect</div>}
       {saveStatus && <div className="text-[10px] text-green-700 shrink-0">{saveStatus}</div>}
+      </>}
     </div>
   );
 }

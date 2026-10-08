@@ -1,5 +1,5 @@
 import webpush from "web-push";
-import { db, siteSettingsTable, pushSubscriptionsTable } from "@workspace/db";
+import { db, siteSettingsTable, pushSubscriptionsTable, expoPushTokensTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { logger } from "./logger";
 
@@ -52,6 +52,48 @@ export async function getPublicKey(): Promise<string> {
 
 type PushPayload = { title: string; body: string; tag?: string; url?: string; kind?: string; excludeUsername?: string };
 
+async function sendExpoNotifications(
+  rows: Array<{ id: number; username: string; token: string }>,
+  payload: PushPayload,
+): Promise<void> {
+  if (rows.length === 0) return;
+  for (let offset = 0; offset < rows.length; offset += 100) {
+    const batch = rows.slice(offset, offset + 100);
+    const messages = batch.map((row) => ({
+      to: row.token,
+      title: payload.title,
+      body: payload.body,
+      sound: "default",
+      channelId: "default",
+      data: { url: payload.url || "/", kind: payload.kind || "site" },
+    }));
+    try {
+      const response = await fetch("https://exp.host/--/api/v2/push/send", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Accept: "application/json" },
+        body: JSON.stringify(messages),
+      });
+      if (!response.ok) {
+        logger.warn({ status: response.status }, "Expo push request failed");
+        continue;
+      }
+      const result = await response.json() as {
+        data?: Array<{ status?: string; details?: { error?: string } }>;
+      };
+      const tickets = Array.isArray(result.data) ? result.data : [];
+      await Promise.all(tickets.flatMap((ticket, index) => {
+        if (ticket.status !== "error" || ticket.details?.error !== "DeviceNotRegistered") return [];
+        const row = batch[index];
+        return row
+          ? [db.delete(expoPushTokensTable).where(eq(expoPushTokensTable.id, row.id)).catch(() => {})]
+          : [];
+      }));
+    } catch (e) {
+      logger.warn({ err: e }, "Expo push delivery failed");
+    }
+  }
+}
+
 async function sendPushToSubscriptions(
   subs: Array<{ id: number; endpoint: string; p256dh: string; auth: string; username: string }>,
   payload: PushPayload,
@@ -83,32 +125,50 @@ export async function sendPushToUser(
   username: string,
   payload: PushPayload,
 ): Promise<void> {
-  const v = await ensureVapid();
-  if (!v) return;
-  let subs;
   try {
-    subs = await db.select().from(pushSubscriptionsTable).where(eq(pushSubscriptionsTable.username, username));
+    const native = await db.select({
+      id: expoPushTokensTable.id,
+      username: expoPushTokensTable.username,
+      token: expoPushTokensTable.token,
+    }).from(expoPushTokensTable).where(eq(expoPushTokensTable.username, username));
+    await sendExpoNotifications(native, payload);
+  } catch (e) {
+    logger.error({ err: e, username }, "Failed to load native push tokens");
+  }
+  const vapid = await ensureVapid();
+  if (!vapid) return;
+  try {
+    const subs = await db.select().from(pushSubscriptionsTable).where(eq(pushSubscriptionsTable.username, username));
+    await sendPushToSubscriptions(subs, payload);
   } catch (e) {
     logger.error({ err: e, username }, "Failed to load push subscriptions");
-    return;
   }
-  if (subs.length === 0) return;
-  await sendPushToSubscriptions(subs, payload);
 }
 
 // Broadcast public announcements to every subscribed browser/device.
 export async function sendPushToAll(payload: PushPayload): Promise<void> {
-  const v = await ensureVapid();
-  if (!v) return;
-  let subs;
   try {
-    subs = await db.select().from(pushSubscriptionsTable);
+    const native = await db.select({
+      id: expoPushTokensTable.id,
+      username: expoPushTokensTable.username,
+      token: expoPushTokensTable.token,
+    }).from(expoPushTokensTable);
+    await sendExpoNotifications(
+      payload.excludeUsername ? native.filter((s) => s.username !== payload.excludeUsername) : native,
+      payload,
+    );
+  } catch (e) {
+    logger.error({ err: e }, "Failed to load native push tokens for broadcast");
+  }
+  const vapid = await ensureVapid();
+  if (!vapid) return;
+  try {
+    const subs = await db.select().from(pushSubscriptionsTable);
+    await sendPushToSubscriptions(
+      payload.excludeUsername ? subs.filter((s) => s.username !== payload.excludeUsername) : subs,
+      payload,
+    );
   } catch (e) {
     logger.error({ err: e }, "Failed to load push subscriptions for broadcast");
-    return;
   }
-  await sendPushToSubscriptions(
-    payload.excludeUsername ? subs.filter((s) => s.username !== payload.excludeUsername) : subs,
-    payload,
-  );
 }

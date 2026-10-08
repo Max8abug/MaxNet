@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
-import { db, usersTable, bannedUsersTable, userPagesTable, chatAuditTable, deviceAppealsTable } from "@workspace/db";
-import { eq } from "drizzle-orm";
+import { db, usersTable, bannedUsersTable, userPagesTable, hostedSitesTable, chatAuditTable, deviceAppealsTable } from "@workspace/db";
+import { and, eq } from "drizzle-orm";
 import { hashPassword, verifyPassword, isAdminUsername, findUserByUsername, requireAdmin } from "../lib/auth";
 import { getClientIp, isIpBanned, recordUserIp } from "../lib/ip-tracking";
 import { flagDevicesForUsername, getDeviceReview, getDeviceStatus, recordDeviceAssociation, getDeviceIdForRequest } from "../lib/device-tracking";
@@ -426,8 +426,13 @@ router.get("/users", async (req, res) => {
     lastSeen: usersTable.lastSeen,
     pageUsername: userPagesTable.username,
     pageVotes: userPagesTable.votes,
+    hostedSiteUsername: hostedSitesTable.username,
   }).from(usersTable)
     .leftJoin(userPagesTable, eq(usersTable.username, userPagesTable.username))
+    .leftJoin(hostedSitesTable, and(
+      eq(usersTable.username, hostedSitesTable.username),
+      eq(hostedSitesTable.active, true),
+    ))
     .limit(500);
   res.json(rows.map((row) => {
     const votes = row.pageVotes && typeof row.pageVotes === "object"
@@ -440,6 +445,7 @@ router.get("/users", async (req, res) => {
       rank: row.rank,
       lastSeen: row.lastSeen,
       hasPage: !!row.pageUsername,
+      hasHostedSite: !!row.hostedSiteUsername,
       upvotes: Object.values(votes).filter(Boolean).length,
       myVote: req.session.username ? !!votes[req.session.username] : false,
     };

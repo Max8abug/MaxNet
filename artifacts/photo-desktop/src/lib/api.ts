@@ -89,6 +89,7 @@ export interface PublicUser {
   rank?: string | null;
   lastSeen?: string | null;
   hasPage?: boolean;
+  hasHostedSite?: boolean;
   upvotes?: number;
   myVote?: boolean;
 }
@@ -631,12 +632,12 @@ export async function flappyScore(score: number): Promise<void> {
 }
 
 // ----- Ranks -----
-export interface Rank { id: number; name: string; color: string; permissions: string[]; tier: number; }
+export interface Rank { id: number; name: string; color: string; permissions: string[]; tier: number; siteStorageLimitBytes: number; }
 export async function fetchRanks(): Promise<Rank[]> { return jsonOrThrow(await fetch(`${BASE}/ranks`, opts)); }
-export async function createRank(name: string, color: string, permissions: string[], tier: number): Promise<Rank> {
-  return jsonOrThrow(await fetch(`${BASE}/ranks`, { ...opts, method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name, color, permissions, tier }) }));
+export async function createRank(name: string, color: string, permissions: string[], tier: number, siteStorageLimitBytes = 1024 ** 3): Promise<Rank> {
+  return jsonOrThrow(await fetch(`${BASE}/ranks`, { ...opts, method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name, color, permissions, tier, siteStorageLimitBytes }) }));
 }
-export async function updateRank(currentName: string, data: { name?: string; color: string; permissions: string[]; tier: number }): Promise<Rank> {
+export async function updateRank(currentName: string, data: { name?: string; color: string; permissions: string[]; tier: number; siteStorageLimitBytes: number }): Promise<Rank> {
   return jsonOrThrow(await fetch(`${BASE}/ranks/${encodeURIComponent(currentName)}`, {
     ...opts,
     method: "PATCH",
@@ -785,6 +786,109 @@ export async function voteUserPage(username: string, vote: boolean): Promise<{ u
     ...opts, method: "POST", headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ vote }),
   }));
+}
+
+// ----- Wiki -----
+export interface WikiPageSummary {
+  slug: string;
+  title: string;
+  updatedBy: string;
+  updatedAt: string;
+  excerpt: string;
+}
+export interface WikiAsset {
+  id: number;
+  fileName: string;
+  contentType: string;
+  size: number;
+  uploadedBy: string;
+  createdAt: string;
+  url: string;
+}
+export interface WikiPageRecord {
+  slug: string;
+  title: string;
+  content: string;
+  createdBy: string;
+  updatedBy: string;
+  updatedAt: string;
+}
+export async function fetchWikiPages(): Promise<WikiPageSummary[]> {
+  return jsonOrThrow(await fetch(`${BASE}/wiki/pages`, opts));
+}
+export async function fetchWikiPage(slug: string): Promise<{ page: WikiPageRecord; assets: WikiAsset[] }> {
+  return jsonOrThrow(await fetch(`${BASE}/wiki/pages/${encodeURIComponent(slug)}`, opts));
+}
+export async function createWikiPage(title: string, content: string): Promise<{ page: WikiPageRecord; assets: WikiAsset[] }> {
+  return jsonOrThrow(await fetch(`${BASE}/wiki/pages`, {
+    ...opts, method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ title, content }),
+  }));
+}
+export async function updateWikiPage(slug: string, title: string, content: string): Promise<{ page: WikiPageRecord; assets: WikiAsset[] }> {
+  return jsonOrThrow(await fetch(`${BASE}/wiki/pages/${encodeURIComponent(slug)}`, {
+    ...opts, method: "PATCH", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ title, content }),
+  }));
+}
+export async function deleteWikiPage(slug: string): Promise<void> {
+  await jsonOrThrow(await fetch(`${BASE}/wiki/pages/${encodeURIComponent(slug)}`, { ...opts, method: "DELETE" }));
+}
+export async function uploadWikiAsset(slug: string, fileName: string, dataUrl: string): Promise<WikiAsset> {
+  return jsonOrThrow(await fetch(`${BASE}/wiki/pages/${encodeURIComponent(slug)}/assets`, {
+    ...opts, method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ fileName, dataUrl }),
+  }));
+}
+export async function deleteWikiAsset(id: number): Promise<void> {
+  await jsonOrThrow(await fetch(`${BASE}/wiki/assets/${id}`, { ...opts, method: "DELETE" }));
+}
+
+// ----- Hosted user sites -----
+export interface HostedSiteFile {
+  path: string;
+  contentType: string;
+  size: number;
+  updatedAt: string;
+}
+export interface HostedSiteInfo {
+  exists: boolean;
+  active: boolean;
+  entryPath?: string;
+  updatedAt?: string;
+  files?: HostedSiteFile[];
+  totalBytes?: number;
+  quotaBytes?: number;
+  canCreate?: boolean;
+  canRunJs?: boolean;
+}
+export async function fetchHostedSite(username: string): Promise<HostedSiteInfo> {
+  return jsonOrThrow(await fetch(`${BASE}/custom-sites/${encodeURIComponent(username)}`, opts));
+}
+export async function createHostedSite(username: string): Promise<HostedSiteInfo> {
+  return jsonOrThrow(await fetch(`${BASE}/custom-sites/${encodeURIComponent(username)}`, {
+    ...opts, method: "POST", headers: { "Content-Type": "application/json" }, body: "{}",
+  }));
+}
+export async function updateHostedSite(username: string, settings: { active?: boolean; entryPath?: string }): Promise<HostedSiteInfo> {
+  return jsonOrThrow(await fetch(`${BASE}/custom-sites/${encodeURIComponent(username)}`, {
+    ...opts, method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(settings),
+  }));
+}
+export async function uploadHostedSiteFile(username: string, filePath: string, dataBase64: string): Promise<void> {
+  await jsonOrThrow(await fetch(`${BASE}/custom-sites/${encodeURIComponent(username)}/file`, {
+    ...opts, method: "PUT", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ path: filePath, dataBase64 }),
+  }));
+}
+export async function deleteHostedSiteFile(username: string, filePath: string): Promise<void> {
+  await jsonOrThrow(await fetch(`${BASE}/custom-sites/${encodeURIComponent(username)}/file`, {
+    ...opts, method: "DELETE", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ path: filePath }),
+  }));
+}
+export async function deleteHostedSite(username: string): Promise<void> {
+  await jsonOrThrow(await fetch(`${BASE}/custom-sites/${encodeURIComponent(username)}`, { ...opts, method: "DELETE" }));
 }
 
 // ----- Cafe -----

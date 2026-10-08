@@ -7,11 +7,16 @@ import { audit } from "./social";
 const router: IRouter = Router();
 
 const BUILTIN_RANKS = [
-  { name: "admin", color: "#ff3030", tier: 100, permissions: ["deleteMessages", "ban", "dm", "manageRanks", "cafeTheme", "youtubeMaster", "staffChat"] },
+  { name: "admin", color: "#ff3030", tier: 100, permissions: ["deleteMessages", "ban", "dm", "manageRanks", "cafeTheme", "youtubeMaster", "staffChat", "editWiki", "createHtmlPage", "runHtmlPageJs"] },
   { name: "mod", color: "#3070ff", tier: 50, permissions: ["deleteMessages", "ban", "dm"] },
   { name: "vip", color: "#a040ff", tier: 20, permissions: ["dm"] },
 ];
-const VALID_PERMISSIONS = new Set(["deleteMessages", "ban", "dm", "manageRanks", "cafeTheme", "postNews", "youtubeMaster", "staffChat"]);
+const DEFAULT_SITE_STORAGE_BYTES = 1024 * 1024 * 1024;
+const MAX_SITE_STORAGE_BYTES = 100 * 1024 * 1024 * 1024;
+const VALID_PERMISSIONS = new Set([
+  "deleteMessages", "ban", "dm", "manageRanks", "cafeTheme", "postNews",
+  "youtubeMaster", "staffChat", "editWiki", "createHtmlPage", "runHtmlPageJs",
+]);
 
 async function ensureBuiltins() {
   for (const r of BUILTIN_RANKS) {
@@ -29,18 +34,32 @@ router.get("/ranks", async (_req, res) => {
 });
 
 router.post("/ranks", requireAdmin, async (req, res) => {
-  const { name, color, permissions, tier } = req.body ?? {};
+  const { name, color, permissions, tier, siteStorageLimitBytes } = req.body ?? {};
   if (typeof name !== "string" || !name.trim()) { res.status(400).json({ error: "name required" }); return; }
   const cleanName = name.trim().slice(0, 24);
   const cleanColor = (typeof color === "string" && color.match(/^#[0-9a-fA-F]{6}$/)) ? color : "#888888";
   const cleanPerms = cleanPermissions(permissions);
   const cleanTier = (typeof tier === "number" && tier >= 1 && tier <= 99) ? Math.floor(tier) : 10;
+  const cleanQuota = cleanSiteStorageLimit(siteStorageLimitBytes, DEFAULT_SITE_STORAGE_BYTES);
   try {
-    const [row] = await db.insert(ranksTable).values({ name: cleanName, color: cleanColor, permissions: cleanPerms, tier: cleanTier }).returning();
-    await audit("ranks", "create", req.session.username || "admin", cleanName, JSON.stringify(cleanPerms));
+    const [row] = await db.insert(ranksTable).values({
+      name: cleanName,
+      color: cleanColor,
+      permissions: cleanPerms,
+      tier: cleanTier,
+      siteStorageLimitBytes: cleanQuota,
+    }).returning();
+    await audit("ranks", "create", req.session.username || "admin", cleanName, JSON.stringify({ permissions: cleanPerms, siteStorageLimitBytes: cleanQuota }));
     res.json(row);
   } catch { res.status(409).json({ error: "rank name taken" }); }
 });
+
+function cleanSiteStorageLimit(value: unknown, fallback: number): number {
+  if (typeof value !== "number" || !Number.isSafeInteger(value) || value < 0 || value > MAX_SITE_STORAGE_BYTES) {
+    return fallback;
+  }
+  return value;
+}
 
 function cleanPermissions(value: unknown): string[] {
   if (!Array.isArray(value)) return [];
@@ -69,16 +88,25 @@ router.patch("/ranks/:name", requireAdmin, async (req, res) => {
   const cleanPerms = Array.isArray(req.body?.permissions)
     ? cleanPermissions(req.body.permissions)
     : (Array.isArray(existing.permissions) ? existing.permissions as string[] : []);
+  const cleanQuota = req.body?.siteStorageLimitBytes === undefined
+    ? existing.siteStorageLimitBytes
+    : cleanSiteStorageLimit(req.body.siteStorageLimitBytes, existing.siteStorageLimitBytes);
 
   try {
     const [updated] = await db.update(ranksTable)
-      .set({ name: cleanName, color: cleanColor, tier: cleanTier, permissions: cleanPerms })
+      .set({
+        name: cleanName,
+        color: cleanColor,
+        tier: cleanTier,
+        permissions: cleanPerms,
+        siteStorageLimitBytes: cleanQuota,
+      })
       .where(eq(ranksTable.id, existing.id))
       .returning();
     if (cleanName !== currentName) {
       await db.update(usersTable).set({ rank: cleanName }).where(eq(usersTable.rank, currentName));
     }
-    await audit("ranks", "update", req.session.username || "admin", cleanName, JSON.stringify(cleanPerms));
+    await audit("ranks", "update", req.session.username || "admin", cleanName, JSON.stringify({ permissions: cleanPerms, siteStorageLimitBytes: cleanQuota }));
     res.json(updated);
   } catch {
     res.status(409).json({ error: "rank name taken" });
@@ -109,12 +137,30 @@ router.post("/ranks/assign", requireAdmin, async (req, res) => {
 
 export async function getUserPermissions(username: string | undefined): Promise<string[]> {
   if (!username) return [];
-  if (isAdminUsername(username)) return ["deleteMessages", "ban", "dm", "manageRanks", "cafeTheme", "youtubeMaster", "staffChat"];
+  if (isAdminUsername(username)) return [
+    "deleteMessages", "ban", "dm", "manageRanks", "cafeTheme", "youtubeMaster",
+    "staffChat", "editWiki", "createHtmlPage", "runHtmlPageJs",
+  ];
   const [u] = await db.select().from(usersTable).where(eq(usersTable.username, username)).limit(1);
   if (!u || !u.rank) return [];
   await ensureBuiltins();
   const [r] = await db.select().from(ranksTable).where(eq(ranksTable.name, u.rank)).limit(1);
   return Array.isArray(r?.permissions) ? (r!.permissions as string[]) : [];
+}
+
+export async function getUserSiteStorageLimitBytes(username: string | undefined): Promise<number> {
+  if (!username) return 0;
+  const [user] = await db.select({ rank: usersTable.rank, isAdmin: usersTable.isAdmin })
+    .from(usersTable)
+    .where(eq(usersTable.username, username))
+    .limit(1);
+  if (isAdminUsername(username) || user?.isAdmin) return DEFAULT_SITE_STORAGE_BYTES;
+  if (!user?.rank) return 0;
+  const [rank] = await db.select({ limit: ranksTable.siteStorageLimitBytes })
+    .from(ranksTable)
+    .where(eq(ranksTable.name, user.rank))
+    .limit(1);
+  return Number(rank?.limit ?? 0);
 }
 
 export default router;

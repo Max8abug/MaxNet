@@ -1,4 +1,4 @@
-import { pgTable, serial, text, timestamp, integer, boolean, varchar, jsonb, index, uniqueIndex } from "drizzle-orm/pg-core";
+import { pgTable, serial, text, timestamp, integer, bigint, boolean, varchar, jsonb, index, uniqueIndex } from "drizzle-orm/pg-core";
 
 export const drawingsTable = pgTable("drawings", {
   id: serial("id").primaryKey(),
@@ -51,6 +51,7 @@ export const ranksTable = pgTable("ranks", {
   color: text("color").notNull().default("#888888"),
   permissions: jsonb("permissions").notNull().default([]),
   tier: integer("tier").notNull().default(1),
+  siteStorageLimitBytes: bigint("site_storage_limit_bytes", { mode: "number" }).notNull().default(1073741824),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
@@ -136,6 +137,58 @@ export const userPagesTable = pgTable("user_pages", {
   votes: jsonb("votes").notNull().default({}),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
+
+export const wikiPagesTable = pgTable("wiki_pages", {
+  slug: text("slug").primaryKey(),
+  title: text("title").notNull(),
+  content: text("content").notNull().default(""),
+  createdBy: text("created_by").notNull(),
+  updatedBy: text("updated_by").notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const wikiAssetsTable = pgTable("wiki_assets", {
+  id: serial("id").primaryKey(),
+  pageSlug: text("page_slug").notNull(),
+  objectKey: text("object_key").notNull(),
+  fileName: text("file_name").notNull(),
+  contentType: text("content_type").notNull(),
+  size: integer("size").notNull(),
+  uploadedBy: text("uploaded_by").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => [
+  index("wiki_assets_page_idx").on(table.pageSlug),
+]);
+
+export const hostedSitesTable = pgTable("hosted_sites", {
+  username: text("username").primaryKey(),
+  active: boolean("active").notNull().default(false),
+  entryPath: text("entry_path").notNull().default("index.html"),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const hostedSiteFilesTable = pgTable("hosted_site_files", {
+  id: serial("id").primaryKey(),
+  username: text("username").notNull(),
+  path: text("path").notNull(),
+  objectKey: text("object_key").notNull(),
+  contentType: text("content_type").notNull(),
+  size: integer("size").notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => [
+  uniqueIndex("hosted_site_files_username_path_unique").on(table.username, table.path),
+  index("hosted_site_files_username_idx").on(table.username),
+]);
+
+export const expoPushTokensTable = pgTable("expo_push_tokens", {
+  id: serial("id").primaryKey(),
+  username: text("username").notNull(),
+  token: text("token").notNull().unique(),
+  platform: text("platform").notNull().default("ios"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => [
+  index("expo_push_tokens_username_idx").on(table.username),
+]);
 
 export const cafePresenceTable = pgTable("cafe_presence", {
   username: text("username").primaryKey(),

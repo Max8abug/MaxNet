@@ -104,8 +104,10 @@ export async function ensureSchema(): Promise<void> {
       color text NOT NULL DEFAULT '#888888',
       permissions jsonb NOT NULL DEFAULT '[]'::jsonb,
       tier integer NOT NULL DEFAULT 1,
+      site_storage_limit_bytes bigint NOT NULL DEFAULT 1073741824,
       created_at timestamp NOT NULL DEFAULT now()
     );
+    ALTER TABLE ranks ADD COLUMN IF NOT EXISTS site_storage_limit_bytes bigint NOT NULL DEFAULT 1073741824;
 
     CREATE TABLE IF NOT EXISTS tracks (
       id serial PRIMARY KEY,
@@ -197,6 +199,55 @@ export async function ensureSchema(): Promise<void> {
     );
     ALTER TABLE user_pages ADD COLUMN IF NOT EXISTS elements jsonb NOT NULL DEFAULT '[]'::jsonb;
     ALTER TABLE user_pages ADD COLUMN IF NOT EXISTS votes jsonb NOT NULL DEFAULT '{}'::jsonb;
+
+    CREATE TABLE IF NOT EXISTS wiki_pages (
+      slug text PRIMARY KEY,
+      title text NOT NULL,
+      content text NOT NULL DEFAULT '',
+      created_by text NOT NULL,
+      updated_by text NOT NULL,
+      updated_at timestamp NOT NULL DEFAULT now()
+    );
+
+    CREATE TABLE IF NOT EXISTS wiki_assets (
+      id serial PRIMARY KEY,
+      page_slug text NOT NULL,
+      object_key text NOT NULL,
+      file_name text NOT NULL,
+      content_type text NOT NULL,
+      size integer NOT NULL,
+      uploaded_by text NOT NULL,
+      created_at timestamp NOT NULL DEFAULT now()
+    );
+    CREATE INDEX IF NOT EXISTS wiki_assets_page_idx ON wiki_assets (page_slug);
+
+    CREATE TABLE IF NOT EXISTS hosted_sites (
+      username text PRIMARY KEY,
+      active boolean NOT NULL DEFAULT false,
+      entry_path text NOT NULL DEFAULT 'index.html',
+      updated_at timestamp NOT NULL DEFAULT now()
+    );
+
+    CREATE TABLE IF NOT EXISTS hosted_site_files (
+      id serial PRIMARY KEY,
+      username text NOT NULL,
+      path text NOT NULL,
+      object_key text NOT NULL,
+      content_type text NOT NULL,
+      size integer NOT NULL,
+      updated_at timestamp NOT NULL DEFAULT now(),
+      CONSTRAINT hosted_site_files_username_path_unique UNIQUE (username, path)
+    );
+    CREATE INDEX IF NOT EXISTS hosted_site_files_username_idx ON hosted_site_files (username);
+
+    CREATE TABLE IF NOT EXISTS expo_push_tokens (
+      id serial PRIMARY KEY,
+      username text NOT NULL,
+      token text NOT NULL UNIQUE,
+      platform text NOT NULL DEFAULT 'ios',
+      created_at timestamp NOT NULL DEFAULT now()
+    );
+    CREATE INDEX IF NOT EXISTS expo_push_tokens_username_idx ON expo_push_tokens (username);
 
     CREATE TABLE IF NOT EXISTS cafe_presence (
       username text PRIMARY KEY,

@@ -2,8 +2,12 @@ import { useEffect, useState } from "react";
 import { fetchRanks, createRank, updateRank, deleteRank, assignRank, fetchUsers, type Rank, type PublicUser } from "../lib/api";
 import { useAuth } from "../lib/auth-store";
 
-const PERMS = ["deleteMessages", "ban", "dm", "manageRanks", "cafeTheme", "postNews", "youtubeMaster", "staffChat"];
+const PERMS = [
+  "deleteMessages", "ban", "dm", "manageRanks", "cafeTheme", "postNews",
+  "youtubeMaster", "staffChat", "editWiki", "createHtmlPage", "runHtmlPageJs",
+];
 const BUILTINS = ["admin", "mod", "vip"];
+const GIB = 1024 ** 3;
 
 export function RanksAdmin() {
   const user = useAuth((s) => s.user);
@@ -13,11 +17,13 @@ export function RanksAdmin() {
   const [color, setColor] = useState("#888888");
   const [tier, setTier] = useState(10);
   const [perms, setPerms] = useState<string[]>([]);
+  const [siteQuotaGb, setSiteQuotaGb] = useState(1);
   const [editing, setEditing] = useState<string | null>(null);
   const [editName, setEditName] = useState("");
   const [editColor, setEditColor] = useState("#888888");
   const [editTier, setEditTier] = useState(10);
   const [editPerms, setEditPerms] = useState<string[]>([]);
+  const [editSiteQuotaGb, setEditSiteQuotaGb] = useState(1);
   const [err, setErr] = useState<string | null>(null);
 
   async function refresh() {
@@ -29,7 +35,7 @@ export function RanksAdmin() {
 
   async function create() {
     setErr(null);
-    try { await createRank(name, color, perms, tier); setName(""); setPerms([]); await refresh(); }
+    try { await createRank(name, color, perms, tier, Math.round(siteQuotaGb * GIB)); setName(""); setPerms([]); await refresh(); }
     catch (e: any) { setErr(e?.message || "Failed"); }
   }
   async function del(n: string) { if (!confirm(`Delete rank ${n}?`)) return; try { await deleteRank(n); await refresh(); } catch {} }
@@ -40,6 +46,7 @@ export function RanksAdmin() {
     setEditColor(rank.color);
     setEditTier(rank.tier);
     setEditPerms(rank.permissions);
+    setEditSiteQuotaGb(rank.siteStorageLimitBytes / GIB);
   }
   function cancelEdit() {
     setEditing(null);
@@ -49,7 +56,13 @@ export function RanksAdmin() {
     if (!editing) return;
     setErr(null);
     try {
-      await updateRank(editing, { name: editName, color: editColor, permissions: editPerms, tier: editTier });
+      await updateRank(editing, {
+        name: editName,
+        color: editColor,
+        permissions: editPerms,
+        tier: editTier,
+        siteStorageLimitBytes: Math.round(editSiteQuotaGb * GIB),
+      });
       setEditing(null);
       await refresh();
     } catch (e: any) { setErr(e?.message || "Failed to update rank"); }
@@ -73,6 +86,10 @@ export function RanksAdmin() {
                   <span>color</span><input type="color" value={editColor} onChange={e => setEditColor(e.target.value)} />
                   <span>tier</span><input type="number" min={1} max={100} className="win98-inset px-1 w-14" value={editTier} onChange={e => setEditTier(Number(e.target.value))} />
                 </div>
+                <label className="flex items-center gap-1">
+                  HTML site storage (GB)
+                  <input type="number" min={0} max={100} step={0.25} className="win98-inset w-20 px-1" value={editSiteQuotaGb} onChange={e => setEditSiteQuotaGb(Number(e.target.value))} />
+                </label>
                 <div className="flex flex-wrap gap-1">
                   {PERMS.map(p => (
                     <label key={p} className="flex items-center gap-0.5"><input type="checkbox" checked={editPerms.includes(p)} onChange={e => setEditPerms(e.target.checked ? [...editPerms, p] : editPerms.filter(x => x !== p))} />{p}</label>
@@ -86,7 +103,7 @@ export function RanksAdmin() {
             ) : (
               <div key={r.id} className="flex items-center gap-1">
                 <span className="font-bold w-20" style={{ color: r.color }}>{r.name}</span>
-                <span className="text-[10px] text-gray-500">tier {r.tier}</span>
+                <span className="text-[10px] text-gray-500">tier {r.tier} · {r.siteStorageLimitBytes / GIB} GB site</span>
                 <span className="text-[10px] flex-1 truncate">{r.permissions.join(", ")}</span>
                 <button className="win98-button px-1 text-[10px]" onClick={() => beginEdit(r)}>Edit</button>
                 {!BUILTINS.includes(r.name) && <button className="win98-button px-1 text-[10px]" onClick={() => del(r.name)}>x</button>}
@@ -101,6 +118,10 @@ export function RanksAdmin() {
           <span>color</span><input type="color" value={color} onChange={e => setColor(e.target.value)} />
           <span>tier</span><input type="number" min={1} max={99} className="win98-inset px-1 w-14" value={tier} onChange={e => setTier(Number(e.target.value))} />
         </div>
+        <label className="flex items-center gap-1">
+          HTML site storage (GB)
+          <input type="number" min={0} max={100} step={0.25} className="win98-inset w-20 px-1" value={siteQuotaGb} onChange={e => setSiteQuotaGb(Number(e.target.value))} />
+        </label>
         <div className="flex flex-wrap gap-1">
           {PERMS.map(p => (
             <label key={p} className="flex items-center gap-0.5"><input type="checkbox" checked={perms.includes(p)} onChange={e => setPerms(e.target.checked ? [...perms, p] : perms.filter(x => x !== p))} />{p}</label>
