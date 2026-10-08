@@ -1,7 +1,7 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import { randomUUID } from "node:crypto";
 import path from "node:path";
-import { Client } from "@replit/object-storage";
+import { appStorage as storage } from "../lib/app-storage";
 import { asc, and, eq, sql } from "drizzle-orm";
 import { db, hostedSiteFilesTable, hostedSitesTable } from "@workspace/db";
 import { logger } from "../lib/logger";
@@ -9,7 +9,6 @@ import { requireAuth } from "../lib/auth";
 import { getUserPermissions, getUserSiteStorageLimitBytes } from "./ranks";
 
 const router: IRouter = Router();
-const storage = new Client();
 const MAX_FILE_BYTES = 6 * 1024 * 1024;
 
 const CONTENT_TYPES: Record<string, string> = {

@@ -1,7 +1,7 @@
 import { Router, type IRouter, type RequestHandler } from "express";
 import { randomUUID } from "node:crypto";
 import path from "node:path";
-import { Client } from "@replit/object-storage";
+import { appStorage as storage } from "../lib/app-storage";
 import { asc, eq } from "drizzle-orm";
 import { db, wikiAssetsTable, wikiPagesTable } from "@workspace/db";
 import { logger } from "../lib/logger";
@@ -9,7 +9,6 @@ import { requireAuth } from "../lib/auth";
 import { getUserPermissions } from "./ranks";
 
 const router: IRouter = Router();
-const storage = new Client();
 const MAX_WIKI_MEDIA_BYTES = 6 * 1024 * 1024;
 const MEDIA_TYPES = new Set([
   "image/png", "image/jpeg", "image/gif", "image/webp",

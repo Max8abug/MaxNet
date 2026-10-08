@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Alert, KeyboardAvoidingView, Linking, Platform, ScrollView, Text, TextInput, View } from "react-native";
 import Constants from "expo-constants";
 import * as Notifications from "expo-notifications";
@@ -19,6 +20,21 @@ export default function ProfileScreen() {
   const [error, setError] = useState<string | null>(null);
   const [pushToken, setPushToken] = useState<string | null>(null);
   const [pushStatus, setPushStatus] = useState<string | null>(null);
+  const pushStorageKey = user ? `photo-desktop:push-token:${user.username}` : null;
+
+  useEffect(() => {
+    let cancelled = false;
+    setPushToken(null);
+    setPushStatus(null);
+    if (pushStorageKey) {
+      void AsyncStorage.getItem(pushStorageKey).then((token) => {
+        if (!cancelled) setPushToken(token);
+      }).catch(() => {
+        if (!cancelled) setError("Could not read this device's notification settings.");
+      });
+    }
+    return () => { cancelled = true; };
+  }, [pushStorageKey]);
 
   async function submitAuth() {
     setBusy(true);
@@ -40,8 +56,10 @@ export default function ProfileScreen() {
     setError(null);
     setPushStatus(null);
     try {
-      if (pushToken) {
-        await unregisterExpoPushToken(pushToken);
+      const registeredToken = pushToken || (pushStorageKey ? await AsyncStorage.getItem(pushStorageKey) : null);
+      if (registeredToken) {
+        await unregisterExpoPushToken(registeredToken);
+        if (pushStorageKey) await AsyncStorage.removeItem(pushStorageKey);
         setPushToken(null);
         setPushStatus("Push notifications are disabled on this device.");
         return;
@@ -70,6 +88,7 @@ export default function ProfileScreen() {
       }
       const token = (await Notifications.getExpoPushTokenAsync({ projectId })).data;
       await registerExpoPushToken(token, Platform.OS === "android" ? "android" : "ios");
+      if (pushStorageKey) await AsyncStorage.setItem(pushStorageKey, token);
       setPushToken(token);
       setPushStatus("This device is registered for new site news alerts.");
     } catch (pushError) {
@@ -83,7 +102,9 @@ export default function ProfileScreen() {
     setBusy(true);
     setError(null);
     try {
-      if (pushToken) await unregisterExpoPushToken(pushToken).catch(() => {});
+      const registeredToken = pushToken || (pushStorageKey ? await AsyncStorage.getItem(pushStorageKey) : null);
+      if (registeredToken) await unregisterExpoPushToken(registeredToken);
+      if (pushStorageKey) await AsyncStorage.removeItem(pushStorageKey);
       setPushToken(null);
       await logout();
     } catch (logoutError) {

@@ -18,3 +18,13 @@ the environment installer persisted its package list in the project config.
 
 **How to apply:** For local-only browser verification, use the environment package tooling,
 then compare `git status` and remove unintended `.replit` changes before completing the task.
+
+With pnpm, bundling a parent SDK while externalizing its provider dependency can cause
+a runtime module-not-found error even when that dependency is correctly installed.
+
+**Why:** The generated API bundle resolves the external import relative to its output
+directory, outside the parent package's nested dependency links.
+
+**How to apply:** Inspect bundler externalization before adding redundant direct
+dependencies. Keep a provider-backed SDK external as a unit when it relies on its
+own nested dependency resolution.
