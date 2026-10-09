@@ -83,7 +83,7 @@
   padding: 7px;
   border: 1px solid rgba(245, 252, 255, .86);
   border-radius: 8px;
-  background: rgba(186, 220, 240, .68);
+  background: rgba(186, 220, 240, .62);
   box-shadow:
     0 0 0 1px rgba(10, 28, 46, .72),
     0 7px 18px rgba(3, 17, 35, .42),
@@ -101,7 +101,7 @@
 }
 @supports ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
   :is(html, body)[data-app-theme="vista"] .win98-window:not(:where(.theme-lab, .theme-lab *)) {
-    background: rgba(183, 219, 240, .4);
+    background: rgba(183, 219, 240, .36);
     -webkit-backdrop-filter: blur(10px) saturate(1.35);
     backdrop-filter: blur(10px) saturate(1.35);
   }
@@ -118,14 +118,14 @@
   padding: 5px 7px;
   border: 0;
   border-radius: 7px 7px 0 0;
-  background: linear-gradient(180deg, rgba(244,252,255,.84), rgba(186,221,242,.76) 48%, rgba(111,165,203,.82));
+  background: linear-gradient(180deg, rgba(244,252,255,.80), rgba(186,221,242,.72) 48%, rgba(111,165,203,.78));
   color: #10273d;
   font-family: var(--vg-font);
   font-weight: 650;
   text-shadow: 0 1px 3px rgba(255,255,255,.95);
 }
 :is(html, body)[data-app-theme="vista"] .win98-titlebar.inactive:not(:where(.theme-lab, .theme-lab *)) {
-  background: linear-gradient(180deg, rgba(225,235,241,.8), rgba(150,174,191,.78));
+  background: linear-gradient(180deg, rgba(225,235,241,.76), rgba(150,174,191,.74));
   color: #263a4b;
 }
 :is(html, body)[data-app-theme="vista"] .win98-button:not(:where(.theme-lab, .theme-lab *)) {
