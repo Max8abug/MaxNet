@@ -446,9 +446,16 @@ installs, builds and restarts the services. If code is already up to date but a
 previous build/install failed, answer **yes** when asked to force a rebuild.
 
 Setup and updates also fetch the four selected game-port folders (about 1.01 GB
-the first time) into an ignored Vite public directory. Only the pinned game
+the first time) into the ignored `selfhost/data/ported-games` directory. Only the pinned game
 folders are downloaded; the binaries are not added to Git and can be fetched
-again if removed. Downloads finish before the updater stops the running site.
+again if removed. The files are served directly, without duplicating them into
+the frontend build. Downloads finish before the updater stops the running site.
+
+The launcher’s **API keys** button stores Spotify and YouTube credentials in
+the ignored `selfhost/.env` file. Setup preserves those entries if it needs to
+regenerate database settings; updates do not rewrite `.env`. The launcher writes
+the file atomically with owner-only permissions, and the updater has a
+regression test that checks the values remain unchanged.
 
 The game frames load from `games.<current-site-host>` on the same server port.
 For `localhost`, browsers resolve `games.localhost` automatically. For a public

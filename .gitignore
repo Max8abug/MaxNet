@@ -49,6 +49,7 @@ Thumbs.db
 .local/
 /selfhost/backup.conf
 /selfhost/.env
+/selfhost/.env.tmp.*
 /selfhost/logs/
 /selfhost/run/
-/artifacts/photo-desktop/public/ported-games/
+/selfhost/data/ported-games/

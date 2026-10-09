@@ -41,7 +41,7 @@ if (isSelfHostedStatic) {
   const gameAssetsOnly = express.Router();
   gameAssetsOnly.use(
     "/ported-games",
-    express.static(path.join(staticDir, "ported-games"), {
+    express.static(path.join(repoRoot, "selfhost", "data", "ported-games"), {
       dotfiles: "deny",
       fallthrough: true,
       setHeaders(response, filePath) {

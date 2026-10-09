@@ -7,10 +7,19 @@ import { test } from "node:test";
 
 function runUpdate({ version = "10.26.1", failPreflight = false, localChanges = "" } = {}) {
   const root = mkdtempSync(join(tmpdir(), "portfolio98-update-test-"));
+  const protectedEnv = [
+    "DATABASE_URL=postgresql://test:test@localhost/test",
+    "SESSION_SECRET=test-session-secret",
+    "SPOTIFY_CLIENT_ID=launcher-test-id",
+    "SPOTIFY_CLIENT_SECRET=launcher-test-secret",
+    "YOUTUBE_DATA_API_KEY=launcher-test-youtube-key",
+    "",
+  ].join("\n");
   try {
     mkdirSync(join(root, "selfhost"));
     mkdirSync(join(root, "bin"));
     copyFileSync(new URL("../update.sh", import.meta.url), join(root, "selfhost/update.sh"));
+    writeFileSync(join(root, "selfhost/.env"), protectedEnv, { mode: 0o600 });
     writeFileSync(join(root, "package.json"), JSON.stringify({ packageManager: "pnpm@10.26.1" }));
     writeFileSync(join(root, "events"), "");
     const script = (name, body) => writeFileSync(join(root, "bin", name), `#!/usr/bin/env bash\nset -eu\n${body}\n`, { mode: 0o755 });
@@ -57,7 +66,12 @@ fi`);
       },
     });
     assert.ifError(result.error);
-    return { status: result.status, output: result.stdout + result.stderr, events: readFileSync(join(root, "events"), "utf8").trim().split("\n").filter(Boolean) };
+    return {
+      status: result.status,
+      output: result.stdout + result.stderr,
+      events: readFileSync(join(root, "events"), "utf8").trim().split("\n").filter(Boolean),
+      envAfter: readFileSync(join(root, "selfhost/.env"), "utf8"),
+    };
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
@@ -82,6 +96,18 @@ test("successful update validates before stopping, installing, building and star
   const result = runUpdate();
   assert.equal(result.status, 0, result.output);
   assert.deepEqual(result.events, ["pull", "preflight", "games", "stop", "install", "build", "build", "start"]);
+  assert.equal(
+    result.envAfter,
+    [
+      "DATABASE_URL=postgresql://test:test@localhost/test",
+      "SESSION_SECRET=test-session-secret",
+      "SPOTIFY_CLIENT_ID=launcher-test-id",
+      "SPOTIFY_CLIENT_SECRET=launcher-test-secret",
+      "YOUTUBE_DATA_API_KEY=launcher-test-youtube-key",
+      "",
+    ].join("\n"),
+    "launcher API key settings should survive a code update unchanged",
+  );
 });
 
 test("dirty worktree fails before pulling or stopping services", () => {

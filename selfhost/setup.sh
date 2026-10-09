@@ -87,7 +87,10 @@ fi
 if [ ! -f "$ENV_FILE" ] || [ "${WRITE_ENV:-0}" = "1" ]; then
   echo "[5/6] Writing $ENV_FILE ..."
   SESSION_SECRET=$(openssl rand -hex 32)
-  cat > "$ENV_FILE" <<ENVEOF
+  ENV_TMP="$(mktemp "$REPO_DIR/selfhost/.env.tmp.XXXXXX")"
+  trap 'rm -f -- "$ENV_TMP"' EXIT
+  {
+  cat <<ENVEOF
 # Portfolio98 environment — edit as needed then run start.sh
 DATABASE_URL=postgresql://${DB_USER}:${DB_PASS}@localhost:5432/${DB_NAME}
 SESSION_SECRET=${SESSION_SECRET}
@@ -99,9 +102,21 @@ NODE_ENV=production
 # Leave false for plain HTTP — a Secure cookie over HTTP silently breaks login.
 COOKIE_SECURE=false
 ENVEOF
+    # Setup can regenerate database/session settings, but launcher-managed API
+    # keys belong to the owner and must survive that rewrite.
+    if [ -f "$ENV_FILE" ]; then
+      grep -E '^(SPOTIFY_CLIENT_ID|SPOTIFY_CLIENT_SECRET|YOUTUBE_DATA_API_KEY)=' "$ENV_FILE" || true
+    fi
+  } > "$ENV_TMP"
+  chmod 600 "$ENV_TMP"
+  mv -f -- "$ENV_TMP" "$ENV_FILE"
+  trap - EXIT
   echo "  ✓ Wrote $ENV_FILE"
 else
   echo "[5/6] $ENV_FILE already exists — not overwriting"
+fi
+if [ -f "$ENV_FILE" ]; then
+  chmod 600 "$ENV_FILE"
 fi
 
 # ---- Install npm dependencies + build ----

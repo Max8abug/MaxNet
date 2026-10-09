@@ -111,7 +111,25 @@ def save_env_values(path: Path, updates: dict) -> None:
     for key, value in normalized.items():
         if key not in written:
             output.append(f"{key}={value}")
-    path.write_text("\n".join(output).rstrip("\n") + "\n")
+    contents = "\n".join(output).rstrip("\n") + "\n"
+    temporary_path = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="w",
+            encoding="utf-8",
+            dir=path.parent,
+            prefix=f"{path.name}.tmp.",
+            suffix=".tmp",
+            delete=False,
+        ) as temporary:
+            temporary_path = Path(temporary.name)
+            temporary.write(contents)
+        os.chmod(temporary_path, 0o600)
+        os.replace(temporary_path, path)
+        os.chmod(path, 0o600)
+    finally:
+        if temporary_path is not None:
+            temporary_path.unlink(missing_ok=True)
 
 def get_pid(pid_file: Path):
     try:

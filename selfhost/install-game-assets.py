@@ -17,7 +17,7 @@ from pathlib import Path, PurePosixPath
 
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-ASSET_ROOT = REPO_ROOT / "artifacts" / "photo-desktop" / "public" / "ported-games"
+ASSET_ROOT = REPO_ROOT / "selfhost" / "data" / "ported-games"
 MANIFEST_PATH = ASSET_ROOT / "asset-manifest.json"
 USER_AGENT = "Portfolio98-selfhost-game-assets/1.0"
 MAX_TOTAL_BYTES = 1_250_000_000
