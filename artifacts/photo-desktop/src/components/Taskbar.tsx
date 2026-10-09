@@ -17,6 +17,7 @@ import {
 import { ChevronRight } from 'lucide-react';
 import { formatLocalTime } from '../lib/dates';
 import { useServerNow } from '../lib/server-clock';
+import { fetchDueReminders } from '../lib/planner-api';
 
 export function Taskbar({ page }: { page: string }) {
   const { addWindow, isStringMode, setStringMode, resetState, windows, toggleWindowState, bringToFront } = useDesktopStore();
@@ -44,6 +45,59 @@ export function Taskbar({ page }: { page: string }) {
   const dmsOpen = wins.some(w => w.type === 'dms' && (w.state || 'normal') !== 'min');
   const chatOpen = wins.some(w => w.type === 'chat' && (w.state || 'normal') !== 'min');
   const newsOpen = wins.some(w => w.type === 'news' && (w.state || 'normal') !== 'min');
+  const plannerAlerted = useRef(new Set<string>());
+  useEffect(() => {
+    plannerAlerted.current.clear();
+    if (!user) return;
+    let alive = true;
+    const tick = async () => {
+      try {
+        const due = await fetchDueReminders();
+        if (!alive) return;
+        for (const reminder of due) {
+          const key = `${reminder.id}:${reminder.remindAt}`;
+          if (plannerAlerted.current.has(key)) continue;
+          plannerAlerted.current.add(key);
+          pushToast({ title: "Planner reminder", body: reminder.title || "Your planner reminder is due.", kind: "planner" });
+        }
+      } catch { /* The Planner window exposes fetch failures and retry. */ }
+    };
+    void tick();
+    const timer = setInterval(tick, 30_000);
+    return () => { alive = false; clearInterval(timer); };
+  }, [user?.username]);
+
+  function openPlanner() {
+    const existing = wins.find(w => w.type === 'planner');
+    if (existing) {
+      if ((existing.state || 'normal') === 'min') toggleWindowState(page, existing.id, 'min');
+      bringToFront(page, existing.id);
+    } else {
+      addWindow(page, { type: 'planner', title: 'Planner', width: 760, height: 640 });
+    }
+  }
+
+  function openPersonalPlaylists() {
+    const existing = wins.find(w => w.type === 'personalplaylists');
+    if (existing) {
+      if ((existing.state || 'normal') === 'min') toggleWindowState(page, existing.id, 'min');
+      bringToFront(page, existing.id);
+    } else {
+      addWindow(page, { type: 'personalplaylists', title: 'My Playlists', width: 700, height: 720 });
+    }
+    setStartOpen(false);
+  }
+
+  useEffect(() => {
+    if (!user || new URLSearchParams(location.search).get("app") !== "planner") return;
+    const current = useDesktopStore.getState().windows[page] || [];
+    if (!current.some(w => w.type === "planner")) {
+      addWindow(page, { type: 'planner', title: 'Planner', width: 760, height: 640 });
+    }
+    const url = new URL(location.href);
+    url.searchParams.delete("app");
+    history.replaceState(history.state, "", url.pathname + url.search + url.hash);
+  }, [user?.username, page, addWindow]);
 
   // Poll the cafe presence count so the taskbar chip pulses live, even when
   // the cafe window is closed. Independent from auth — anyone can see how
@@ -187,6 +241,7 @@ export function Taskbar({ page }: { page: string }) {
     void registerServiceWorker();
     if (!("serviceWorker" in navigator)) return;
     const handler = (ev: MessageEvent) => {
+        if (ev.data?.type === "open-planner") openPlanner();
         if (ev.data?.type === "open-dms") {
         const existing = wins.find(w => w.type === 'dms');
         if (existing) {
@@ -244,6 +299,7 @@ export function Taskbar({ page }: { page: string }) {
   };
 
   const infoItems: StartMenuItem[] = [
+    { label: "Open Planner", act: () => { openPlanner(); setStartOpen(false); } },
     { label: "Open Site News", act: () => open({ type: 'news', title: 'Site News', width: 520, height: 480 }) },
     { label: "Open Photo Gallery", act: () => open({ type: 'sharedphotos', title: 'Photo Gallery', width: 460, height: 460 }) },
     { label: "Browse Users", act: () => open({ type: 'userlist', title: 'Users', width: 240, height: 400 }) },
@@ -270,6 +326,7 @@ export function Taskbar({ page }: { page: string }) {
     { label: "Web Browser", act: () => open({ type: 'browser', title: 'Web Browser', width: 620, height: 520 }) },
     { label: "Open Polls", act: () => open({ type: 'polls', title: 'Polls', width: 380, height: 420 }) },
     { label: "Open Music Player", act: () => open({ type: 'music', title: 'Music Player', width: 360, height: 380 }) },
+    { label: "Open My Playlists", act: openPersonalPlaylists },
     { label: "Add Drawing Pad", act: () => open({ type: 'drawing', title: 'Visitor Drawings', width: 460, height: 440 }) },
   ];
 
@@ -437,6 +494,14 @@ export function Taskbar({ page }: { page: string }) {
                 selectCategory(null);
               }}
             >
+              <button type="button" className="w-full text-left px-3 py-1 hover:bg-[#000080] hover:text-white text-sm"
+                onClick={() => { openPlanner(); setStartOpen(false); }} data-testid="button-start-planner">
+                Planner
+              </button>
+              <button type="button" className="w-full text-left px-3 py-1 hover:bg-[#000080] hover:text-white text-sm"
+                onClick={openPersonalPlaylists} data-testid="button-start-playlists">
+                My Playlists
+              </button>
               {categoryMenus.map((category) => (
                 <div
                   key={category.label}
@@ -588,7 +653,7 @@ export function Taskbar({ page }: { page: string }) {
 
       {loginOpen && <LoginDialog onClose={() => setLoginOpen(false)} />}
       {profileOpen && <ProfileDialog onClose={() => setProfileOpen(false)} />}
-      <Toaster onClick={openDms} />
+      <Toaster onClick={(toast) => toast.kind === "planner" ? openPlanner() : openDms()} />
     </div>
   );
 }

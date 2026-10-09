@@ -9,6 +9,7 @@ const { default: app } = await import("./app");
 const { logger } = await import("./lib/logger");
 const { ensureSchema } = await import("./lib/ensure-schema");
 const { startStorageCleanup } = await import("./lib/storage-mutations");
+const { startPlannerReminders } = await import("./lib/planner-reminders");
 
 const rawPort = process.env["PORT"];
 
@@ -34,6 +35,7 @@ async function start() {
   try {
     await ensureSchema();
     startStorageCleanup();
+    startPlannerReminders();
   } catch (err) {
     logger.error({ err }, "Aborting startup — schema bootstrap failed");
     process.exit(1);

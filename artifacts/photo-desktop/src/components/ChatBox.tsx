@@ -486,7 +486,7 @@ export function ChatBox({ onRequestLogin }: Props) {
               </div>
               <div className="flex gap-1 mt-1 shrink-0">
                 <input type="text" className="win98-inset px-1 flex-1"
-                  placeholder={`Message as ${user.username}...`}
+                  placeholder={`Message as ${user.username}… Try :skull: or :heart:`}
                   value={text} onChange={(e) => onTypeChange(e.target.value)} disabled={sending}
                   onKeyDown={(e) => { if (e.key === "Enter") void send(); }} />
                 <input ref={fileRef} type="file" accept="image/*,image/gif" className="hidden"

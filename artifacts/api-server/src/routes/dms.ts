@@ -7,6 +7,7 @@ import { requireAuth, requireAdmin, isAdminUsername } from "../lib/auth";
 import { isBanned, audit } from "./social";
 import { getUserPermissions } from "./ranks";
 import { sendPushToUser } from "../lib/push";
+import { expandEmojiShortcodes } from "../lib/emoji-shortcodes";
 
 const router: IRouter = Router();
 
@@ -108,9 +109,10 @@ router.post("/dms/groups/:id", requireAuth, async (req, res) => {
   const id = Number(req.params.id);
   const me = req.session.username!;
   const access = await groupForUser(id, me);
-  const body = typeof req.body?.body === "string" ? req.body.body.trim().slice(0, 1000) : "";
+  const body = typeof req.body?.body === "string" ? expandEmojiShortcodes(req.body.body.trim().slice(0, 1000)) : "";
   if (!access) { res.status(404).json({ error: "Group not found" }); return; }
   if (!body) { res.status(400).json({ error: "body required" }); return; }
+  if (body.length > 1000) { res.status(413).json({ error: "Message too long" }); return; }
   if (await isBanned(me)) { res.status(403).json({ error: "You are banned." }); return; }
   const [row] = await db.insert(dmsTable).values({ fromUser: me, toUser: me, groupId: id, body }).returning();
   await audit("dm", "group-send", me, String(id), body.slice(0, 200));
@@ -195,7 +197,8 @@ router.post("/dms/:other", requireAuth, async (req, res) => {
   if (typeof body !== "string" || !body.trim()) { res.status(400).json({ error: "body required" }); return; }
   if (await isBanned(me)) { res.status(403).json({ error: "You are banned." }); return; }
   if (!(await canReceiveDMs(other))) { res.status(403).json({ error: "User does not accept DMs" }); return; }
-  const trimmed = body.trim().slice(0, 1000);
+  const trimmed = expandEmojiShortcodes(body.trim().slice(0, 1000));
+  if (trimmed.length > 1000) { res.status(413).json({ error: "Message too long" }); return; }
   const [row] = await db.insert(dmsTable).values({ fromUser: me, toUser: other, body: trimmed }).returning();
   await audit("dm", "send", me, other, trimmed.slice(0, 200));
   // Fire a browser push to the recipient so they're alerted even if the

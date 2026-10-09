@@ -254,7 +254,7 @@ export function DMs({ initialPeer }: { initialPeer?: string } = {}) {
               ))}
             </div>
             {selection && <div className="flex gap-1 mt-1">
-              <input className="win98-inset px-1 flex-1" value={text} onChange={(e) => setText(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") void send(); }} placeholder={selectedGroup ? `Message ${selectedGroup.name}…` : `Message ${selectedDirect}…`} />
+              <input className="win98-inset px-1 flex-1" value={text} onChange={(e) => setText(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") void send(); }} placeholder={`${selectedGroup ? `Message ${selectedGroup.name}` : `Message ${selectedDirect}`}… Try :skull:`} />
               <button className="win98-button px-2" onClick={() => void send()}>Send</button>
             </div>}
           </div>

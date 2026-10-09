@@ -21,6 +21,7 @@
     "drizzle-orm": "catalog:",
     "express": "^5",
     "express-session": "^1.19.0",
+    "gemoji": "^8.1.0",
     "pino": "^9",
     "pino-http": "^10",
     "web-push": "^3.6.7"

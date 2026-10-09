@@ -25,6 +25,8 @@ import { RanksAdmin } from './RanksAdmin';
 import { SiteSettingsDialog } from './SiteSettingsDialog';
 import { IpLookup } from './IpLookup';
 import { News } from './News';
+import { Planner } from './Planner';
+import { PersonalPlaylists } from './PersonalPlaylists';
 import { SiteBackup } from './SiteBackup';
 import { UserList } from './UserList';
 import { UserBrowser } from './UserBrowser';
@@ -329,6 +331,7 @@ export function Window({
         {w.type === 'geometry' && !isEditing && <GeometryDash />}
         {w.type === 'poker' && !isEditing && <Poker />}
         {w.type === 'music' && !isEditing && <MusicPlayer />}
+        {w.type === 'personalplaylists' && !isEditing && <PersonalPlaylists />}
         {w.type === 'polls' && !isEditing && <Polls />}
         {w.type === 'chess' && !isEditing && <Chess />}
         {w.type === 'eaglercraft' && !isEditing && <Eaglercraft />}
@@ -342,6 +345,7 @@ export function Window({
         {w.type === 'sitesettings' && !isEditing && <SiteSettingsDialog />}
         {w.type === 'iplookup' && !isEditing && <IpLookup username={w.username || ''} />}
         {w.type === 'news' && !isEditing && <News />}
+        {w.type === 'planner' && !isEditing && <Planner />}
         {w.type === 'sitebackup' && !isEditing && <SiteBackup />}
         {w.type === 'userlist' && !isEditing && <UserList page={page} />}
         {w.type === 'diagnostics' && !isEditing && <DiagnosticsPanel />}

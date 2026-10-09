@@ -1,6 +1,8 @@
 import { pool } from "@workspace/db";
 import { logger } from "./logger";
 import { cleanupSchema } from "./storage-mutations";
+import { plannerSchema } from "./planner-reminders";
+import { personalPlaylistsSchema } from "./personal-playlists";
 
 /**
  * Idempotent production-safe schema bootstrap.
@@ -546,6 +548,8 @@ export async function ensureSchema(): Promise<void> {
     await client.query("BEGIN");
     await client.query(sql);
     await client.query(cleanupSchema);
+    await client.query(plannerSchema);
+    await client.query(personalPlaylistsSchema);
     await client.query("COMMIT");
     logger.info("Database schema bootstrap complete");
   } catch (err) {

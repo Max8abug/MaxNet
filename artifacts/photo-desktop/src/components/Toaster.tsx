@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { subscribeToasts, type Toast } from "../lib/notifications";
+import { useAuth } from "../lib/auth-store";
 
 const DURATION_MS = 6000;
 
@@ -7,6 +8,8 @@ const DURATION_MS = 6000;
 // after a few seconds, but the user can also click it to dismiss early.
 export function Toaster({ onClick }: { onClick?: (t: Toast) => void } = {}) {
   const [toasts, setToasts] = useState<Toast[]>([]);
+  const username = useAuth((state) => state.user?.username);
+  useEffect(() => { setToasts([]); }, [username]);
 
   useEffect(() => {
     const unsub = subscribeToasts((t) => {

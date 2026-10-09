@@ -23,6 +23,8 @@ import pushRouter from "./push";
 import cafeRoomsRouter from "./cafe-rooms";
 import cafeObjectsRouter from "./cafe-objects";
 import diagnosticsRouter from "./diagnostics";
+import plannerRouter from "./planner";
+import personalPlaylistsRouter from "./personal-playlists";
 
 const router: IRouter = Router();
 
@@ -50,5 +52,7 @@ router.use(cafeObjectsRouter);
 router.use(diagnosticsRouter);
 router.use(adminBackupRouter);
 router.use(pushRouter);
+router.use(plannerRouter);
+router.use(personalPlaylistsRouter);
 
 export default router;

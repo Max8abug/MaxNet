@@ -199,6 +199,9 @@ importers:
       express-session:
         specifier: ^1.19.0
         version: 1.19.0
+      gemoji:
+        specifier: ^8.1.0
+        version: 8.1.0
       pino:
         specifier: ^9
         version: 9.14.0
@@ -3872,6 +3875,9 @@ packages:
   gcp-metadata@6.1.1:
     resolution: {integrity: sha512-a4tiq7E0/5fTjxPAaH4jpjkSv/uCaU2p5KC6HVGrvl0cDjA8iBZv4vv1gyzlmK0ZUKqwpOyQMKzZQe3lTit77A==}
     engines: {node: '>=14'}
+
+  gemoji@8.1.0:
+    resolution: {integrity: sha512-HA4Gx59dw2+tn+UAa7XEV4ufUKI4fH1KgcbenVA9YKSj1QJTT0xh5Mwv5HMFNN3l2OtUe3ZIfuRwSyZS5pLIWw==}
 
   gensync@1.0.0-beta.2:
     resolution: {integrity: sha512-3hN7NaskYvMDLQY55gnW3NQ+mesEAepTqlg+VEbj7zzqEMBVNhzcGYYeqFo/TlYz6eQiFcp1HcsCZO+nGgS8zg==}
@@ -9868,6 +9874,8 @@ snapshots:
     transitivePeerDependencies:
       - encoding
       - supports-color
+
+  gemoji@8.1.0: {}
 
   gensync@1.0.0-beta.2: {}
 

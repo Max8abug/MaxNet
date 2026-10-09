@@ -1,5 +1,5 @@
 import type { ComponentType, CSSProperties, RefObject } from 'react';
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   BarChart3,
   Bird,
@@ -22,6 +22,7 @@ import {
   MessagesSquare,
   Music,
   Newspaper,
+  CalendarDays,
   Pencil,
   Send,
   Spade,
@@ -36,6 +37,7 @@ import { useDesktopStore, type WindowData, type WindowType } from '../store';
 import { useAuth } from '../lib/auth-store';
 import { useThemeMode } from '../lib/theme';
 import { formatLocalTime } from '../lib/dates';
+import { fetchDueReminders } from '../lib/planner-api';
 import { useServerNow } from '../lib/server-clock';
 
 type MobileWindowProps = {
@@ -60,6 +62,7 @@ type AppDefinition = {
 const EMPTY_WINDOWS: WindowData[] = [];
 
 const APPS: AppDefinition[] = [
+  { label: 'Planner', type: 'planner', icon: CalendarDays, tone: 'bg-[#b6cda0]', size: 'medium', subtitle: 'Notes & reminders' },
   { label: 'Site News', type: 'news', icon: Newspaper, tone: 'bg-[#f2d36b]', size: 'wide', subtitle: 'Latest updates' },
   { label: 'Chatbox', type: 'chat', icon: MessageCircle, tone: 'bg-[#7db9bd]', size: 'wide', subtitle: 'Live conversation' },
   { label: 'Forum', type: 'forum', icon: MessagesSquare, tone: 'bg-[#b59be8]', size: 'wide', subtitle: 'Community threads' },
@@ -68,6 +71,7 @@ const APPS: AppDefinition[] = [
   { label: 'YouTube', type: 'youtube', icon: Youtube, tone: 'bg-[#e66d72]', size: 'medium' },
   { label: 'Cafe', type: 'cafe', icon: Coffee, tone: 'bg-[#e0a77c]', size: 'medium' },
   { label: 'Music', type: 'music', icon: Music, tone: 'bg-[#7fc6cf]', size: 'medium' },
+  { label: 'My Playlists', type: 'personalplaylists', icon: Music, tone: 'bg-[#6fa7ba]', size: 'medium', subtitle: 'Private YouTube library' },
   { label: 'Polls', type: 'polls', icon: Vote, tone: 'bg-[#91c995]', size: 'medium' },
   { label: 'Users', type: 'userlist', icon: Users, tone: 'bg-[#93c8af]', size: 'medium' },
   { label: 'My Page', type: 'mypage', icon: UserRound, tone: 'bg-[#d5a7dc]', size: 'medium' },
@@ -112,6 +116,7 @@ export function MobileShell({ page }: { page: string }) {
   const boundsRef = useRef<HTMLDivElement>(null);
   const homeMainRef = useRef<HTMLElement>(null);
   const [openWindowId, setOpenWindowId] = useState<string | null>(null);
+  const [plannerDue, setPlannerDue] = useState(0);
   const user = useAuth((state) => state.user);
   const siteSettings = useAuth((state) => state.siteSettings);
   const { darkMode } = useThemeMode();
@@ -174,6 +179,45 @@ export function MobileShell({ page }: { page: string }) {
     }
   };
 
+  useEffect(() => {
+    setPlannerDue(0);
+    if (!user) return;
+    let alive = true;
+    const tick = async () => {
+      try {
+        const due = await fetchDueReminders();
+        if (alive) setPlannerDue(due.length);
+      } catch { /* Planner shows request errors when opened. */ }
+    };
+    void tick();
+    const timer = setInterval(tick, 30_000);
+    return () => { alive = false; clearInterval(timer); };
+  }, [user?.username]);
+
+  useEffect(() => {
+    if (!user) return;
+    const planner = APPS.find(app => app.type === 'planner')!;
+    if (new URLSearchParams(location.search).get("app") === "planner") {
+      launchApp(planner);
+      const url = new URL(location.href);
+      url.searchParams.delete("app");
+      history.replaceState(history.state, "", url.pathname + url.search + url.hash);
+    }
+    if (!("serviceWorker" in navigator)) return;
+    const handler = (event: MessageEvent) => {
+      if (event.data?.type === "open-planner") launchApp(planner);
+    };
+    navigator.serviceWorker.addEventListener("message", handler);
+    return () => navigator.serviceWorker.removeEventListener("message", handler);
+  }, [user?.username, page, launchApp]);
+
+  const reminderBanner = plannerDue > 0 ? (
+    <button type="button" className="win98-button shrink-0 px-2 py-1 text-xs"
+      onClick={() => launchApp(APPS.find(app => app.type === 'planner')!)}>
+      {plannerDue} planner reminder{plannerDue === 1 ? "" : "s"} due — open Planner
+    </button>
+  ) : null;
+
   const closeApp = () => {
     setOpenWindowId(null);
     setActivePage(page);
@@ -229,6 +273,7 @@ export function MobileShell({ page }: { page: string }) {
             Back
           </button>
         </header>
+        {reminderBanner}
 
         <div
           ref={boundsRef}
@@ -264,6 +309,7 @@ export function MobileShell({ page }: { page: string }) {
           <span className="mobile-phone-battery" aria-hidden="true" />
         </span>
       </header>
+      {reminderBanner}
 
       <div className="mobile-phone-heading flex shrink-0 items-end justify-between px-3 pb-2 pt-2">
         <div className="min-w-0">

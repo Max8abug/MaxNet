@@ -23,7 +23,7 @@ export interface Toast {
   id: number;
   title: string;
   body: string;
-  kind?: "dm" | "info";
+  kind?: "dm" | "info" | "planner";
 }
 
 const listeners = new Set<ToastListener>();

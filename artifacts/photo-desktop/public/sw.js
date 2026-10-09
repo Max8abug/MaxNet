@@ -49,5 +49,6 @@ self.addEventListener("notificationclick", (event) => {
 });
 
 function payloadKindToMessage(kind) {
+  if (kind === "planner") return "open-planner";
   return kind === "site-news" ? "open-site-news" : "open-dms";
 }

@@ -18,6 +18,7 @@ import { getUserPermissions } from "./ranks";
 import { sendPushToUser } from "../lib/push";
 import { flagDevicesForUsername } from "../lib/device-tracking";
 import { findBlockedPhrase, getBlockedPhrases } from "../lib/content-filter";
+import { expandEmojiShortcodes } from "../lib/emoji-shortcodes";
 
 import type { Request, RequestHandler, Response } from "express";
 export const requireDeleteMessages: RequestHandler = async (req, res, next) => {
@@ -490,12 +491,13 @@ router.get("/chat/export", requireAdmin, async (_req, res) => {
 
 router.post("/chat", requireAuth, async (req, res) => {
   const { body, imageUrl, videoUrl, replyTo } = req.body ?? {};
-  const trimmedBody = typeof body === "string" ? body.trim() : "";
+  const rawBody = typeof body === "string" ? body.trim() : "";
+  const trimmedBody = expandEmojiShortcodes(rawBody);
   if (!trimmedBody && !imageUrl && !videoUrl) {
     res.status(400).json({ error: "body or media required" });
     return;
   }
-  if (trimmedBody.length > 500) { res.status(413).json({ error: "Message too long" }); return; }
+  if (rawBody.length > 500 || trimmedBody.length > 500) { res.status(413).json({ error: "Message too long" }); return; }
   let normalizedImageUrl: string | null = null;
   if (imageUrl !== undefined && imageUrl !== null) {
     if (validImageData(imageUrl, 3_000_000)) normalizedImageUrl = imageUrl;
@@ -538,7 +540,8 @@ router.post("/chat", requireAuth, async (req, res) => {
     res.status(403).json({ error: "You are banned from chat." });
     return;
   }
-  if (findBlockedPhrase(trimmedBody, await getBlockedPhrases("chat"))) {
+  const blockedPhrases = await getBlockedPhrases("chat");
+  if (findBlockedPhrase(rawBody, blockedPhrases) || findBlockedPhrase(trimmedBody, blockedPhrases)) {
     await audit("chat", "blocked-word", author, room, trimmedBody.slice(0, 500));
     res.status(400).json({ error: "Your message contains a blocked word or phrase." });
     return;
