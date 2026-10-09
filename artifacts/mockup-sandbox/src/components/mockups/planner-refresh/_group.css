@@ -1,0 +1,21 @@
+@font-face { font-family: 'Pixelated MS Sans Serif'; src: url('https://fonts.cdnfonts.com/s/15011/MS-Sans-Serif.woff') format('woff'); font-weight: normal; font-style: normal; }
+:root {
+  --background: 180 100% 25%; --foreground: 0 0% 0%; --border: 0 0% 50%;
+  --card: 0 0% 75%; --card-foreground: 0 0% 0%; --card-border: 0 0% 100%;
+  --primary: 240 100% 50%; --primary-foreground: 0 0% 100%;
+  --secondary: 0 0% 100%; --secondary-foreground: 0 0% 0%;
+  --muted: 0 0% 50%; --muted-foreground: 0 0% 100%;
+  --accent: 0 100% 50%; --accent-foreground: 0 0% 100%;
+  --destructive: 0 100% 50%; --destructive-foreground: 0 0% 100%;
+  --input: 0 0% 100%; --ring: 0 0% 0%;
+  --app-font-sans: 'Pixelated MS Sans Serif', 'MS Sans Serif', Tahoma, sans-serif;
+  --app-font-mono: 'Courier New', Courier, monospace;
+}
+*, *::before, *::after { box-sizing: border-box; }
+html, body, #root { min-width: 320px; min-height: 100%; margin: 0; }
+body { font-family: var(--app-font-sans); background: #008080; color: #000; overflow: auto; image-rendering: pixelated; }
+.win98-window { background-color: hsl(var(--card)); border-top: 2px solid white; border-left: 2px solid white; border-right: 2px solid black; border-bottom: 2px solid black; box-shadow: inset 1px 1px #dfdfdf, inset -1px -1px #808080, 1px 1px 0 0 black; padding: 2px; }
+.win98-titlebar { background: linear-gradient(90deg, #000080, #1084d0); color: white; padding: 2px 4px; font-weight: bold; display: flex; align-items: center; justify-content: space-between; }
+.win98-button { background-color: hsl(var(--card)); border-top: 1px solid white; border-left: 1px solid white; border-right: 1px solid black; border-bottom: 1px solid black; box-shadow: inset 1px 1px #dfdfdf, inset -1px -1px #808080; color: black; font-weight: bold; display: inline-flex; align-items: center; justify-content: center; padding: 2px 6px; }
+.win98-button:active { border-top: 1px solid black; border-left: 1px solid black; border-right: 1px solid white; border-bottom: 1px solid white; box-shadow: inset 1px 1px #808080, inset -1px -1px #dfdfdf; }
+.win98-inset { background-color: white; border-top: 2px solid #808080; border-left: 2px solid #808080; border-right: 2px solid white; border-bottom: 2px solid white; box-shadow: inset 1px 1px black, inset -1px -1px #dfdfdf; }
