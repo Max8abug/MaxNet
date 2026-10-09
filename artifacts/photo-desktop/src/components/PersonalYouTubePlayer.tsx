@@ -56,6 +56,11 @@ export function PersonalYouTubePlayer({ videoId, playRequest, onEnded }: {
 }) {
   const holder = useRef<HTMLDivElement>(null);
   const player = useRef<Player | null>(null);
+  const lastAppliedPlayback = useRef<{ videoId: string | null; playRequest: number }>({
+    videoId: null,
+    playRequest: -1,
+  });
+  const manuallyHiddenForRequest = useRef<number | null>(null);
   const latest = useRef({ videoId, playRequest, onEnded });
   latest.current = { videoId, playRequest, onEnded };
   const [ready, setReady] = useState(false);
@@ -78,6 +83,7 @@ export function PersonalYouTubePlayer({ videoId, playRequest, onEnded }: {
 
   useEffect(() => {
     let alive = true;
+    lastAppliedPlayback.current = { videoId: null, playRequest: -1 };
     setReady(false); setPlaying(false); setError(null);
     if (!hasVideo) return;
     void loadAPI().then((api) => {
@@ -125,9 +131,14 @@ export function PersonalYouTubePlayer({ videoId, playRequest, onEnded }: {
     if (!videoId) { player.current.pauseVideo(); return; }
     if (!videoVisible) {
       player.current.pauseVideo();
-      if (playRequest > 0) setVideoVisible(true);
+      if (playRequest > 0 && manuallyHiddenForRequest.current !== playRequest) {
+        setVideoVisible(true);
+      }
       return;
     }
+    if (lastAppliedPlayback.current.videoId === videoId
+      && lastAppliedPlayback.current.playRequest === playRequest) return;
+    lastAppliedPlayback.current = { videoId, playRequest };
     setPlaying(false); setError(null);
     if (playRequest > 0) player.current.loadVideoById(videoId);
     else player.current.cueVideoById(videoId);
@@ -149,7 +160,10 @@ export function PersonalYouTubePlayer({ videoId, playRequest, onEnded }: {
             disabled={!videoId}
             aria-pressed={videoVisible}
             onClick={() => {
-              if (videoVisible) player.current?.pauseVideo();
+              if (videoVisible) {
+                player.current?.pauseVideo();
+                manuallyHiddenForRequest.current = playRequest;
+              }
               setVideoVisible((visible) => !visible);
             }}
             data-testid="button-toggle-youtube-video"

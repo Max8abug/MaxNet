@@ -474,8 +474,11 @@ class App(tk.Tk):
             tk.Label(row, text=label, width=22, anchor="w").pack(side="left")
             entry = tk.Entry(row, show="*", width=38)
             entry.pack(side="left", fill="x", expand=True, padx=(0, 8))
-            entry.insert(0, env.get(key, ""))
-            status = "Configured" if env.get(key, "") else "Not set"
+            current_value = env.get(key, "")
+            if len(current_value) >= 2 and current_value[0] == current_value[-1] and current_value[0] in ("'", '"'):
+                current_value = current_value[1:-1]
+            entry.insert(0, current_value)
+            status = "Configured" if current_value else "Not set"
             tk.Label(
                 row,
                 text=status,
