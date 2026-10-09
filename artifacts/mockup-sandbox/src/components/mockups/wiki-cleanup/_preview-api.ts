@@ -102,7 +102,7 @@ If something on a wiki page needs correcting, edit it respectfully or ask a wiki
   },
 ];
 
-const assets = new Map<number, WikiAsset[]>();
+const assets = new Map<string, WikiAsset[]>();
 
 export async function fetchWikiPages(): Promise<WikiPageSummary[]> {
   return pages.map(({ slug, title, updatedBy, updatedAt: date, content }) => ({
