@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState } from "react";
+import { resolveChatGif, verifyGifImage } from "../lib/chat-gif";
+import { ChatImage } from "./ChatImage";
 import {
   fetchChatPage, fetchChatRoomStatuses, postChat, clearChat, deleteChatMessage,
   fetchChatAudit, fetchBans, addBan, removeBan, fetchChatMutes, addChatMute, removeChatMute, updateChatCooldown,
@@ -60,6 +62,8 @@ export function ChatBox({ onRequestLogin }: Props) {
   const [text, setText] = useState("");
   const [imageData, setImageData] = useState<string | null>(null);
   const [gifUrl, setGifUrl] = useState("");
+  const [gifResolving, setGifResolving] = useState(false);
+  const gifRequest = useRef(0);
   const [videoData, setVideoData] = useState<string | null>(null);
   const [replyTo, setReplyTo] = useState<ChatMessage | null>(null);
   const [sending, setSending] = useState(false);
@@ -78,6 +82,11 @@ export function ChatBox({ onRequestLogin }: Props) {
   const [sendCountdown, setSendCountdown] = useState(0);
   const [sendCooldown, setSendCooldown] = useState(false);
   const user = useAuth((s) => s.user);
+  useEffect(() => {
+    gifRequest.current++;
+    setGifResolving(false);
+    return () => { gifRequest.current++; };
+  }, [room, user?.username]);
   const ranks = useAuth((s) => s.ranks);
   const siteSettings = useAuth((s) => s.siteSettings);
   const refreshSiteSettings = useAuth((s) => s.refreshSiteSettings);
@@ -223,7 +232,7 @@ export function ChatBox({ onRequestLogin }: Props) {
   }
 
   async function send() {
-    if ((!text.trim() && !imageData && !videoData) || sending || sendCooldown) return;
+    if ((!text.trim() && !imageData && !videoData) || sending || sendCooldown || gifResolving) return;
     if (!user) { onRequestLogin?.(); return; }
     const sendRoom = room;
     const sendText = text;
@@ -281,22 +290,23 @@ export function ChatBox({ onRequestLogin }: Props) {
     if ((scrollRef.current?.scrollTop || 0) < 32) void loadOlder();
   }
 
-  async function pickImage(file: File) { try { setImageData(await fileToImageData(file)); } catch { setErr("Image failed"); } }
-  function addGifLink() {
+  async function pickImage(file: File) { gifRequest.current++; setGifResolving(false); try { setImageData(await fileToImageData(file)); } catch { setErr("Image failed"); } }
+  async function addGifLink() {
+    if (gifResolving || sending) return;
     const value = gifUrl.trim();
+    if (!value) { setErr("Paste a Tenor share link or a direct GIF link first."); return; }
+    const request = ++gifRequest.current;
+    setGifResolving(true);
+    setErr(null);
     try {
-      const url = new URL(value);
-      const host = url.hostname.toLowerCase();
-      const isTenor = host === "tenor.com" || host.endsWith(".tenor.com") || host === "tenor.co";
-      if ((url.protocol !== "http:" && url.protocol !== "https:") || (!/\.gif(?:$|[?#])/i.test(url.href) && !isTenor)) {
-        throw new Error();
-      }
-      setImageData(url.toString());
+      const url = await resolveChatGif(value);
+      await verifyGifImage(url);
+      if (gifRequest.current !== request) return;
+      setImageData(url);
       setGifUrl("");
-      setErr(null);
-    } catch {
-      setErr("Use a direct GIF link or a Tenor share link.");
-    }
+    } catch (error) {
+      if (gifRequest.current === request) setErr(error instanceof Error ? error.message : "Could not load this GIF.");
+    } finally { if (gifRequest.current === request) setGifResolving(false); }
   }
   async function pickVideo(file: File) {
     if (file.size > 9_000_000) { setErr("Video too large (max ~9MB)"); return; }
@@ -437,7 +447,7 @@ export function ChatBox({ onRequestLogin }: Props) {
                       {m.body && <div>{m.body}</div>}
                       {m.imageUrl && (
                         <div className="mt-0.5">
-                          <img src={m.imageUrl} alt="" className="max-w-[260px] max-h-[200px] win98-inset cursor-zoom-in" onClick={(e) => { e.stopPropagation(); showFullscreen(m.imageUrl!); }} />
+                          <ChatImage src={m.imageUrl} onOpen={showFullscreen} />
                         </div>
                       )}
                       {m.videoUrl && (
@@ -468,21 +478,22 @@ export function ChatBox({ onRequestLogin }: Props) {
               )}
               {(imageData || videoData) && (
                 <div className="flex items-center gap-1 mt-1 shrink-0">
-                  {imageData && <img src={imageData} alt="" className="max-h-12 win98-inset" />}
+                  {imageData && <img src={imageData} alt="GIF or image preview" referrerPolicy="no-referrer" className="max-h-12 win98-inset" onError={() => { setImageData(null); setErr("The attachment is no longer available. Try adding it again."); }} />}
                   {videoData && <video src={videoData} className="max-h-12 win98-inset" />}
-                  <button className="win98-button px-1 text-[10px]" onClick={() => { setImageData(null); setVideoData(null); }}>remove</button>
+                  <button className="win98-button px-1 text-[10px]" onClick={() => { gifRequest.current++; setGifResolving(false); setImageData(null); setVideoData(null); }}>remove</button>
                 </div>
               )}
               <div className="flex gap-1 mt-1 shrink-0">
                 <input
                   type="url"
                   className="win98-inset px-1 flex-1 min-w-0 text-xs"
-                  placeholder="Paste a direct .gif link"
+                  placeholder="Paste a Tenor share link or direct .gif link"
                   value={gifUrl}
+                  disabled={gifResolving || sending}
                   onChange={(e) => setGifUrl(e.target.value)}
                   onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addGifLink(); } }}
                 />
-                <button className="win98-button px-2 text-xs" type="button" onClick={addGifLink}>Add GIF</button>
+                <button className="win98-button px-2 text-xs" type="button" disabled={gifResolving || sending} onClick={() => void addGifLink()}>{gifResolving ? "Loading GIF…" : "Add GIF"}</button>
               </div>
               <div className="flex gap-1 mt-1 shrink-0">
                 <input type="text" className="win98-inset px-1 flex-1"
@@ -495,7 +506,7 @@ export function ChatBox({ onRequestLogin }: Props) {
                   onChange={(e) => { const f = e.target.files?.[0]; if (f) void pickVideo(f); e.target.value = ""; }} />
                 <button className="win98-button px-2" title="Attach image" onClick={() => fileRef.current?.click()}>📎</button>
                 <button className="win98-button px-2" title="Attach video" onClick={() => videoRef.current?.click()}>🎥</button>
-                <button className="win98-button px-3" disabled={sending || sendCooldown} onClick={send}>
+                <button className="win98-button px-3" disabled={sending || sendCooldown || gifResolving} onClick={send}>
                   {sending ? "Sending…" : sendCooldown ? `Send in ${sendCountdown}s` : "Send"}
                 </button>
               </div>

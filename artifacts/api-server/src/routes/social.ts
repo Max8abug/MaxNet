@@ -19,6 +19,7 @@ import { sendPushToUser } from "../lib/push";
 import { flagDevicesForUsername } from "../lib/device-tracking";
 import { findBlockedPhrase, getBlockedPhrases } from "../lib/content-filter";
 import { expandEmojiShortcodes } from "../lib/emoji-shortcodes";
+import { normalizeGifUrl } from "../lib/gif-links";
 
 import type { Request, RequestHandler, Response } from "express";
 export const requireDeleteMessages: RequestHandler = async (req, res, next) => {
@@ -66,50 +67,14 @@ function validImageData(s: unknown, max = 2_000_000): s is string {
   return typeof s === "string" && s.startsWith("data:image/") && s.length <= max;
 }
 
-function isHttpUrl(s: unknown): s is string {
-  if (typeof s !== "string" || s.length > 4_000) return false;
-  try {
-    const url = new URL(s);
-    return url.protocol === "http:" || url.protocol === "https:";
-  } catch {
-    return false;
+router.post("/chat/gif", requireAuth, async (req, res) => {
+  const url = await normalizeGifUrl(req.body?.url);
+  if (!url) {
+    res.status(400).json({ error: "Could not find a GIF at that link. Use an available Tenor share link or a direct .gif image URL." });
+    return;
   }
-}
-
-function isTenorUrl(value: string): boolean {
-  try {
-    const hostname = new URL(value).hostname.toLowerCase();
-    return hostname === "tenor.com" || hostname.endsWith(".tenor.com") || hostname === "tenor.co";
-  } catch {
-    return false;
-  }
-}
-
-async function normalizeGifUrl(value: unknown): Promise<string | null> {
-  if (!isHttpUrl(value)) return null;
-  const url = value.trim();
-  if (/\.gif(?:$|[?#])/i.test(url)) return url;
-  if (!isTenorUrl(url)) return null;
-
-  // Tenor's share pages are HTML, not image resources. Resolve the image
-  // advertised by the page so browsers receive an actual GIF URL.
-  try {
-    const response = await fetch(url, { headers: { "user-agent": "Portfolio98 chat GIF resolver" } });
-    if (!response.ok) return null;
-    const html = await response.text();
-    const matches = [
-      html.match(/<meta[^>]+property=["']og:image["'][^>]+content=["']([^"']+)["']/i),
-      html.match(/<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:image["']/i),
-      html.match(/https:\/\/media\.tenor\.com\/[^"'\\\s]+/i),
-    ];
-    const candidate = matches.find(Boolean)?.[1] || matches.find(Boolean)?.[0];
-    if (!candidate) return null;
-    const decoded = candidate.replace(/&amp;/g, "&");
-    return /\.gif(?:$|[?#])/i.test(decoded) ? decoded : null;
-  } catch {
-    return null;
-  }
-}
+  res.set("Cache-Control", "no-store").json({ url });
+});
 
 // ---------- Drawings ----------
 router.get("/drawings", async (req, res) => {
