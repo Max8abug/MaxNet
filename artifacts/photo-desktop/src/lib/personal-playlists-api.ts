@@ -11,6 +11,14 @@ export interface PersonalYouTubePlaylist {
   createdAt: string;
   updatedAt: string;
 }
+export interface SpotifyPlaylistImportResult {
+  playlist: PersonalYouTubePlaylist;
+  searched: number;
+  added: number;
+  duplicates: number;
+  unmatched: string[];
+  notSearched: number;
+}
 async function request<T>(path = "", init?: RequestInit): Promise<T> {
   const response = await fetch(`/api/personal-playlists${path}`, {
     ...init, credentials: "include", headers: { "Content-Type": "application/json" },
@@ -22,6 +30,8 @@ async function request<T>(path = "", init?: RequestInit): Promise<T> {
 export const fetchPersonalPlaylists = () => request<PersonalYouTubePlaylist[]>();
 export const createPersonalPlaylist = (name: string) =>
   request<PersonalYouTubePlaylist>("", { method: "POST", body: JSON.stringify({ name }) });
+export const importSpotifyPlaylist = (url: string) =>
+  request<SpotifyPlaylistImportResult>("/import-spotify", { method: "POST", body: JSON.stringify({ url }) });
 export const updatePersonalPlaylist = (id: number, input: { name?: string; trackIds?: string[]; revision: number }) =>
   request<PersonalYouTubePlaylist>(`/${id}`, { method: "PATCH", body: JSON.stringify(input) });
 export const deletePersonalPlaylist = (id: number) =>

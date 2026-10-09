@@ -15,3 +15,4 @@
 - [Storage inventory safety](storage-report-safety.md) — take reference snapshots after locking; unknown object ages must remain uncertain, not cleanup candidates.
 - [Unattended backup safeguards](scheduled-backup-safety.md) — crash locks need liveness review; scheduled encryption needs only a public recipient.
 - [NewCP hosted game](newcp-hosted-game.md) — GitHub hosts desktop wrappers, not full game source; browser embedding and account gameplay require separate verification.
+- [Spotify import scope](spotify-playlist-import.md) — v1 imports public Spotify playlists only; private playlist access requires a separate product decision.

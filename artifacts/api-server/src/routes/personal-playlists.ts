@@ -3,6 +3,12 @@ import { randomUUID } from "node:crypto";
 import { pool } from "@workspace/db";
 import { requireAuth } from "../lib/auth";
 import { fetchYouTubeTitles, parsePersonalYouTubeId } from "../lib/personal-playlists";
+import {
+  fetchSpotifyPublicPlaylist,
+  findYouTubeMatch,
+  parseSpotifyPlaylistId,
+  SpotifyImportServiceError,
+} from "../lib/spotify-playlist-import";
 
 const router = Router();
 router.use("/personal-playlists", requireAuth);
@@ -20,6 +26,71 @@ function playlistId(value: string | string[]): number {
 function cleanName(value: unknown): string {
   if (typeof value !== "string" || !value.trim() || value.trim().length > 100) throw new InputError("Enter a playlist name of up to 100 characters.");
   return value.trim();
+}
+function spotifySearchDailyLimit(): number {
+  const configured = Number(process.env["SPOTIFY_IMPORT_DAILY_SEARCH_LIMIT"]);
+  return Number.isSafeInteger(configured) && configured > 0 && configured <= 10_000 ? configured : 80;
+}
+async function reserveSpotifySearches(requested: number, limit: number) {
+  const day = new Date().toISOString().slice(0, 10);
+  const connection = await pool.connect();
+  try {
+    await connection.query("BEGIN");
+    await connection.query(
+      `INSERT INTO personal_playlist_youtube_search_usage(usage_day, searches_used)
+       VALUES($1, 0) ON CONFLICT (usage_day) DO NOTHING`,
+      [day],
+    );
+    const row = await connection.query<{ searches_used: number }>(
+      "SELECT searches_used FROM personal_playlist_youtube_search_usage WHERE usage_day=$1 FOR UPDATE",
+      [day],
+    );
+    const used = Number(row.rows[0]?.searches_used ?? 0);
+    const reserved = Math.min(requested, Math.max(0, limit - used));
+    if (reserved > 0) {
+      await connection.query(
+        `UPDATE personal_playlist_youtube_search_usage
+         SET searches_used=searches_used+$2, updated_at=now() WHERE usage_day=$1`,
+        [day, reserved],
+      );
+    }
+    await connection.query("COMMIT");
+    return { day, reserved };
+  } catch (error) {
+    await connection.query("ROLLBACK");
+    throw error;
+  } finally {
+    connection.release();
+  }
+}
+async function releaseSpotifySearches(day: string, count: number) {
+  if (count <= 0) return;
+  await pool.query(
+    `UPDATE personal_playlist_youtube_search_usage
+     SET searches_used=GREATEST(searches_used-$2, 0), updated_at=now() WHERE usage_day=$1`,
+    [day, count],
+  );
+}
+async function createImportedPlaylist(username: string, name: string, tracks: Track[]) {
+  const connection = await pool.connect();
+  try {
+    await connection.query("BEGIN");
+    await connection.query("SELECT pg_advisory_xact_lock(hashtext($1))", [`personal-playlists:${username}`]);
+    const count = await connection.query("SELECT count(*)::int AS count FROM personal_youtube_playlists WHERE username=$1", [username]);
+    if (count.rows[0].count >= 50) throw new InputError("You can save up to 50 personal playlists.");
+    const result = await connection.query<Playlist>(
+      `INSERT INTO personal_youtube_playlists(username, name, tracks)
+       VALUES($1,$2,$3::jsonb) RETURNING ${fields}`,
+      [username, name, JSON.stringify(tracks)],
+    );
+    await connection.query("COMMIT");
+    return result.rows[0];
+  } catch (error) {
+    await connection.query("ROLLBACK");
+    throw error;
+  } finally {
+    connection.release();
+  }
 }
 async function mutatePlaylist(id: number, username: string, mutation: (playlist: Playlist) => { name: string; tracks: Track[] }) {
   const connection = await pool.connect();
@@ -56,6 +127,100 @@ router.post("/personal-playlists", async (req, res) => {
     res.status(201).json(result.rows[0]);
   } catch (error) { await connection.query("ROLLBACK"); throw error; }
   finally { connection.release(); }
+});
+router.post("/personal-playlists/import-spotify", async (req, res) => {
+  if (typeof req.body?.url !== "string" || req.body.url.length > 1_000) {
+    throw new InputError("Paste a public Spotify playlist link.");
+  }
+  const playlistId = parseSpotifyPlaylistId(req.body.url);
+  if (!playlistId) throw new InputError("Enter a Spotify playlist link from open.spotify.com.");
+  const username = req.session.username!;
+  const credentials = {
+    clientId: process.env["SPOTIFY_CLIENT_ID"] ?? "",
+    clientSecret: process.env["SPOTIFY_CLIENT_SECRET"] ?? "",
+  };
+  const youtubeApiKey = process.env["YOUTUBE_DATA_API_KEY"] ?? "";
+  if (!credentials.clientId || !credentials.clientSecret || !youtubeApiKey) {
+    throw new InputError("Spotify import is not configured on the server yet.", 503);
+  }
+  const currentCount = await pool.query(
+    "SELECT count(*)::int AS count FROM personal_youtube_playlists WHERE username=$1",
+    [username],
+  );
+  if (currentCount.rows[0].count >= 50) throw new InputError("You can save up to 50 personal playlists.");
+
+  let source;
+  try {
+    source = await fetchSpotifyPublicPlaylist(playlistId, credentials);
+  } catch (error) {
+    if (error instanceof SpotifyImportServiceError) throw new InputError(error.message, error.code === "spotify-auth" ? 503 : 502);
+    throw error;
+  }
+  if (!source.tracks.length) throw new InputError("That Spotify playlist has no public tracks that can be matched.", 422);
+
+  const reservation = await reserveSpotifySearches(source.tracks.length, spotifySearchDailyLimit());
+  if (reservation.reserved === 0) {
+    throw new InputError("The site's daily Spotify-to-YouTube search allowance is used up. Try again tomorrow.", 429);
+  }
+  const searchTracks = source.tracks.slice(0, reservation.reserved);
+  const matches: (Awaited<ReturnType<typeof findYouTubeMatch>> | null)[] = Array(searchTracks.length).fill(null);
+  let attempted = 0;
+  try {
+    let nextIndex = 0;
+    let searchFailure: unknown;
+    const worker = async () => {
+      while (!searchFailure) {
+        const index = nextIndex++;
+        if (index >= searchTracks.length) return;
+        attempted++;
+        try {
+          matches[index] = await findYouTubeMatch(searchTracks[index], youtubeApiKey);
+        } catch (error) {
+          searchFailure = error;
+        }
+      }
+    };
+    await Promise.all(Array.from({ length: Math.min(4, searchTracks.length) }, worker));
+    if (searchFailure) {
+      throw searchFailure;
+    }
+  } catch (error) {
+    await releaseSpotifySearches(reservation.day, reservation.reserved - attempted);
+    if (error instanceof SpotifyImportServiceError) {
+      const status = error.code === "youtube-quota" ? 429 : error.code === "youtube-config" ? 503 : 502;
+      throw new InputError(error.message, status);
+    }
+    throw error;
+  }
+
+  const importedTracks: Track[] = [];
+  const seenVideoIds = new Set<string>();
+  const unmatched: string[] = [];
+  let duplicates = 0;
+  for (let i = 0; i < matches.length; i++) {
+    const match = matches[i];
+    if (!match) {
+      const sourceTrack = searchTracks[i];
+      unmatched.push(`${sourceTrack.artists.join(", ")}${sourceTrack.artists.length ? " — " : ""}${sourceTrack.title}`);
+      continue;
+    }
+    if (seenVideoIds.has(match.videoId)) { duplicates++; continue; }
+    seenVideoIds.add(match.videoId);
+    importedTracks.push({ id: randomUUID(), videoId: match.videoId, title: match.title });
+  }
+  if (!importedTracks.length) {
+    throw new InputError("No YouTube video matches were found, so no playlist was saved.", 422);
+  }
+
+  const playlist = await createImportedPlaylist(username, source.name, importedTracks);
+  res.status(201).json({
+    playlist,
+    searched: searchTracks.length,
+    added: importedTracks.length,
+    duplicates,
+    unmatched,
+    notSearched: Math.max(0, source.totalTracks - searchTracks.length),
+  });
 });
 router.patch("/personal-playlists/:id", async (req, res) => {
   const id = playlistId(req.params.id);

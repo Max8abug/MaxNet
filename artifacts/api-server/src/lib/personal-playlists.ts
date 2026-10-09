@@ -11,6 +11,11 @@ export const personalPlaylistsSchema = `
   );
   ALTER TABLE personal_youtube_playlists ADD COLUMN IF NOT EXISTS revision integer NOT NULL DEFAULT 0;
   CREATE INDEX IF NOT EXISTS personal_youtube_playlists_user_idx ON personal_youtube_playlists(username);
+  CREATE TABLE IF NOT EXISTS personal_playlist_youtube_search_usage (
+    usage_day date PRIMARY KEY,
+    searches_used integer NOT NULL DEFAULT 0 CHECK (searches_used >= 0),
+    updated_at timestamptz NOT NULL DEFAULT now()
+  );
 `;
 
 export function parsePersonalYouTubeId(input: string): string | null {

@@ -1,0 +1,38 @@
+import { build } from "esbuild";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import { spawnSync } from "node:child_process";
+
+const directory = await mkdtemp(path.join(tmpdir(), "spotify-route-tests-"));
+try {
+  const outfile = path.join(directory, "test.mjs");
+  await build({
+    entryPoints: [fileURLToPath(new URL("./spotify-import-route.test.ts", import.meta.url))],
+    outfile,
+    bundle: true,
+    platform: "node",
+    format: "esm",
+    banner: { js: "import { createRequire } from 'node:module'; const require = createRequire(import.meta.url);" },
+    plugins: [{
+      name: "spotify-import-route-test-dependencies",
+      setup(build) {
+        build.onResolve({ filter: /^@workspace\/db$/ }, () => ({
+          path: fileURLToPath(new URL("./spotify-import-db.ts", import.meta.url)),
+        }));
+        build.onResolve({ filter: /^\.\.\/lib\/auth$/ }, () => ({
+          path: "auth",
+          namespace: "spotify-import-route-test",
+        }));
+        build.onLoad({ filter: /^auth$/, namespace: "spotify-import-route-test" }, () => ({
+          contents: "export const requireAuth = (req, _res, next) => { req.session = { username: 'test-user' }; next(); };",
+        }));
+      },
+    }],
+  });
+  const result = spawnSync(process.execPath, [outfile], { stdio: "inherit" });
+  process.exitCode = result.status ?? 1;
+} finally {
+  await rm(directory, { recursive: true, force: true });
+}

@@ -4,9 +4,11 @@ import {
   createPersonalPlaylist,
   deletePersonalPlaylist,
   fetchPersonalPlaylists,
+  importSpotifyPlaylist,
   updatePersonalPlaylist,
   type PersonalYouTubePlaylist,
   type PersonalYouTubeTrack,
+  type SpotifyPlaylistImportResult,
 } from "../lib/personal-playlists-api";
 import { useAuth } from "../lib/auth-store";
 import { PersonalYouTubePlayer } from "./PersonalYouTubePlayer";
@@ -32,6 +34,8 @@ function PersonalPlaylistsInner({ username }: { username: string }) {
   const [newName, setNewName] = useState("");
   const [renameDraft, setRenameDraft] = useState("");
   const [linkText, setLinkText] = useState("");
+  const [spotifyLink, setSpotifyLink] = useState("");
+  const [spotifyImportResult, setSpotifyImportResult] = useState<SpotifyPlaylistImportResult | null>(null);
   const [feedback, setFeedback] = useState<Feedback | null>(null);
   const [playing, setPlaying] = useState<Playing | null>(null);
   const [playRequest, setPlayRequest] = useState(0);
@@ -168,6 +172,17 @@ function PersonalPlaylistsInner({ username }: { username: string }) {
       setLinkText(r.rejected.join("\n"));
     }
   }
+  async function importSpotify() {
+    const url = spotifyLink.trim();
+    if (!url) return;
+    setSpotifyImportResult(null);
+    const result = await mutate(() => importSpotifyPlaylist(url));
+    if (!result) return;
+    setPlaylists((list) => [result.playlist, ...list.filter((p) => p.id !== result.playlist.id)]);
+    setSelectedId(result.playlist.id);
+    setSpotifyLink("");
+    setSpotifyImportResult(result);
+  }
   async function saveOrder(pl: PersonalYouTubePlaylist, tracks: PersonalYouTubeTrack[], removedId?: string) {
     const updated = await mutate(() => updatePersonalPlaylist(pl.id, { trackIds: tracks.map((t) => t.id), revision: pl.revision }));
     if (!updated) return;
@@ -243,12 +258,42 @@ function PersonalPlaylistsInner({ username }: { username: string }) {
           onChange={(e) => setNewName(e.target.value)} aria-label="New playlist name" data-testid="input-new-playlist" />
         <button type="submit" className="win98-button px-2" disabled={saving || !newName.trim()} data-testid="button-create-playlist">Create</button>
       </form>
+      <form className="win98-inset bg-[#fffdf4] p-1.5 flex flex-col gap-1" onSubmit={(e) => { e.preventDefault(); void importSpotify(); }}>
+        <div className="font-bold">Import a public Spotify playlist</div>
+        <div className="flex gap-1">
+          <input className="win98-inset bg-white flex-1 min-w-0 px-1 py-0.5" type="url"
+            placeholder="https://open.spotify.com/playlist/…"
+            value={spotifyLink} onChange={(e) => setSpotifyLink(e.target.value)}
+            aria-label="Public Spotify playlist link" data-testid="input-spotify-playlist" />
+          <button type="submit" className="win98-button px-2" disabled={saving || !spotifyLink.trim()}
+            data-testid="button-import-spotify">{saving ? "Importing…" : "Import"}</button>
+        </div>
+          <div className="text-[10px] text-gray-600">
+          Matches songs to YouTube and creates a new playlist. Up to 200 tracks; matching uses this site's shared daily YouTube search allowance. Public playlists only.
+        </div>
+      </form>
+      {spotifyImportResult && (
+        <div className="win98-inset bg-green-50 p-1.5" role="status" data-testid="text-spotify-import-result">
+          <div>Imported {spotifyImportResult.added} YouTube video{spotifyImportResult.added === 1 ? "" : "s"} into <strong>{spotifyImportResult.playlist.name}</strong>.</div>
+          {spotifyImportResult.duplicates > 0 && <div>Skipped {spotifyImportResult.duplicates} duplicate video match{spotifyImportResult.duplicates === 1 ? "" : "es"}.</div>}
+          {spotifyImportResult.unmatched.length > 0 && (
+            <div className="mt-0.5">
+              No YouTube match for {spotifyImportResult.unmatched.length} song{spotifyImportResult.unmatched.length === 1 ? "" : "s"}:
+              <ul className="max-h-16 overflow-auto list-disc pl-4">{spotifyImportResult.unmatched.slice(0, 8).map((name, i) => <li key={`${name}-${i}`}>{name}</li>)}</ul>
+              {spotifyImportResult.unmatched.length > 8 && <div>And {spotifyImportResult.unmatched.length - 8} more.</div>}
+            </div>
+          )}
+          {spotifyImportResult.notSearched > 0 && (
+            <div className="mt-0.5">{spotifyImportResult.notSearched} Spotify playlist item{spotifyImportResult.notSearched === 1 ? " was" : "s were"} not searched because the 200-track import or shared daily search limit was reached.</div>
+          )}
+        </div>
+      )}
 
       {loading && !playlists.length && !loadError && (
         <div className="win98-inset bg-white p-2 text-gray-500" role="status">Loading your playlists...</div>
       )}
       {!loading && !loadError && !playlists.length && (
-        <div className="win98-inset bg-white p-2 text-gray-600">No playlists yet. Name one above and press Create, then paste YouTube links into it.</div>
+        <div className="win98-inset bg-white p-2 text-gray-600">No playlists yet. Create one above or import a public Spotify playlist. You can add YouTube links to a playlist after creating it.</div>
       )}
 
       {selected && (
