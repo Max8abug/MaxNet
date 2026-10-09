@@ -79,7 +79,6 @@
 
 /* Vista: translucent Aero shell with a readable, opaque work area. */
 :is(html, body)[data-app-theme="vista"] .win98-window:not(:where(.theme-lab, .theme-lab *)) {
-  position: relative;
   overflow: hidden;
   padding: 7px;
   border: 1px solid rgba(245, 252, 255, .86);
@@ -163,7 +162,6 @@
 
 /* Gold: deep carved rails, warm inner mat and burgundy controls. */
 :is(html, body)[data-app-theme="gold"] .win98-window:not(:where(.theme-lab, .theme-lab *)) {
-  position: relative;
   overflow: hidden;
   padding: 25px;
   border: 0;
@@ -180,6 +178,12 @@
     0 8px 18px rgba(0,0,0,.58);
   color: var(--vg-ink);
   font-family: var(--vg-font);
+}
+
+/* Preserve the absolute/fixed positioning of desktop windows and menus. */
+:is(html, body)[data-app-theme="vista"] .win98-window:not(:where(.theme-lab, .theme-lab *, .absolute, .fixed, .sticky, [style*="position:"])),
+:is(html, body)[data-app-theme="gold"] .win98-window:not(:where(.theme-lab, .theme-lab *, .absolute, .fixed, .sticky, [style*="position:"])) {
+  position: relative;
 }
 :is(html, body)[data-app-theme="gold"] .win98-window:not(:where(.theme-lab, .theme-lab *))::before {
   content: "";
@@ -246,6 +250,25 @@
 }
 
 /* Common legacy utility-class panels and popup/menu surfaces. */
+:is(html, body)[data-app-theme="vista"] .win98-menu:not(:where(.theme-lab, .theme-lab *)) {
+  padding: 4px;
+  border: 1px solid var(--vg-border);
+  border-radius: 5px;
+  background: var(--vg-paper);
+  color: var(--vg-ink);
+  box-shadow: 0 5px 14px rgba(10, 31, 50, .25);
+  font-family: var(--vg-font);
+}
+:is(html, body)[data-app-theme="gold"] .win98-menu:not(:where(.theme-lab, .theme-lab *)) {
+  padding: 4px;
+  border: 2px solid var(--vg-gold);
+  border-radius: 3px;
+  background: var(--vg-paper);
+  color: var(--vg-ink);
+  box-shadow: inset 0 0 0 1px #9b7228, 0 4px 10px rgba(36, 17, 8, .32);
+  font-family: var(--vg-font);
+}
+
 :is(html, body)[data-app-theme="vista"] [class~="bg-white"]:not(:where(.theme-lab, .theme-lab *)),
 :is(html, body)[data-app-theme="vista"] [class~="bg-gray-50"]:not(:where(.theme-lab, .theme-lab *)),
 :is(html, body)[data-app-theme="vista"] [class~="bg-gray-100"]:not(:where(.theme-lab, .theme-lab *)),

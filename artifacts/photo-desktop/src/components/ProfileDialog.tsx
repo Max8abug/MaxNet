@@ -39,7 +39,7 @@ function fileToDataUrlRaw(file: File): Promise<string> {
 
 export function ProfileDialog({ onClose, mobile = false }: Props) {
   const { user, updateProfile } = useAuth();
-  const { theme, setTheme } = useThemeMode();
+  const { theme, setTheme, themeSaving, themeError } = useThemeMode();
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [color, setColor] = useState(user?.backgroundColor || "#008080");
@@ -317,6 +317,10 @@ export function ProfileDialog({ onClose, mobile = false }: Props) {
                   <option key={option.value} value={option.value}>{option.label}</option>
                 ))}
               </select>
+              <p className="mt-1 text-[10px]" role="status">
+                {themeSaving ? "Saving theme…" : themeError ? "Your previous theme has been restored." : "Saved to your account; applies across the desktop and your signed-in devices."}
+              </p>
+              {themeError && <p className="mt-1 text-xs text-red-700" role="alert">{themeError}</p>}
             </label>
             <div className="text-xs text-gray-600 mt-1">
               Applies across the desktop, windows, and launcher.

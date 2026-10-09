@@ -500,7 +500,7 @@ export function Taskbar({ page }: { page: string }) {
           <Badge count={totalUnread} />
         </button>
         {startOpen && (
-          <div className="absolute bottom-full left-0 mb-1 w-72 bg-[#c0c0c0] win98-window flex p-1" style={{ maxHeight: 'calc(100dvh - 4rem)' }}>
+          <div className="absolute bottom-full left-0 mb-2 w-72 bg-[#c0c0c0] win98-menu flex p-1" data-testid="start-menu" style={{ maxHeight: 'calc(100dvh - 4rem)' }}>
             <div className="w-8 bg-gradient-to-b from-[#000080] to-[#1084d0] flex flex-col justify-end p-1 shrink-0">
               <span className="text-white font-bold -rotate-90 transform origin-bottom-left whitespace-nowrap mb-8 text-xl">{siteSettings.siteName || 'Portfolio 98'}</span>
             </div>
@@ -533,7 +533,11 @@ export function Taskbar({ page }: { page: string }) {
                     className="w-full text-left px-3 py-1 hover:bg-[#000080] hover:text-white text-sm relative flex items-center justify-between gap-6"
                     aria-haspopup="menu"
                     aria-expanded={openCategory === category.label}
-                    onClick={() => selectCategory(openCategory === category.label ? null : category.label)}
+                    onClick={() => {
+                      // Hover/focus may already have opened this category.
+                      // Clicking it must not immediately dismiss its submenu.
+                      if (openCategory !== category.label) selectCategory(category.label);
+                    }}
                   >
                     <span>{category.label}</span>
                     <ChevronRight className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
@@ -541,7 +545,7 @@ export function Taskbar({ page }: { page: string }) {
                   {openCategory === category.label && (
                     <div
                       ref={submenuRef}
-                      className="absolute left-[calc(100%-1px)] z-50 w-64 bg-[#c0c0c0] win98-window p-1"
+                      className="absolute left-[calc(100%-1px)] z-50 w-64 bg-[#c0c0c0] win98-menu p-1"
                       role="menu"
                       aria-label={`${category.label} menu`}
                       style={{

@@ -46,6 +46,7 @@ export async function ensureSchema(): Promise<void> {
     ALTER TABLE users ADD COLUMN IF NOT EXISTS cafe_avatar jsonb NOT NULL DEFAULT '{}'::jsonb;
     ALTER TABLE users ADD COLUMN IF NOT EXISTS rank text;
     ALTER TABLE users ADD COLUMN IF NOT EXISTS time_zone text;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS display_theme text;
     ALTER TABLE users ADD COLUMN IF NOT EXISTS background_url text;
     ALTER TABLE users ADD COLUMN IF NOT EXISTS dark_background_url text;
     ALTER TABLE users ADD COLUMN IF NOT EXISTS background_color text;

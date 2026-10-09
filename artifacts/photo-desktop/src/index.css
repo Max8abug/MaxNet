@@ -111,7 +111,8 @@
   }
 }
 
-.win98-window {
+.win98-window,
+.win98-menu {
   background-color: hsl(var(--card));
   border-top: 2px solid white;
   border-left: 2px solid white;
@@ -119,6 +120,11 @@
   border-bottom: 2px solid black;
   box-shadow: inset 1px 1px #dfdfdf, inset -1px -1px #808080, 1px 1px 0px 0px black;
   padding: 2px;
+}
+
+/* Cascading menus must not inherit app-window clipping or decorative rails. */
+.win98-menu {
+  overflow: visible;
 }
 
 .win98-titlebar {
@@ -181,7 +187,8 @@
   z-index: 0;
 }
 
-.dark .win98-window {
+.dark .win98-window,
+.dark .win98-menu {
   background-color: hsl(var(--card));
   border-top-color: #6d7885;
   border-left-color: #6d7885;

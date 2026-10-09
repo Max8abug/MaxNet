@@ -35,6 +35,7 @@ router.get("/auth/me", async (req, res) => {
       backgroundColor: u.backgroundColor,
       rank: u.rank,
       timeZone: u.timeZone,
+      displayTheme: u.displayTheme,
     },
   });
 });
@@ -266,8 +267,15 @@ router.patch("/auth/profile", async (req, res) => {
     res.status(401).json({ error: "Login required" });
     return;
   }
-  const { avatarUrl, backgroundUrl, darkBackgroundUrl, backgroundColor, timeZone } = req.body ?? {};
+  const { avatarUrl, backgroundUrl, darkBackgroundUrl, backgroundColor, timeZone, displayTheme } = req.body ?? {};
   const update: Record<string, string | null> = {};
+  if (displayTheme !== undefined) {
+    if (typeof displayTheme !== "string" || !["classic-light", "classic-dark", "xp-light", "xp-dark", "vista", "gold"].includes(displayTheme)) {
+      res.status(400).json({ error: "Invalid display theme" });
+      return;
+    }
+    update.displayTheme = displayTheme;
+  }
   if (avatarUrl !== undefined) {
     if (avatarUrl !== null && (typeof avatarUrl !== "string" || (avatarUrl && !avatarUrl.startsWith("data:image/")))) {
       res.status(400).json({ error: "avatarUrl must be a data:image/* string or null" });

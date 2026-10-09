@@ -61,9 +61,10 @@ export interface AuthUser {
   backgroundColor?: string | null;
   rank?: string | null;
   timeZone?: string | null;
+  displayTheme?: string | null;
 }
 
-export async function updateProfile(data: { avatarUrl?: string | null; backgroundUrl?: string | null; darkBackgroundUrl?: string | null; backgroundColor?: string | null; timeZone?: string | null }): Promise<void> {
+export async function updateProfile(data: { avatarUrl?: string | null; backgroundUrl?: string | null; darkBackgroundUrl?: string | null; backgroundColor?: string | null; timeZone?: string | null; displayTheme?: string }): Promise<void> {
   await jsonOrThrow(await fetch(`${BASE}/auth/profile`, {
     ...opts, method: "PATCH",
     headers: { "Content-Type": "application/json" },

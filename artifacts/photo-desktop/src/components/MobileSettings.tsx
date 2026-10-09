@@ -7,7 +7,7 @@ import { ProfileDialog } from './ProfileDialog';
 
 export function MobileSettings({ onRequestLogin }: { onRequestLogin: () => void }) {
   const user = useAuth((state) => state.user);
-  const { theme, setTheme } = useThemeMode();
+  const { theme, setTheme, themeSaving, themeError } = useThemeMode();
   const [profileOpen, setProfileOpen] = useState(false);
 
   return (
@@ -43,8 +43,9 @@ export function MobileSettings({ onRequestLogin }: { onRequestLogin: () => void 
           </select>
         </label>
         <p className="mt-1 text-xs text-gray-600">
-          Applies immediately across the desktop, windows, and launcher.
+          {themeSaving ? "Saving theme…" : themeError ? "Your previous theme has been restored." : user ? "Saved to your account and synced to your signed-in devices." : "Applies across the desktop. Sign in to save it to your account."}
         </p>
+        {themeError && <p className="mt-1 text-xs text-red-700" role="alert">{themeError}</p>}
       </section>
 
       <section className="mobile-settings-card win98-inset p-3">

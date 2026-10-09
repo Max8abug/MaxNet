@@ -86,13 +86,18 @@
 /* Enamel window frame and rounded, glossy XP caption bar. */
 :is(html, body)[data-app-theme="xp-light"] .win98-window:not(:where(.theme-lab, .theme-lab *)),
 :is(html, body)[data-app-theme="xp-dark"] .win98-window:not(:where(.theme-lab, .theme-lab *)) {
-  position: relative;
   overflow: hidden;
   padding: 4px;
   border: 1px solid var(--xp-window-edge);
   border-radius: 9px 9px 4px 4px;
   background: var(--xp-window-edge);
   box-shadow: var(--xp-frame-shadow);
+}
+
+/* Decorations need a containing block, but must not replace launcher/window positioning. */
+:is(html, body)[data-app-theme="xp-light"] .win98-window:not(:where(.theme-lab, .theme-lab *, .absolute, .fixed, .sticky, [style*="position:"])),
+:is(html, body)[data-app-theme="xp-dark"] .win98-window:not(:where(.theme-lab, .theme-lab *, .absolute, .fixed, .sticky, [style*="position:"])) {
+  position: relative;
 }
 
 :is(html, body)[data-app-theme="xp-light"] .win98-titlebar:not(:where(.theme-lab, .theme-lab *)),
@@ -151,6 +156,17 @@
 }
 
 /* Shared taskbar and its popup menus; the green start control is the signature. */
+:is(html, body)[data-app-theme="xp-light"] .win98-menu:not(:where(.theme-lab, .theme-lab *)),
+:is(html, body)[data-app-theme="xp-dark"] .win98-menu:not(:where(.theme-lab, .theme-lab *)) {
+  padding: 4px;
+  border: 1px solid var(--xp-window-edge);
+  border-radius: 4px;
+  background: var(--xp-surface);
+  color: var(--xp-ink);
+  box-shadow: 0 5px 14px rgba(6, 30, 82, .35);
+  font-family: var(--xp-font);
+}
+
 :is(html, body)[data-app-theme="xp-light"] [class*="bottom-0"][class*="left-0"][class*="right-0"][class*="h-10"]:not(:where(.theme-lab, .theme-lab *)),
 :is(html, body)[data-app-theme="xp-dark"] [class*="bottom-0"][class*="left-0"][class*="right-0"][class*="h-10"]:not(:where(.theme-lab, .theme-lab *)) {
   min-height: 40px;

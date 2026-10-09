@@ -35,6 +35,7 @@ export const usersTable = pgTable("users", {
   backgroundColor: text("background_color"),
   rank: text("rank"),
   timeZone: text("time_zone"),
+  displayTheme: text("display_theme"),
   // Persistent cafe character: { color: string, hat: string, accessory: string | null }.
   // Saved by the in-cafe character editor so users keep their look across sessions.
   cafeAvatar: jsonb("cafe_avatar").notNull().default({}),
