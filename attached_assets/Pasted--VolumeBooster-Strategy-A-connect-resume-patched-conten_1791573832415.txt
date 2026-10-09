@@ -1,0 +1,54 @@
+[VolumeBooster] Strategy A: connect + resume patched content.js:124:17
+[VolumeBooster] Bootstrap done: hostname = moonbat.ddns.net | saved = undefined | multiplier = 1 content.js:313:17
+downloadable font: download failed (font-family: "Pixelated MS Sans Serif" style:normal weight:400 stretch:100 src index:0): status=2147746065 source: https://fonts.cdnfonts.com/s/15011/MS-Sans-Serif.woff
+Feature Policy: Skipping unsupported feature name “autoplay”. index-BszMG5YU.js:1:26360
+Feature Policy: Skipping unsupported feature name “pointer-lock”. index-BszMG5YU.js:1:26360
+Feature Policy: Skipping unsupported feature name “autoplay”. index-BszMG5YU.js:1:26360
+Feature Policy: Skipping unsupported feature name “pointer-lock”. index-BszMG5YU.js:1:26360
+Feature Policy: Skipping unsupported feature name “autoplay”. index-BszMG5YU.js:8:86345
+Feature Policy: Skipping unsupported feature name “pointer-lock”. index-BszMG5YU.js:8:86345
+Feature Policy: Skipping unsupported feature name “autoplay”. index-BszMG5YU.js:1:26360
+Feature Policy: Skipping unsupported feature name “pointer-lock”. index-BszMG5YU.js:1:26360
+Feature Policy: Skipping unsupported feature name “autoplay”. index-BszMG5YU.js:1:26360
+Feature Policy: Skipping unsupported feature name “pointer-lock”. index-BszMG5YU.js:1:26360
+Feature Policy: Skipping unsupported feature name “autoplay”. index-BszMG5YU.js:8:86345
+Feature Policy: Skipping unsupported feature name “pointer-lock”. index-BszMG5YU.js:8:86345
+Feature Policy: Skipping unsupported feature name “autoplay”. index-BszMG5YU.js:1:26360
+Feature Policy: Skipping unsupported feature name “pointer-lock”. index-BszMG5YU.js:1:26360
+Feature Policy: Skipping unsupported feature name “autoplay”. index-BszMG5YU.js:1:26360
+Feature Policy: Skipping unsupported feature name “pointer-lock”. index-BszMG5YU.js:1:26360
+Feature Policy: Skipping unsupported feature name “autoplay”. index-BszMG5YU.js:8:86345
+Feature Policy: Skipping unsupported feature name “pointer-lock”. index-BszMG5YU.js:8:86345
+Feature Policy: Skipping unsupported feature name “autoplay”. index-BszMG5YU.js:1:26360
+Feature Policy: Skipping unsupported feature name “pointer-lock”. index-BszMG5YU.js:1:26360
+Feature Policy: Skipping unsupported feature name “autoplay”. index-BszMG5YU.js:1:26360
+Feature Policy: Skipping unsupported feature name “pointer-lock”. index-BszMG5YU.js:1:26360
+Feature Policy: Skipping unsupported feature name “autoplay”. index-BszMG5YU.js:8:86345
+Feature Policy: Skipping unsupported feature name “pointer-lock”. index-BszMG5YU.js:8:86345
+Feature Policy: Skipping unsupported feature name “autoplay”. index-BszMG5YU.js:1:26360
+Feature Policy: Skipping unsupported feature name “pointer-lock”. index-BszMG5YU.js:1:26360
+Feature Policy: Skipping unsupported feature name “autoplay”. index-BszMG5YU.js:1:26360
+Feature Policy: Skipping unsupported feature name “pointer-lock”. index-BszMG5YU.js:1:26360
+Feature Policy: Skipping unsupported feature name “autoplay”. index-BszMG5YU.js:8:86345
+Feature Policy: Skipping unsupported feature name “pointer-lock”. index-BszMG5YU.js:8:86345
+Feature Policy: Skipping unsupported feature name “autoplay”. index-BszMG5YU.js:1:26360
+Feature Policy: Skipping unsupported feature name “pointer-lock”. index-BszMG5YU.js:1:26360
+Feature Policy: Skipping unsupported feature name “autoplay”. index-BszMG5YU.js:1:26360
+Feature Policy: Skipping unsupported feature name “pointer-lock”. index-BszMG5YU.js:1:26360
+Feature Policy: Skipping unsupported feature name “autoplay”. index-BszMG5YU.js:8:86345
+Feature Policy: Skipping unsupported feature name “pointer-lock”. index-BszMG5YU.js:8:86345
+A resource is blocked by OpaqueResponseBlocking, please check browser console for details. 14 getting-over-it
+Feature Policy: Skipping unsupported feature name “autoplay”. index-BszMG5YU.js:1:26360
+Feature Policy: Skipping unsupported feature name “pointer-lock”. index-BszMG5YU.js:1:26360
+Feature Policy: Skipping unsupported feature name “autoplay”. index-BszMG5YU.js:1:26360
+Feature Policy: Skipping unsupported feature name “pointer-lock”. index-BszMG5YU.js:1:26360
+Feature Policy: Skipping unsupported feature name “autoplay”. index-BszMG5YU.js:8:86345
+Feature Policy: Skipping unsupported feature name “pointer-lock”. index-BszMG5YU.js:8:86345
+Uncaught (in promise) DOMException: The operation is insecure.
+    mergeFiles https://moonbat.ddns.net/ported-games/pvz/index.html:92
+    <anonymous> https://moonbat.ddns.net/ported-games/pvz/index.html:116
+    <anonymous> https://moonbat.ddns.net/ported-games/pvz/index.html:166
+index.html:92:34
+
+​
+
