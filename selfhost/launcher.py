@@ -17,6 +17,7 @@ import tempfile
 import zipfile
 from datetime import datetime
 from pathlib import Path
+from launcher_diagnostics import DIAGNOSTICS_VERSION, build_crash_report
 
 try:
     import tkinter as tk
@@ -582,16 +583,23 @@ class App(tk.Tk):
                 start_new_session=True,
             )
             API_PID_FILE.write_text(str(proc.pid))
+            started_monotonic = time.monotonic()
+            monitor_stamp = (
+                f"[{ts_now()}] [launcher] Crash monitor {DIAGNOSTICS_VERSION} "
+                f"attached to API PID {proc.pid}\n"
+            )
+            with open(ERROR_LOG_FILE, "a") as log_file:
+                log_file.write(monitor_stamp)
             self._launcher_log(
                 f"[launcher] Started API (PID {proc.pid}) → port {port}\n")
             self._url_var.set(f"http://localhost:{port}")
             # Background crash-watcher
-            threading.Thread(target=self._watch_api, args=(proc,),
+            threading.Thread(target=self._watch_api, args=(proc, started_monotonic),
                              daemon=True).start()
         except Exception as exc:
             messagebox.showerror("Start failed", str(exc))
 
-    def _watch_api(self, process: subprocess.Popen):
+    def _watch_api(self, process: subprocess.Popen, started_monotonic: float):
         """Background thread: detect unexpected exit and surface it in the UI."""
         pid = process.pid
         try:
@@ -602,18 +610,8 @@ class App(tk.Tk):
             if expected_stop:
                 return
 
-            if return_code < 0:
-                signal_number = -return_code
-                try:
-                    signal_name = signal.Signals(signal_number).name
-                except ValueError:
-                    signal_name = f"signal {signal_number}"
-                exit_detail = f"was terminated by {signal_name} ({signal_number})"
-            else:
-                exit_detail = f"exited with code {return_code}"
-
-            msg = (f"[{ts_now()}] [CRASH] API process (PID {pid}) {exit_detail}; "
-                   f"check {ERROR_LOG_FILE} for process output")
+            uptime = max(0.0, time.monotonic() - started_monotonic)
+            msg = f"[{ts_now()}] {build_crash_report(pid, return_code, uptime)}"
             with open(ERROR_LOG_FILE, "a") as f:
                 f.write(msg + "\n")
             self.after(0, lambda m=msg: self._show_alert(f"💥 {m}"))
