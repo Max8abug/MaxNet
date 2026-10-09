@@ -38,8 +38,13 @@ export function Taskbar({ page }: { page: string }) {
   const [cafeCount, setCafeCount] = useState(0);
 
   useEffect(() => { void refresh(); void refreshRanks(); void refreshSiteSettings(); }, [refresh, refreshRanks, refreshSiteSettings]);
-  // Re-pull site settings periodically so visitors pick up logo updates without a hard refresh.
-  useEffect(() => { const t = setInterval(() => { void refreshSiteSettings(); }, 30_000); return () => clearInterval(t); }, [refreshSiteSettings]);
+  // Keep launch entries in sync with administrator archiving changes.
+  useEffect(() => {
+    const timer = setInterval(() => void refreshSiteSettings(), 15_000);
+    const onFocus = () => void refreshSiteSettings();
+    window.addEventListener("focus", onFocus);
+    return () => { clearInterval(timer); window.removeEventListener("focus", onFocus); };
+  }, [refreshSiteSettings]);
 
   // Poll for DM and chat unread counts. Treat the badge as cleared while a window of that type is open and not minimized.
   const dmsOpen = wins.some(w => w.type === 'dms' && (w.state || 'normal') !== 'min');
@@ -295,60 +300,64 @@ export function Taskbar({ page }: { page: string }) {
   type StartMenuItem = {
     label: string;
     act: () => void;
+    feature?: string;
     badge?: 'dm' | 'chat' | 'cafe';
   };
 
   const infoItems: StartMenuItem[] = [
-    { label: "Open Planner", act: () => { openPlanner(); setStartOpen(false); } },
-    { label: "Open Site News", act: () => open({ type: 'news', title: 'Site News', width: 520, height: 480 }) },
-    { label: "Open Photo Gallery", act: () => open({ type: 'sharedphotos', title: 'Photo Gallery', width: 460, height: 460 }) },
-    { label: "Browse Users", act: () => open({ type: 'userlist', title: 'Users', width: 240, height: 400 }) },
-    { label: "Add Visitor Counter", act: () => open({ type: 'visits', title: 'Visitor Counter', width: 260, height: 180 }) },
-    { label: "Add Guestbook", act: () => open({ type: 'guestbook', title: 'Guestbook', width: 320, height: 380 }) },
+    { label: "Open Planner", feature: 'planner', act: () => { openPlanner(); setStartOpen(false); } },
+    { label: "Open Site News", feature: 'news', act: () => open({ type: 'news', title: 'Site News', width: 520, height: 480 }) },
+    { label: "Open Photo Gallery", feature: 'sharedphotos', act: () => open({ type: 'sharedphotos', title: 'Photo Gallery', width: 460, height: 460 }) },
+    { label: "Browse Users", feature: 'userlist', act: () => open({ type: 'userlist', title: 'Users', width: 240, height: 400 }) },
+    { label: "Add Visitor Counter", feature: 'visits', act: () => open({ type: 'visits', title: 'Visitor Counter', width: 260, height: 180 }) },
+    { label: "Add Guestbook", feature: 'guestbook', act: () => open({ type: 'guestbook', title: 'Guestbook', width: 320, height: 380 }) },
   ];
 
   const gameItems: StartMenuItem[] = [
-    { label: "Open Chess Lobbies", act: () => open({ type: 'chess', title: 'Chess', width: 600, height: 520 }) },
-    { label: "Play Blackjack", act: () => open({ type: 'blackjack', title: 'Blackjack', width: 520, height: 480 }) },
-    { label: "Play Flappy Bird", act: () => open({ type: 'flappy', title: 'Flappy Bird', width: 560, height: 540 }) },
-    { label: "Play Geometry Dash", act: () => open({ type: 'geometry', title: 'Geometry Dash', width: 560, height: 330 }) },
-    { label: "Play Poker", act: () => open({ type: 'poker', title: 'Poker', width: 560, height: 390 }) },
-    { label: "Play Eaglercraft", act: () => open({ type: 'eaglercraft', title: 'Eaglercraft', width: 900, height: 600 }) },
+    { label: "Open Chess Lobbies", feature: 'chess', act: () => open({ type: 'chess', title: 'Chess', width: 600, height: 520 }) },
+    { label: "Play Blackjack", feature: 'blackjack', act: () => open({ type: 'blackjack', title: 'Blackjack', width: 520, height: 480 }) },
+    { label: "Play Flappy Bird", feature: 'flappy', act: () => open({ type: 'flappy', title: 'Flappy Bird', width: 560, height: 540 }) },
+    { label: "Play Geometry Dash", feature: 'geometry', act: () => open({ type: 'geometry', title: 'Geometry Dash', width: 560, height: 330 }) },
+    { label: "Play Poker", feature: 'poker', act: () => open({ type: 'poker', title: 'Poker', width: 560, height: 390 }) },
+    { label: "Play Eaglercraft", feature: 'eaglercraft', act: () => open({ type: 'eaglercraft', title: 'Eaglercraft', width: 900, height: 600 }) },
   ];
 
   const socialItems: StartMenuItem[] = [
-    { label: "My Page Editor", act: () => open({ type: 'mypage', title: user ? `${user.username}'s page` : 'My Page', width: 520, height: 440 }) },
-    { label: "Open Forum", act: () => open({ type: 'forum', title: 'Forum', width: 460, height: 420 }) },
-    { label: "Add Chatbox", badge: 'chat', act: openChat },
-    { label: "Open DMs", badge: 'dm', act: () => open({ type: 'dms', title: 'Direct Messages', width: 460, height: 380 }) },
-    { label: "Add Synced YouTube", act: () => open({ type: 'youtube', title: 'YouTube', width: 480, height: 320 }) },
-    { label: "Open Cafe", badge: 'cafe', act: () => open({ type: 'cafe', title: 'Cafe', width: 720, height: 560 }) },
-    { label: "Web Browser", act: () => open({ type: 'browser', title: 'Web Browser', width: 620, height: 520 }) },
-    { label: "Open Polls", act: () => open({ type: 'polls', title: 'Polls', width: 380, height: 420 }) },
-    { label: "Open Music Player", act: () => open({ type: 'music', title: 'Music Player', width: 360, height: 380 }) },
-    { label: "Open My Playlists", act: openPersonalPlaylists },
-    { label: "Add Drawing Pad", act: () => open({ type: 'drawing', title: 'Visitor Drawings', width: 460, height: 440 }) },
+    { label: "My Page Editor", feature: 'mypage', act: () => open({ type: 'mypage', title: user ? `${user.username}'s page` : 'My Page', width: 520, height: 440 }) },
+    { label: "Open Forum", feature: 'forum', act: () => open({ type: 'forum', title: 'Forum', width: 460, height: 420 }) },
+    { label: "Add Chatbox", feature: 'chat', badge: 'chat', act: openChat },
+    { label: "Open DMs", feature: 'dms', badge: 'dm', act: () => open({ type: 'dms', title: 'Direct Messages', width: 460, height: 380 }) },
+    { label: "Add Synced YouTube", feature: 'youtube', act: () => open({ type: 'youtube', title: 'YouTube', width: 480, height: 320 }) },
+    { label: "Open Cafe", feature: 'cafe', badge: 'cafe', act: () => open({ type: 'cafe', title: 'Cafe', width: 720, height: 560 }) },
+    { label: "Web Browser", feature: 'browser', act: () => open({ type: 'browser', title: 'Web Browser', width: 620, height: 520 }) },
+    { label: "Open Polls", feature: 'polls', act: () => open({ type: 'polls', title: 'Polls', width: 380, height: 420 }) },
+    { label: "Open Music Player", feature: 'music', act: () => open({ type: 'music', title: 'Music Player', width: 360, height: 380 }) },
+    { label: "Open My Playlists", feature: 'personalplaylists', act: openPersonalPlaylists },
+    { label: "Add Drawing Pad", feature: 'drawing', act: () => open({ type: 'drawing', title: 'Visitor Drawings', width: 460, height: 440 }) },
   ];
 
   const settingsItems: StartMenuItem[] = [
     { label: "Settings", act: () => open({ type: 'settings', title: 'Settings', width: 420, height: 460 }) },
-    { label: "Add Link Shortcut", act: () => open({ type: 'link', title: 'Shortcut', linkLabel: 'Go to About', linkTarget: '/about', width: 200, height: 150 }) },
-    { label: "Add Text Note", act: () => open({ type: 'text', title: 'Notes', content: 'Write something here...', width: 300, height: 200 }) },
+    { label: "Add Link Shortcut", feature: 'link', act: () => open({ type: 'link', title: 'Shortcut', linkLabel: 'Go to About', linkTarget: '/about', width: 200, height: 150 }) },
+    { label: "Add Text Note", feature: 'text', act: () => open({ type: 'text', title: 'Notes', content: 'Write something here...', width: 300, height: 200 }) },
     { label: "Reset All Desktops", act: () => { resetState(); setStartOpen(false); } },
   ];
   if (user) settingsItems.push({ label: "🔔 Enable Notifications", act: () => void turnOnNotifications() });
   if (user?.isAdmin) settingsItems.push({ label: "★ Manage Ranks", act: () => open({ type: 'ranksadmin', title: 'Ranks Admin', width: 480, height: 500 }) });
   if (user?.isAdmin) settingsItems.push({ label: "★ Manage Accounts", act: () => open({ type: 'accountadmin', title: 'Account Admin', width: 430, height: 470 }) });
   if (user?.isAdmin) settingsItems.push({ label: "★ Site Settings", act: () => open({ type: 'sitesettings', title: 'Site Settings', width: 420, height: 400 }) });
+  if (user?.isAdmin) settingsItems.push({ label: "★ Feature Archive", act: () => open({ type: 'featurearchive', title: 'Feature Archive', width: 550, height: 520 }) });
   if (user?.isAdmin) settingsItems.push({ label: "★ Site Backup / Restore", act: () => open({ type: 'sitebackup', title: 'Site Backup', width: 480, height: 420 }) });
   if (user?.isAdmin) settingsItems.push({ label: "★ Diagnostics", act: () => open({ type: 'diagnostics', title: 'Server Diagnostics', width: 640, height: 460 }) });
 
+  const archivedFeatures = new Set(siteSettings.archivedFeatures || []);
   const categoryMenus: { label: string; items: StartMenuItem[] }[] = [
     { label: 'Info', items: infoItems },
     { label: 'Games', items: gameItems },
     { label: 'Social', items: socialItems },
     { label: 'Settings', items: settingsItems },
-  ];
+  ].map(category => ({ ...category, items: category.items.filter(item => !item.feature || !archivedFeatures.has(item.feature)) }))
+    .filter(category => category.items.length > 0);
   const [openCategory, setOpenCategory] = useState<string | null>(null);
   const [submenuTop, setSubmenuTop] = useState<number | null>(null);
   const submenuRef = useRef<HTMLDivElement | null>(null);
@@ -494,14 +503,14 @@ export function Taskbar({ page }: { page: string }) {
                 selectCategory(null);
               }}
             >
-              <button type="button" className="w-full text-left px-3 py-1 hover:bg-[#000080] hover:text-white text-sm"
+              {!archivedFeatures.has("planner") && <button type="button" className="w-full text-left px-3 py-1 hover:bg-[#000080] hover:text-white text-sm"
                 onClick={() => { openPlanner(); setStartOpen(false); }} data-testid="button-start-planner">
                 Planner
-              </button>
-              <button type="button" className="w-full text-left px-3 py-1 hover:bg-[#000080] hover:text-white text-sm"
+              </button>}
+              {!archivedFeatures.has("personalplaylists") && <button type="button" className="w-full text-left px-3 py-1 hover:bg-[#000080] hover:text-white text-sm"
                 onClick={openPersonalPlaylists} data-testid="button-start-playlists">
                 My Playlists
-              </button>
+              </button>}
               {categoryMenus.map((category) => (
                 <div
                   key={category.label}

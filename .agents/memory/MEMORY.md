@@ -1,4 +1,4 @@
-- [Workspace dependency state](development-environment.md) — declared packages can still need a clean pnpm install before an API restart.
+- [Workspace dependency state](development-environment.md) — workspace package links and composite type declarations can be stale independently of source.
 - [Device appeal cookie association](device-appeals.md) — newly issued browser cookies must be visible to same-request auth association.
 - [Moderation enforcement](moderation-enforcement.md) — account and device moderation must be enforced at login and on active-session refresh, not only in chat.
 - [Shifted hover submenus](shifted-hover-submenus.md) — upward-repositioned cascading menus must guard sibling hover transitions so item activation is not interrupted.
@@ -9,6 +9,7 @@
 - [Personal playlist scope](personal-playlists.md) — personal playback must stay separate from shared rooms; YouTube uses a visible official player, not extracted audio.
 - [External GIF previews](external-gif-previews.md) — provider share links must resolve and load as images before attachment, not merely normalize when sending.
 - [Eaglercraft launch configuration](eaglercraft-launch.md) — oversized bundled client exceeds the patch limit; launcher configuration depends on its pre-launch countdown.
+- [Feature archive scope](feature-archive-scope.md) — archiving hides launch entries; it is not deletion or a permission toggle, and administration stays accessible.
 - [Backup restore isolation](backup-restore-safety.md) — full-site restore tests need a disposable database, not merely generated test records.
 - [Storage inventory safety](storage-report-safety.md) — take reference snapshots after locking; unknown object ages must remain uncertain, not cleanup candidates.
 - [Unattended backup safeguards](scheduled-backup-safety.md) — crash locks need liveness review; scheduled encryption needs only a public recipient.

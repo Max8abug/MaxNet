@@ -91,6 +91,7 @@ const APPS: AppDefinition[] = [
   { label: 'Ranks Admin', type: 'ranksadmin', icon: ShieldCheck, tone: 'bg-[#d18cc0]', size: 'medium', adminOnly: true },
   { label: 'Account Admin', type: 'accountadmin', icon: UserCog, tone: 'bg-[#c493d3]', size: 'medium', adminOnly: true },
   { label: 'Site Settings', type: 'sitesettings', icon: Settings, tone: 'bg-[#a78cdb]', size: 'medium', adminOnly: true },
+  { label: 'Feature Archive', type: 'featurearchive', icon: Settings, tone: 'bg-[#a78cdb]', size: 'medium', adminOnly: true },
   { label: 'Backup / Restore', type: 'sitebackup', icon: DatabaseBackup, tone: 'bg-[#c29c75]', size: 'medium', adminOnly: true },
   { label: 'Diagnostics', type: 'diagnostics', icon: Activity, tone: 'bg-[#8fb2ce]', size: 'medium', adminOnly: true },
 ];
@@ -119,6 +120,14 @@ export function MobileShell({ page }: { page: string }) {
   const [plannerDue, setPlannerDue] = useState(0);
   const user = useAuth((state) => state.user);
   const siteSettings = useAuth((state) => state.siteSettings);
+  const refreshSiteSettings = useAuth((state) => state.refreshSiteSettings);
+  useEffect(() => {
+    void refreshSiteSettings();
+    const timer = setInterval(() => void refreshSiteSettings(), 15_000);
+    const onFocus = () => void refreshSiteSettings();
+    window.addEventListener("focus", onFocus);
+    return () => { clearInterval(timer); window.removeEventListener("focus", onFocus); };
+  }, [refreshSiteSettings]);
   const { darkMode } = useThemeMode();
   const serverNow = useServerNow();
   const windows = useDesktopStore(
@@ -134,8 +143,8 @@ export function MobileShell({ page }: { page: string }) {
     [openWindowId, windows],
   );
   const apps = useMemo(
-    () => APPS.filter((app) => !app.adminOnly || user?.isAdmin),
-    [user?.isAdmin],
+    () => APPS.filter((app) => (!app.adminOnly || user?.isAdmin) && !(siteSettings.archivedFeatures || []).includes(app.type)),
+    [user?.isAdmin, siteSettings.archivedFeatures],
   );
   const regularApps = apps.filter((app) => !app.adminOnly);
   const adminApps = apps.filter((app) => app.adminOnly);

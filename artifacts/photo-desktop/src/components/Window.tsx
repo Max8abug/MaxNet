@@ -23,6 +23,7 @@ import { DMs } from './DMs';
 import { UserPage } from './UserPage';
 import { RanksAdmin } from './RanksAdmin';
 import { SiteSettingsDialog } from './SiteSettingsDialog';
+import { FeatureArchivePanel } from './FeatureArchivePanel';
 import { IpLookup } from './IpLookup';
 import { News } from './News';
 import { Planner } from './Planner';
@@ -343,6 +344,7 @@ export function Window({
         {w.type === 'settings' && !isEditing && <MobileSettings onRequestLogin={() => setShowLogin(true)} />}
         {w.type === 'ranksadmin' && !isEditing && <RanksAdmin />}
         {w.type === 'sitesettings' && !isEditing && <SiteSettingsDialog />}
+        {w.type === 'featurearchive' && !isEditing && <FeatureArchivePanel />}
         {w.type === 'iplookup' && !isEditing && <IpLookup username={w.username || ''} />}
         {w.type === 'news' && !isEditing && <News />}
         {w.type === 'planner' && !isEditing && <Planner />}

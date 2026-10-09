@@ -190,11 +190,18 @@ export interface SiteSettings {
   chatCooldownEnabled: boolean;
   siteName: string;
   customButtons: CustomSiteButton[];
+  archivedFeatures: string[];
   usernameBlockedPhrases: string[];
   chatBlockedPhrases: string[];
   forumBlockedPhrases: string[];
 }
 export interface CustomSiteButton { label: string; url: string; }
+export async function setFeatureArchived(featureId: string, archived: boolean): Promise<{ archivedFeatures: string[] }> {
+  return jsonOrThrow(await fetch(`${BASE}/site-settings/features/${encodeURIComponent(featureId)}`, {
+    ...opts, method: "PUT", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ archived }),
+  }));
+}
 export async function fetchSiteSettings(): Promise<SiteSettings> {
   return jsonOrThrow(await fetch(`${BASE}/site-settings`, opts));
 }

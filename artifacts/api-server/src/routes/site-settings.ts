@@ -1,12 +1,40 @@
 import { Router, type IRouter } from "express";
 import { db, siteSettingsTable } from "@workspace/db";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { requireAdmin } from "../lib/auth";
 import { normalizeBlockedPhrases } from "../lib/content-filter";
 
 const router: IRouter = Router();
 
 type CustomButton = { label: string; url: string };
+const archivableFeatures = new Set([
+  "planner", "news", "sharedphotos", "userlist", "visits", "guestbook",
+  "chess", "blackjack", "flappy", "geometry", "poker", "eaglercraft",
+  "mypage", "forum", "chat", "dms", "youtube", "cafe", "browser", "polls",
+  "music", "personalplaylists", "drawing", "link", "text",
+]);
+function cleanArchivedFeatures(value: unknown): string[] {
+  return Array.isArray(value) ? [...new Set(value.filter((id): id is string => typeof id === "string" && archivableFeatures.has(id)))] : [];
+}
+
+router.put("/site-settings/features/:featureId", requireAdmin, async (req, res) => {
+  const featureId = String(req.params.featureId);
+  if (!archivableFeatures.has(featureId) || typeof req.body?.archived !== "boolean") {
+    res.status(400).json({ error: "Choose an archivable feature and a boolean archived setting. Administration and settings cannot be archived." });
+    return;
+  }
+  const row = await ensureRow();
+  // Change one entry atomically: two administrators archiving different
+  // features must not overwrite each other's changes with a stale full list.
+  const current = siteSettingsTable.archivedFeatures;
+  const [updated] = await db.update(siteSettingsTable).set({
+    archivedFeatures: req.body.archived
+      ? sql`CASE WHEN ${current} @> ${JSON.stringify([featureId])}::jsonb THEN ${current} ELSE ${current} || ${JSON.stringify([featureId])}::jsonb END`
+      : sql`${current} - ${featureId}`,
+    updatedAt: new Date(),
+  }).where(eq(siteSettingsTable.id, row.id)).returning({ archivedFeatures: current });
+  res.set("Cache-Control", "no-store").json({ archivedFeatures: cleanArchivedFeatures(updated!.archivedFeatures) });
+});
 
 function cleanCustomButtons(value: unknown): CustomButton[] {
   if (!Array.isArray(value)) return [];
@@ -56,6 +84,7 @@ router.get("/site-settings", async (_req, res) => {
     chatCooldownEnabled: row.chatCooldownEnabled !== false,
     siteName: row.siteName || "Portfolio 98",
     customButtons: cleanCustomButtons(row.customButtons),
+    archivedFeatures: cleanArchivedFeatures(row.archivedFeatures),
     usernameBlockedPhrases: normalizeBlockedPhrases(row.usernameBlockedPhrases),
     chatBlockedPhrases: normalizeBlockedPhrases(row.chatBlockedPhrases),
     forumBlockedPhrases: normalizeBlockedPhrases(row.forumBlockedPhrases),
@@ -121,6 +150,7 @@ router.put("/site-settings", requireAdmin, async (req, res) => {
       chatCooldownEnabled: row.chatCooldownEnabled !== false,
       siteName: row.siteName,
        customButtons: cleanCustomButtons(row.customButtons),
+       archivedFeatures: cleanArchivedFeatures(row.archivedFeatures),
        usernameBlockedPhrases: normalizeBlockedPhrases(row.usernameBlockedPhrases),
        chatBlockedPhrases: normalizeBlockedPhrases(row.chatBlockedPhrases),
        forumBlockedPhrases: normalizeBlockedPhrases(row.forumBlockedPhrases),
@@ -141,6 +171,7 @@ router.put("/site-settings", requireAdmin, async (req, res) => {
     chatCooldownEnabled: fresh!.chatCooldownEnabled !== false,
     siteName: fresh!.siteName,
      customButtons: cleanCustomButtons(fresh!.customButtons),
+     archivedFeatures: cleanArchivedFeatures(fresh!.archivedFeatures),
      usernameBlockedPhrases: normalizeBlockedPhrases(fresh!.usernameBlockedPhrases),
      chatBlockedPhrases: normalizeBlockedPhrases(fresh!.chatBlockedPhrases),
      forumBlockedPhrases: normalizeBlockedPhrases(fresh!.forumBlockedPhrases),

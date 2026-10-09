@@ -379,6 +379,7 @@ export const siteSettingsTable = pgTable("site_settings", {
   chatCooldownEnabled: boolean("chat_cooldown_enabled").notNull().default(true),
   siteName: text("site_name").notNull().default("Portfolio 98"),
   customButtons: jsonb("custom_buttons").notNull().default([]),
+  archivedFeatures: jsonb("archived_features").notNull().default([]),
   usernameBlockedPhrases: jsonb("username_blocked_phrases").notNull().default([]),
   chatBlockedPhrases: jsonb("chat_blocked_phrases").notNull().default([]),
   forumBlockedPhrases: jsonb("forum_blocked_phrases").notNull().default([]),
