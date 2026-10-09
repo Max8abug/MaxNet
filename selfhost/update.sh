@@ -40,11 +40,20 @@ BEFORE_SHA=$(git rev-parse --short HEAD)
 log "Current branch : $CURRENT_BRANCH"
 log "Current commit : $BEFORE_SHA"
 
-# Warn about local changes
-if ! git diff --quiet || ! git diff --cached --quiet; then
-  log "WARNING: You have uncommitted local changes."
-  read -rp "         Continue anyway? (y/N) " answer
-  [[ "$answer" =~ ^[Yy]$ ]] || { log "Aborted."; exit 0; }
+# Refuse dirty working trees instead of asking to continue into a Git pull that
+# may overwrite local files. Include untracked files so new uncommitted work is
+# visible before checkout or any service/build steps.
+LOCAL_CHANGES="$(git status --porcelain --untracked-files=all)"
+if [[ -n "$LOCAL_CHANGES" ]]; then
+  log "ERROR: Local changes prevent a safe update."
+  log "No pull, service stop, dependency install, build, or restart was attempted."
+  log "Review these files with 'git status --short' and inspect changes before retrying:"
+  printf '%s\n' "$LOCAL_CHANGES" | tee -a "$LOG_DIR/update.log"
+  log "Commit or selectively stash changes first. If pnpm-lock.yaml is the only change,"
+  log "preserve it before retrying with:"
+  log "  git stash push -m 'before Portfolio98 update' -- pnpm-lock.yaml"
+  log "The stash is kept separate; do not apply it over the incoming lockfile without review."
+  exit 1
 fi
 
 # ── 3. Pull ──────────────────────────────────────────────────
