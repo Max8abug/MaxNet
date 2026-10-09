@@ -14,3 +14,4 @@
 - [Backup restore isolation](backup-restore-safety.md) — full-site restore tests need a disposable database, not merely generated test records.
 - [Storage inventory safety](storage-report-safety.md) — take reference snapshots after locking; unknown object ages must remain uncertain, not cleanup candidates.
 - [Unattended backup safeguards](scheduled-backup-safety.md) — crash locks need liveness review; scheduled encryption needs only a public recipient.
+- [NewCP hosted game](newcp-hosted-game.md) — GitHub hosts desktop wrappers, not full game source; browser embedding and account gameplay require separate verification.
