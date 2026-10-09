@@ -5,7 +5,13 @@ import { join } from "node:path";
 import { spawnSync } from "node:child_process";
 import { test } from "node:test";
 
-function runUpdate({ version = "10.26.1", failPreflight = false, localChanges = "" } = {}) {
+function runUpdate({
+  version = "10.26.1",
+  failPreflight = false,
+  localChanges = "",
+  noUpdate = false,
+  forceRebuild = false,
+} = {}) {
   const root = mkdtempSync(join(tmpdir(), "portfolio98-update-test-"));
   const protectedEnv = [
     "DATABASE_URL=postgresql://test:test@localhost/test",
@@ -31,7 +37,9 @@ case "$*" in
   'rev-parse --short HEAD')
     if [[ -e "$TEST_ROOT/pulled" ]]; then echo 2222222; else echo 1111111; fi ;;
   'status --porcelain --untracked-files=all') printf '%s' "$TEST_LOCAL_CHANGES" ;;
-  'pull --ff-only origin main') touch "$TEST_ROOT/pulled"; echo pull >> "$TEST_ROOT/events" ;;
+  'pull --ff-only origin main')
+    if [[ "$TEST_NO_UPDATE" != 1 ]]; then touch "$TEST_ROOT/pulled"; fi
+    echo pull >> "$TEST_ROOT/events" ;;
   'log --oneline 1111111..2222222') echo '2222222 Test update' ;;
   *) echo "Unexpected git call: $*" >&2; exit 23 ;;
 esac`);
@@ -63,7 +71,9 @@ fi`);
         TEST_PNPM_VERSION: version,
         TEST_FAIL_PREFLIGHT: failPreflight ? "1" : "0",
         TEST_LOCAL_CHANGES: localChanges,
+        TEST_NO_UPDATE: noUpdate ? "1" : "0",
       },
+      input: noUpdate ? `${forceRebuild ? "y" : "n"}\n` : undefined,
     });
     assert.ifError(result.error);
     return {
@@ -108,6 +118,20 @@ test("successful update validates before stopping, installing, building and star
     ].join("\n"),
     "launcher API key settings should survive a code update unchanged",
   );
+});
+
+test("up-to-date updater installs missing game assets without rebuilding", () => {
+  const result = runUpdate({ noUpdate: true });
+  assert.equal(result.status, 0, result.output);
+  assert.match(result.output, /Already up to date.*Checking game assets/);
+  assert.match(result.output, /Game asset check complete/);
+  assert.deepEqual(result.events, ["pull", "games"]);
+});
+
+test("up-to-date forced rebuild does not run the game installer twice", () => {
+  const result = runUpdate({ noUpdate: true, forceRebuild: true });
+  assert.equal(result.status, 0, result.output);
+  assert.deepEqual(result.events, ["pull", "games", "preflight", "stop", "install", "build", "build", "start"]);
 });
 
 test("dirty worktree fails before pulling or stopping services", () => {

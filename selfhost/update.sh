@@ -15,6 +15,16 @@ ts() { date '+%Y-%m-%d %H:%M:%S'; }
 
 log() { echo "[$(ts)] $*" | tee -a "$LOG_DIR/update.log"; }
 
+GAME_ASSETS_READY=0
+prepare_game_assets() {
+  log "Preparing self-hosted game assets (about 1 GB if missing)..."
+  if ! python3 "$REPO_DIR/selfhost/install-game-assets.py" 2>&1 | tee -a "$LOG_DIR/update.log"; then
+    log "ERROR: Game asset installation failed."
+    return 1
+  fi
+  GAME_ASSETS_READY=1
+}
+
 log "============================================================"
 log "  Portfolio98 Update"
 log "  Repo: $REPO_DIR"
@@ -62,8 +72,13 @@ git pull --ff-only origin "$CURRENT_BRANCH" 2>&1 | tee -a "$LOG_DIR/update.log"
 
 AFTER_SHA=$(git rev-parse --short HEAD)
 if [ "$BEFORE_SHA" = "$AFTER_SHA" ]; then
-  log "Already up to date (commit $AFTER_SHA). Nothing to do."
-  read -rp "Force rebuild anyway? (y/N) " rebuild_anyway
+  log "Already up to date (commit $AFTER_SHA). Checking game assets."
+  if ! prepare_game_assets; then
+    log "The running site was left untouched."
+    exit 1
+  fi
+  log "Game asset check complete; the running site was not stopped."
+  read -rp "Force rebuild anyway? (y/N) " rebuild_anyway || rebuild_anyway=""
   [[ "$rebuild_anyway" =~ ^[Yy]$ ]] || { log "Done."; exit 0; }
 fi
 
@@ -97,10 +112,11 @@ if ! pnpm install --frozen-lockfile --lockfile-only --ignore-scripts --offline 2
 fi
 
 # ── Game asset preflight: download before stopping the current site ──────────
-log "Preparing self-hosted game assets (about 1 GB on first install)..."
-if ! python3 "$REPO_DIR/selfhost/install-game-assets.py" 2>&1 | tee -a "$LOG_DIR/update.log"; then
-  log "ERROR: Game asset installation failed. Services have not been stopped."
-  exit 1
+if [[ "$GAME_ASSETS_READY" != "1" ]]; then
+  if ! prepare_game_assets; then
+    log "Services have not been stopped."
+    exit 1
+  fi
 fi
 
 # ── 4. Stop services ─────────────────────────────────────────
