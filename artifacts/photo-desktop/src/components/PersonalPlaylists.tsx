@@ -11,6 +11,10 @@ import {
 import { useAuth } from "../lib/auth-store";
 import { PersonalYouTubePlayer } from "./PersonalYouTubePlayer";
 import { stepShuffle, type ShuffleSession } from "../lib/playlist-shuffle";
+import {
+  readPersonalPlaylistShufflePreference,
+  writePersonalPlaylistShufflePreference,
+} from "../lib/personal-playlist-preferences";
 
 const MAX_LINKS = 100;
 const MAX_TRACKS = 200;
@@ -31,7 +35,7 @@ function PersonalPlaylistsInner({ username }: { username: string }) {
   const [feedback, setFeedback] = useState<Feedback | null>(null);
   const [playing, setPlaying] = useState<Playing | null>(null);
   const [playRequest, setPlayRequest] = useState(0);
-  const [shuffle, setShuffle] = useState(false);
+  const [shuffle, setShuffle] = useState(() => readPersonalPlaylistShufflePreference(username));
   const shuffleSession = useRef<ShuffleSession | null>(null);
 
   const alive = useRef(true);
@@ -207,8 +211,14 @@ function PersonalPlaylistsInner({ username }: { username: string }) {
           title="Play in random order without changing your saved playlist"
           onClick={() => {
             shuffleSession.current = null;
-            latest.current.shuffle = !latest.current.shuffle;
-            setShuffle(latest.current.shuffle);
+            const nextShuffle = !latest.current.shuffle;
+            latest.current.shuffle = nextShuffle;
+            setShuffle(nextShuffle);
+            if (!writePersonalPlaylistShufflePreference(username, nextShuffle)) {
+              setActionError("Shuffle changed, but this browser couldn't save your preference.");
+            } else {
+              setActionError(null);
+            }
           }} data-testid="button-shuffle">Shuffle: {shuffle ? "On" : "Off"}</button>
         <button type="button" className="win98-button px-2 ml-auto" onClick={() => void load(false)} disabled={loading || saving} data-testid="button-refresh">Refresh</button>
       </div>

@@ -4,7 +4,6 @@ import {
   BarChart3,
   Bird,
   BookOpen,
-  Coffee,
   Crown,
   ExternalLink,
   Gamepad2,
@@ -34,7 +33,7 @@ import {
 } from 'lucide-react';
 import { Window } from './Window';
 import { useDesktopStore, type WindowData } from '../store';
-import { isArchivableFeatureId, type LauncherWindowId } from '@workspace/feature-registry';
+import { isArchivableFeatureId, isFeatureTemporarilyDisabled, type LauncherWindowId } from '@workspace/feature-registry';
 import { useAuth } from '../lib/auth-store';
 import { useThemeMode } from '../lib/theme';
 import { formatLocalTime } from '../lib/dates';
@@ -70,7 +69,6 @@ const APPS: AppDefinition[] = [
   { label: 'Direct Messages', type: 'dms', icon: Send, tone: 'bg-[#7fadd9]', size: 'wide', subtitle: 'Private messages' },
   { label: 'Photo Gallery', type: 'sharedphotos', icon: Image, tone: 'bg-[#f0a36b]', size: 'medium' },
   { label: 'YouTube', type: 'youtube', icon: Youtube, tone: 'bg-[#e66d72]', size: 'medium' },
-  { label: 'Cafe', type: 'cafe', icon: Coffee, tone: 'bg-[#e0a77c]', size: 'medium' },
   { label: 'Music', type: 'music', icon: Music, tone: 'bg-[#7fc6cf]', size: 'medium' },
   { label: 'My Playlists', type: 'personalplaylists', icon: Music, tone: 'bg-[#6fa7ba]', size: 'medium', subtitle: 'Private YouTube library' },
   { label: 'Polls', type: 'polls', icon: Vote, tone: 'bg-[#91c995]', size: 'medium' },
@@ -140,9 +138,10 @@ export function MobileShell({ page }: { page: string }) {
   }, [refreshFeatureArchives]);
   const { darkMode } = useThemeMode();
   const serverNow = useServerNow();
-  const windows = useDesktopStore(
+  const savedWindows = useDesktopStore(
     (state) => state.windows[page] ?? EMPTY_WINDOWS,
   );
+  const windows = savedWindows.filter((window) => !isFeatureTemporarilyDisabled(window.type));
   const addWindow = useDesktopStore((state) => state.addWindow);
   const updateWindow = useDesktopStore((state) => state.updateWindow);
   const bringToFront = useDesktopStore((state) => state.bringToFront);

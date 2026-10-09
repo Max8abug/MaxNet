@@ -2,6 +2,9 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { fetchFeatureArchiveState, setFeatureArchived } from "../lib/api";
 import { useAuth } from "../lib/auth-store";
 import { FEATURE_CATALOG } from "../lib/feature-catalog";
+import { isFeatureTemporarilyDisabled } from "@workspace/feature-registry";
+
+const visibleFeatureCatalog = FEATURE_CATALOG.filter((feature) => !isFeatureTemporarilyDisabled(feature.id));
 
 type View = "all" | "active" | "archived";
 
@@ -35,7 +38,7 @@ export function FeatureArchivePanel() {
   const archivedSet = useMemo(() => new Set(archived), [archived]);
   const rows = useMemo(() => {
     const q = query.trim().toLowerCase();
-    return FEATURE_CATALOG.filter((f) => {
+    return visibleFeatureCatalog.filter((f) => {
       const a = archivedSet.has(f.id);
       if (view === "active" && a) return false;
       if (view === "archived" && !a) return false;
@@ -63,7 +66,7 @@ export function FeatureArchivePanel() {
   }
 
   const busy = savingId !== null;
-  const count = FEATURE_CATALOG.filter((f) => archivedSet.has(f.id)).length;
+  const count = visibleFeatureCatalog.filter((f) => archivedSet.has(f.id)).length;
 
   return (
     <div className="w-full h-full flex flex-col gap-2 p-3 text-sm overflow-auto">
@@ -101,7 +104,7 @@ export function FeatureArchivePanel() {
       </div>
 
       <div className="text-[11px] text-gray-700">
-        {loading ? "Loading..." : `${count} archived, ${FEATURE_CATALOG.length - count} active`}
+        {loading ? "Loading..." : `${count} archived, ${visibleFeatureCatalog.length - count} active`}
       </div>
 
       {loadErr && (

@@ -3,8 +3,10 @@ import { db, cafeObjectsTable } from "@workspace/db";
 import { and, asc, eq } from "drizzle-orm";
 import { requireAdmin } from "../lib/auth";
 import { audit } from "./social";
+import { requireEnabledFeature } from "../lib/feature-guards";
 
 const router: IRouter = Router();
+router.use(requireEnabledFeature("cafe"));
 
 const VALID_ACTIONS = ["teleport", "message", "url"] as const;
 type ActionType = typeof VALID_ACTIONS[number];

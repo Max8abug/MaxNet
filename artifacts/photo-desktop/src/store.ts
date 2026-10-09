@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
+import { isFeatureTemporarilyDisabled } from '@workspace/feature-registry';
 
 export type WindowType = 'photo' | 'gallery' | 'text' | 'link' | 'youtube' | 'drawing' | 'chat' | 'visits' | 'guestbook' | 'sharedphotos' | 'forum' | 'blackjack' | 'flappy' | 'geometry' | 'poker' | 'music' | 'polls' | 'chess' | 'eaglercraft' | 'newcp' | 'cafe' | 'dms' | 'browser' | 'userpage' | 'ranksadmin' | 'userlist' | 'mypage' | 'settings' | 'sitesettings' | 'iplookup' | 'news' | 'diagnostics' | 'sitebackup' | 'accountadmin' | 'planner' | 'personalplaylists' | 'featurearchive' | 'themelab';
 
@@ -89,6 +90,7 @@ export const useDesktopStore = create<DesktopState>()(
       stringStartId: null,
 
       addWindow: (page, data) => set((state) => {
+        if (isFeatureTemporarilyDisabled(data.type)) return state;
         const id = 'win_' + Math.random().toString(36).substring(2, 9);
         const zIndex = state.maxZIndex + 1;
         const newWindow = {
@@ -192,6 +194,26 @@ export const useDesktopStore = create<DesktopState>()(
           );
         }
         return persistedState;
+      },
+      // Remove stale Cafe windows from existing desktop saves while keeping
+      // the window type and all server-side Cafe data available for reactivation.
+      merge: (persistedState, currentState) => {
+        const persisted = (persistedState ?? {}) as Partial<DesktopState>;
+        const sourceWindows = persisted.windows ?? currentState.windows;
+        const windows = Object.fromEntries(
+          Object.entries(sourceWindows).map(([page, pageWindows]) => [
+            page,
+            pageWindows.filter((window) => !isFeatureTemporarilyDisabled(window.type)),
+          ]),
+        ) as Record<string, WindowData[]>;
+        const strings = { ...(persisted.strings ?? currentState.strings) };
+        for (const [page, pageStrings] of Object.entries(strings)) {
+          const visibleWindowIds = new Set((windows[page] ?? []).map((window) => window.id));
+          strings[page] = pageStrings.filter(
+            (connection) => visibleWindowIds.has(connection.fromId) && visibleWindowIds.has(connection.toId),
+          );
+        }
+        return { ...currentState, ...persisted, windows, strings };
       },
     }
   )

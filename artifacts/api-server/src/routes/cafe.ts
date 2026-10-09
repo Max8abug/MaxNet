@@ -4,8 +4,10 @@ import { desc, eq, sql } from "drizzle-orm";
 import { requireAuth, isAdminUsername } from "../lib/auth";
 import { isBanned, audit } from "./social";
 import { getUserPermissions } from "./ranks";
+import { requireEnabledFeature } from "../lib/feature-guards";
 
 const router: IRouter = Router();
+router.use(requireEnabledFeature("cafe"));
 
 // Themes hard-coded in the client. Custom rooms uploaded by admins are stored
 // in cafe_rooms and looked up at theme-set time so we don't reject their slugs.

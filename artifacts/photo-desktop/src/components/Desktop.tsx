@@ -6,9 +6,11 @@ import { ImageViewerHost } from './ImageViewer';
 import { useRef, useEffect } from 'react';
 import { useAuth } from '../lib/auth-store';
 import { useThemeMode } from '../lib/theme';
+import { isFeatureTemporarilyDisabled } from '@workspace/feature-registry';
 
 export function Desktop({ page }: { page: string }) {
-  const windows = useDesktopStore(state => state.windows[page] || []);
+  const savedWindows = useDesktopStore(state => state.windows[page] || []);
+  const windows = savedWindows.filter((window) => !isFeatureTemporarilyDisabled(window.type));
   const setActivePage = useDesktopStore(state => state.setActivePage);
   const boundsRef = useRef<HTMLDivElement>(null);
   const user = useAuth((s) => s.user);

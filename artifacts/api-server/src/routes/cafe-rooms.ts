@@ -3,8 +3,10 @@ import { db, cafeRoomsTable } from "@workspace/db";
 import { asc, eq } from "drizzle-orm";
 import { requireAdmin } from "../lib/auth";
 import { audit } from "./social";
+import { requireEnabledFeature } from "../lib/feature-guards";
 
 const router: IRouter = Router();
+router.use(requireEnabledFeature("cafe"));
 
 const MAX_BG_BYTES = 2_000_000;
 const MAX_NAME_LEN = 40;

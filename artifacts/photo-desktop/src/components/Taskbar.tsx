@@ -6,7 +6,8 @@ import { LoginDialog } from './LoginDialog';
 import { useProfileDialogStore } from '../lib/profile-dialog-store';
 import { useThemeMode } from '../lib/theme';
 import { Toaster } from './Toaster';
-import { fetchDMConversations, fetchChat, fetchCafeState, fetchNews } from '../lib/api';
+import { fetchDMConversations, fetchChat, fetchNews } from '../lib/api';
+import { isFeatureTemporarilyDisabled } from '@workspace/feature-registry';
 import {
   enablePushNotifications,
   registerServiceWorker,
@@ -29,15 +30,9 @@ export function Taskbar({ page }: { page: string }) {
   const { user, ranks, refresh, refreshRanks, logout, siteSettings, refreshSiteSettings, refreshFeatureArchives } = useAuth();
   const { darkMode } = useThemeMode();
   const serverNow = useServerNow();
-  const wins = windows[page] || [];
+  const wins = (windows[page] || []).filter((window) => !isFeatureTemporarilyDisabled(window.type));
   const [dmUnread, setDmUnread] = useState(0);
   const [chatUnread, setChatUnread] = useState(0);
-  // Live count of users currently visible in the cafe. Polled from the public
-  // /cafe/state endpoint so even logged-out visitors can see when the cafe is
-  // busy and decide to drop in. The cafe component does its own faster poll
-  // when the window is open; this poll just keeps the taskbar chip warm.
-  const [cafeCount, setCafeCount] = useState(0);
-
   useEffect(() => { void refresh(); void refreshRanks(); }, [refresh, refreshRanks]);
   // Full branding/settings still load at startup and on focus, independently
   // of the frequent, archive-only visibility refresh.
@@ -113,18 +108,6 @@ export function Taskbar({ page }: { page: string }) {
     history.replaceState(history.state, "", url.pathname + url.search + url.hash);
   }, [user?.username, page, addWindow]);
 
-  // Poll the cafe presence count so the taskbar chip pulses live, even when
-  // the cafe window is closed. Independent from auth — anyone can see how
-  // busy the room is.
-  useEffect(() => {
-    let alive = true;
-    const tick = async () => {
-      try { const s = await fetchCafeState(); if (!alive) return; setCafeCount(s.presence?.length || 0); } catch {}
-    };
-    void tick();
-    const t = setInterval(tick, 8000);
-    return () => { alive = false; clearInterval(t); };
-  }, []);
   // Per-conversation timestamp of the last message we've already alerted on.
   // Lives in a ref so updates between polls don't trigger re-renders, and so
   // the Taskbar doesn't spam toasts for messages it has already shown.
@@ -309,7 +292,7 @@ export function Taskbar({ page }: { page: string }) {
   type StartMenuItem = {
     label: string;
     act: () => void;
-    badge?: 'dm' | 'chat' | 'cafe';
+    badge?: 'dm' | 'chat';
   } & ({ feature: ArchivableFeatureId; protected?: never } | { feature?: never; protected: true });
 
   const infoItems: StartMenuItem[] = [
@@ -337,7 +320,6 @@ export function Taskbar({ page }: { page: string }) {
     { label: "Add Chatbox", feature: 'chat', badge: 'chat', act: openChat },
     { label: "Open DMs", feature: 'dms', badge: 'dm', act: () => open({ type: 'dms', title: 'Direct Messages', width: 460, height: 380 }) },
     { label: "Add Synced YouTube", feature: 'youtube', act: () => open({ type: 'youtube', title: 'YouTube', width: 480, height: 320 }) },
-    { label: "Open Cafe", feature: 'cafe', badge: 'cafe', act: () => open({ type: 'cafe', title: 'Cafe', width: 720, height: 560 }) },
     { label: "Web Browser", feature: 'browser', act: () => open({ type: 'browser', title: 'Web Browser', width: 620, height: 520 }) },
     { label: "Open Polls", feature: 'polls', act: () => open({ type: 'polls', title: 'Polls', width: 380, height: 420 }) },
     { label: "Open Music Player", feature: 'music', act: () => open({ type: 'music', title: 'Music Player', width: 360, height: 380 }) },
@@ -442,13 +424,10 @@ export function Taskbar({ page }: { page: string }) {
   // light-mode asset on the dark taskbar.
   const startMenuLogo = darkMode ? siteSettings.darkLogoDataUrl : siteSettings.logoDataUrl;
 
-  function Badge({ count, tone = 'red' }: { count: number; tone?: 'red' | 'green' }) {
+  function Badge({ count }: { count: number }) {
     if (!count) return null;
-    // Green tone is used for live presence indicators (e.g. cafe occupancy)
-    // so it doesn't visually compete with the red "unread" badges.
-    const bg = tone === 'green' ? 'bg-green-600' : 'bg-red-600';
     return (
-      <span className={`absolute -top-1 -right-1 ${bg} text-white text-[9px] font-bold rounded-full min-w-[16px] h-4 px-1 flex items-center justify-center border border-white shadow`}>
+      <span className="absolute -top-1 -right-1 bg-red-600 text-white text-[9px] font-bold rounded-full min-w-[16px] h-4 px-1 flex items-center justify-center border border-white shadow">
         {count > 99 ? '99+' : count}
       </span>
     );
@@ -473,16 +452,6 @@ export function Taskbar({ page }: { page: string }) {
     }
     setStartOpen(false);
   }
-  function openCafe() {
-    const existing = wins.find(w => w.type === 'cafe');
-    if (existing) {
-      if ((existing.state || 'normal') === 'min') toggleWindowState(page, existing.id, 'min');
-      bringToFront(page, existing.id);
-    } else {
-      addWindow(page, { type: 'cafe', title: 'Cafe', width: 720, height: 560 });
-    }
-  }
-
   return (
     <div className="absolute bottom-0 left-0 right-0 h-10 bg-[#c0c0c0] border-t-2 border-t-white flex items-center px-1 z-[9999] shadow-[inset_0_1px_0_#dfdfdf]">
       <div className="relative">
@@ -579,7 +548,6 @@ export function Taskbar({ page }: { page: string }) {
                           {it.label}
                           {it.badge === 'dm' && <span className="absolute right-2 top-1/2 -translate-y-1/2"><Badge count={dmUnread} /></span>}
                           {it.badge === 'chat' && <span className="absolute right-2 top-1/2 -translate-y-1/2"><Badge count={chatUnread} /></span>}
-                          {it.badge === 'cafe' && <span className="absolute right-2 top-1/2 -translate-y-1/2"><Badge count={cafeCount} tone="green" /></span>}
                         </button>
                       ))}
                     </div>
@@ -606,19 +574,6 @@ export function Taskbar({ page }: { page: string }) {
       </button>
 
       <div className="flex items-center gap-1 ml-1">
-        {/* Live cafe occupancy chip — always visible. The green dot is the
-            "presence pulse": it gently throbs whenever someone is in the
-            cafe so people working in other windows notice the room is alive
-            without it being intrusive. Click jumps straight in. */}
-        <button
-          className="win98-button h-8 px-2 text-xs relative flex items-center gap-1"
-          onClick={openCafe}
-          title={cafeCount > 0 ? `${cafeCount} ${cafeCount === 1 ? 'person' : 'people'} in the cafe` : 'Cafe is empty — open it'}
-        >
-          <span className={`inline-block w-2 h-2 rounded-full ${cafeCount > 0 ? 'bg-green-500 cafe-presence-pulse' : 'bg-gray-400'}`} />
-          ☕ Cafe
-          <Badge count={cafeCount} tone="green" />
-        </button>
         {user && (
           <>
             <button className="win98-button h-8 px-2 text-xs relative" onClick={openDms} title="Direct Messages">

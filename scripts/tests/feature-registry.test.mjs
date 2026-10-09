@@ -28,8 +28,17 @@ async function loadRegistry(source) {
   return import(`data:text/javascript;base64,${Buffer.from(outputText).toString("base64")}`);
 }
 const registry = await loadRegistry(registrySource);
-const { ARCHIVABLE_FEATURES, PROTECTED_LAUNCHER_IDS, isArchivableFeatureId, cleanArchivedFeatures } = registry;
+const {
+  ARCHIVABLE_FEATURES,
+  PROTECTED_LAUNCHER_IDS,
+  TEMPORARILY_DISABLED_FEATURES,
+  isArchivableFeatureId,
+  isFeatureTemporarilyDisabled,
+  cleanArchivedFeatures,
+} = registry;
 const featureIds = new Set(ARCHIVABLE_FEATURES.map((f) => f.id));
+const disabledFeatureIds = new Set(TEMPORARILY_DISABLED_FEATURES);
+const activeFeatureIds = new Set([...featureIds].filter((id) => !disabledFeatureIds.has(id)));
 const protectedIds = new Set(PROTECTED_LAUNCHER_IDS);
 const desktop = parse(read("artifacts/photo-desktop/src/components/Taskbar.tsx"));
 const mobile = parse(read("artifacts/photo-desktop/src/components/MobileShell.tsx"));
@@ -102,18 +111,25 @@ test("validation accepts every registry ID and rejects protected, unknown, and m
   for (const invalid of [null, {}, "planner", 1]) assert.deepEqual(cleanArchivedFeatures(invalid), []);
 });
 
+test("temporarily disabled features remain registered but are excluded from launchers", () => {
+  for (const id of disabledFeatureIds) {
+    assert.ok(featureIds.has(id), `Disabled feature must remain registered: ${id}`);
+    assert.equal(isFeatureTemporarilyDisabled(id), true);
+  }
+});
+
 test("desktop category entries and pushed administration actions have matching archive metadata", () => {
   const entries = nodes(desktop, ts.isObjectLiteralExpression).filter((n) => property(n, "label") && property(n, "act"));
   assert.ok(entries.length > 0);
   const covered = new Set(entries.map(checkDesktopEntry).filter(Boolean));
-  assert.deepEqual(covered, featureIds, "Every registered feature must have a desktop launch entry");
+  assert.deepEqual(covered, activeFeatureIds, "Every enabled feature must have a desktop launch entry");
 });
 
 test("mobile launcher entries are classified and cover the registry", () => {
   const apps = nodes(mobile, ts.isVariableDeclaration).find((n) => n.name.getText() === "APPS");
   assert.ok(apps && ts.isArrayLiteralExpression(apps.initializer));
   const covered = new Set(apps.initializer.elements.map(checkMobileEntry).filter((id) => featureIds.has(id)));
-  assert.deepEqual(covered, featureIds, "Every registered feature must have a mobile web launch entry");
+  assert.deepEqual(covered, activeFeatureIds, "Every enabled feature must have a mobile web launch entry");
 });
 
 test("pinned desktop window shortcuts have archive guards matching their launch targets", () => {

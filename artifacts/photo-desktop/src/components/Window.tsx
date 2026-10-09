@@ -19,7 +19,6 @@ import { Polls } from './Polls';
 import { Chess } from './Chess';
 import { Eaglercraft } from './Eaglercraft';
 import { NewClubPenguin } from './NewClubPenguin';
-import { Cafe } from './Cafe';
 import { DMs } from './DMs';
 import { UserPage } from './UserPage';
 import { RanksAdmin } from './RanksAdmin';
@@ -37,6 +36,7 @@ import { DiagnosticsPanel } from './DiagnosticsPanel';
 import { AccountAdmin } from './AccountAdmin';
 import { MobileSettings } from './MobileSettings';
 import { useAuth } from '../lib/auth-store';
+import { isFeatureTemporarilyDisabled } from '@workspace/feature-registry';
 
 function getYouTubeEmbedUrl(url: string): string | null {
   if (!url) return null;
@@ -166,6 +166,7 @@ export function Window({
   };
 
   const isActive = useDesktopStore(state => state.maxZIndex === w.zIndex);
+  if (isFeatureTemporarilyDisabled(w.type)) return null;
 
   const bounds = boundsRef.current;
   // Mobile windows are app screens, not floating desktop windows. The mobile
@@ -177,8 +178,8 @@ export function Window({
       ? { width: bounds.clientWidth, height: bounds.clientHeight - 40, transform: 'translate3d(0,0,0)' }
       : { width: w.width, height: w.height, transform: `translate3d(${w.x}px, ${w.y}px, 0)` };
 
-  // Keep embedded game sessions alive while minimized.
-  const shouldPreserveState = w.type === 'eaglercraft' || w.type === 'newcp';
+  // Keep embedded game sessions and personal playlist playback alive while minimized.
+  const shouldPreserveState = w.type === 'eaglercraft' || w.type === 'newcp' || w.type === 'personalplaylists';
   const windowStyle: React.CSSProperties = isMin && !shouldPreserveState
     ? { top: 0, left: 0, transform: `translate3d(${w.x}px, ${(boundsRef.current?.clientHeight || 600) - 64}px, 0)`, width: 160, zIndex: w.zIndex }
     : { ...maxStyle, zIndex: w.zIndex, top: 0, left: 0, willChange: 'transform', touchAction: mobile ? 'auto' : 'none', visibility: isMin && shouldPreserveState ? 'hidden' : 'visible' };
@@ -339,7 +340,6 @@ export function Window({
         {w.type === 'chess' && !isEditing && <Chess />}
         {w.type === 'eaglercraft' && !isEditing && <Eaglercraft />}
         {w.type === 'newcp' && !isEditing && <NewClubPenguin />}
-        {w.type === 'cafe' && !isEditing && <Cafe />}
         {w.type === 'dms' && !isEditing && <DMs initialPeer={w.dmPeer} />}
         {w.type === 'userpage' && !isEditing && <UserPage username={w.username || ''} />}
         {w.type === 'browser' && !isEditing && <UserBrowser page={page} />}

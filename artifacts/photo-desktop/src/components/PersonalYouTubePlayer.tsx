@@ -185,7 +185,7 @@ export function PersonalYouTubePlayer({ videoId, playRequest, onEnded }: {
         {error} <button type="button" className="win98-button px-2" onClick={() => setRetry(value => value + 1)}>Retry player</button>
       </div>}
       {videoId && <a className="text-xs underline text-blue-800" href={`https://www.youtube.com/watch?v=${videoId}`} target="_blank" rel="noreferrer">Open current video on YouTube</a>}
-      <p className="text-[10px] text-gray-600 mt-1">Playback is local, not shared or synchronized. Closing or minimizing this app stops the player. YouTube may block some videos or autoplay.</p>
+      <p className="text-[10px] text-gray-600 mt-1">Playback is local, not shared or synchronized. Closing this window stops playback; minimizing it keeps playing in the background. YouTube may block some videos or autoplay.</p>
     </section>
   );
 }
