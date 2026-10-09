@@ -9,6 +9,16 @@ Feature archiving is site-wide menu visibility, not uninstallation, data deletio
 
 **How to apply:** Hide archived launch entries, including duplicate pinned shortcuts, from desktop Start and the mobile web launcher. Do not reinterpret the archive flag as an API authorization restriction.
 
+Keep archive drift checks scoped to the Start menu and mobile web launcher.
+Taskbar presence/unread chips, notification actions, and minimized-window restore
+buttons are outside that menu-only boundary.
+
+**Why:** Treating every button that opens or restores a window as an archive
+launcher would silently broaden archiving into disabling existing access paths.
+
+**How to apply:** Check duplicate shortcuts within the Start menu, but do not
+filter taskbar window restoration or notification delivery by archive state.
+
 Administration and settings controls remain unarchivable.
 
 **Why:** Administrators must always retain a way to restore hidden features and manage site access.

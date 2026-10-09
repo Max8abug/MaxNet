@@ -3,23 +3,15 @@ import { db, siteSettingsTable } from "@workspace/db";
 import { eq, sql } from "drizzle-orm";
 import { requireAdmin } from "../lib/auth";
 import { normalizeBlockedPhrases } from "../lib/content-filter";
+import { cleanArchivedFeatures, isArchivableFeatureId } from "@workspace/feature-registry";
 
 const router: IRouter = Router();
 
 type CustomButton = { label: string; url: string };
-const archivableFeatures = new Set([
-  "planner", "news", "sharedphotos", "userlist", "visits", "guestbook",
-  "chess", "blackjack", "flappy", "geometry", "poker", "eaglercraft",
-  "mypage", "forum", "chat", "dms", "youtube", "cafe", "browser", "polls",
-  "music", "personalplaylists", "drawing", "link", "text",
-]);
-function cleanArchivedFeatures(value: unknown): string[] {
-  return Array.isArray(value) ? [...new Set(value.filter((id): id is string => typeof id === "string" && archivableFeatures.has(id)))] : [];
-}
 
 router.put("/site-settings/features/:featureId", requireAdmin, async (req, res) => {
   const featureId = String(req.params.featureId);
-  if (!archivableFeatures.has(featureId) || typeof req.body?.archived !== "boolean") {
+  if (!isArchivableFeatureId(featureId) || typeof req.body?.archived !== "boolean") {
     res.status(400).json({ error: "Choose an archivable feature and a boolean archived setting. Administration and settings cannot be archived." });
     return;
   }

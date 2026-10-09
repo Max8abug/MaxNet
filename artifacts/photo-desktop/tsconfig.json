@@ -16,6 +16,9 @@
   },
   "references": [
     {
+      "path": "../../lib/feature-registry"
+    },
+    {
       "path": "../../lib/api-client-react"
     }
   ]

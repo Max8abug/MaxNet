@@ -33,7 +33,8 @@ import {
   Youtube,
 } from 'lucide-react';
 import { Window } from './Window';
-import { useDesktopStore, type WindowData, type WindowType } from '../store';
+import { useDesktopStore, type WindowData } from '../store';
+import { isArchivableFeatureId, type LauncherWindowId } from '@workspace/feature-registry';
 import { useAuth } from '../lib/auth-store';
 import { useThemeMode } from '../lib/theme';
 import { formatLocalTime } from '../lib/dates';
@@ -51,7 +52,7 @@ type MobileWindowProps = {
 
 type AppDefinition = {
   label: string;
-  type: WindowType;
+  type: LauncherWindowId;
   icon: typeof Newspaper;
   tone: string;
   size: 'wide' | 'medium' | 'small';
@@ -144,7 +145,7 @@ export function MobileShell({ page }: { page: string }) {
     [openWindowId, windows],
   );
   const apps = useMemo(
-    () => APPS.filter((app) => (!app.adminOnly || user?.isAdmin) && !(siteSettings.archivedFeatures || []).includes(app.type)),
+    () => APPS.filter((app) => (!app.adminOnly || user?.isAdmin) && (!isArchivableFeatureId(app.type) || !(siteSettings.archivedFeatures || []).includes(app.type))),
     [user?.isAdmin, siteSettings.archivedFeatures],
   );
   const regularApps = apps.filter((app) => !app.adminOnly);

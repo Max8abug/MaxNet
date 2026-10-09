@@ -13,6 +13,7 @@
     "test:storage-report": "node ./tests/run-storage-report-tests.mjs"
   },
   "dependencies": {
+    "@workspace/feature-registry": "workspace:*",
     "@replit/object-storage": "^1.0.0",
     "@types/web-push": "^3.6.4",
     "@workspace/api-zod": "workspace:*",

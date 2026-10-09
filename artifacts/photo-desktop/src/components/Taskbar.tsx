@@ -18,6 +18,7 @@ import { ChevronRight } from 'lucide-react';
 import { formatLocalTime } from '../lib/dates';
 import { useServerNow } from '../lib/server-clock';
 import { fetchDueReminders } from '../lib/planner-api';
+import type { ArchivableFeatureId } from '@workspace/feature-registry';
 
 export function Taskbar({ page }: { page: string }) {
   const { addWindow, isStringMode, setStringMode, resetState, windows, toggleWindowState, bringToFront } = useDesktopStore();
@@ -300,9 +301,8 @@ export function Taskbar({ page }: { page: string }) {
   type StartMenuItem = {
     label: string;
     act: () => void;
-    feature?: string;
     badge?: 'dm' | 'chat' | 'cafe';
-  };
+  } & ({ feature: ArchivableFeatureId; protected?: never } | { feature?: never; protected: true });
 
   const infoItems: StartMenuItem[] = [
     { label: "Open Planner", feature: 'planner', act: () => { openPlanner(); setStartOpen(false); } },
@@ -337,19 +337,19 @@ export function Taskbar({ page }: { page: string }) {
   ];
 
   const settingsItems: StartMenuItem[] = [
-    { label: "Settings", act: () => open({ type: 'settings', title: 'Settings', width: 420, height: 460 }) },
+    { label: "Settings", protected: true, act: () => open({ type: 'settings', title: 'Settings', width: 420, height: 460 }) },
     { label: "Add Link Shortcut", feature: 'link', act: () => open({ type: 'link', title: 'Shortcut', linkLabel: 'Go to About', linkTarget: '/about', width: 200, height: 150 }) },
     { label: "Add Text Note", feature: 'text', act: () => open({ type: 'text', title: 'Notes', content: 'Write something here...', width: 300, height: 200 }) },
-    { label: "Reset All Desktops", act: () => { resetState(); setStartOpen(false); } },
+    { label: "Reset All Desktops", protected: true, act: () => { resetState(); setStartOpen(false); } },
   ];
-  if (user) settingsItems.push({ label: "🔔 Enable Notifications", act: () => void turnOnNotifications() });
-  if (user?.isAdmin) settingsItems.push({ label: "★ Manage Ranks", act: () => open({ type: 'ranksadmin', title: 'Ranks Admin', width: 480, height: 500 }) });
-  if (user?.isAdmin) settingsItems.push({ label: "★ Manage Accounts", act: () => open({ type: 'accountadmin', title: 'Account Admin', width: 430, height: 470 }) });
-  if (user?.isAdmin) settingsItems.push({ label: "★ Site Settings", act: () => open({ type: 'sitesettings', title: 'Site Settings', width: 420, height: 400 }) });
-  if (user?.isAdmin) settingsItems.push({ label: "★ Feature Archive", act: () => open({ type: 'featurearchive', title: 'Feature Archive', width: 550, height: 520 }) });
-  if (user?.isAdmin) settingsItems.push({ label: "★ Theme Lab", act: () => open({ type: 'themelab', title: 'Theme Lab', width: 780, height: 640 }) });
-  if (user?.isAdmin) settingsItems.push({ label: "★ Site Backup / Restore", act: () => open({ type: 'sitebackup', title: 'Site Backup', width: 480, height: 420 }) });
-  if (user?.isAdmin) settingsItems.push({ label: "★ Diagnostics", act: () => open({ type: 'diagnostics', title: 'Server Diagnostics', width: 640, height: 460 }) });
+  if (user) settingsItems.push({ label: "🔔 Enable Notifications", protected: true, act: () => void turnOnNotifications() });
+  if (user?.isAdmin) settingsItems.push({ label: "★ Manage Ranks", protected: true, act: () => open({ type: 'ranksadmin', title: 'Ranks Admin', width: 480, height: 500 }) });
+  if (user?.isAdmin) settingsItems.push({ label: "★ Manage Accounts", protected: true, act: () => open({ type: 'accountadmin', title: 'Account Admin', width: 430, height: 470 }) });
+  if (user?.isAdmin) settingsItems.push({ label: "★ Site Settings", protected: true, act: () => open({ type: 'sitesettings', title: 'Site Settings', width: 420, height: 400 }) });
+  if (user?.isAdmin) settingsItems.push({ label: "★ Feature Archive", protected: true, act: () => open({ type: 'featurearchive', title: 'Feature Archive', width: 550, height: 520 }) });
+  if (user?.isAdmin) settingsItems.push({ label: "★ Theme Lab", protected: true, act: () => open({ type: 'themelab', title: 'Theme Lab', width: 780, height: 640 }) });
+  if (user?.isAdmin) settingsItems.push({ label: "★ Site Backup / Restore", protected: true, act: () => open({ type: 'sitebackup', title: 'Site Backup', width: 480, height: 420 }) });
+  if (user?.isAdmin) settingsItems.push({ label: "★ Diagnostics", protected: true, act: () => open({ type: 'diagnostics', title: 'Server Diagnostics', width: 640, height: 460 }) });
 
   const archivedFeatures = new Set(siteSettings.archivedFeatures || []);
   const categoryMenus: { label: string; items: StartMenuItem[] }[] = [
