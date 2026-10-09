@@ -54,6 +54,7 @@ export function PersonalYouTubePlayer({ videoId, playRequest, onEnded }: {
   playRequest: number;
   onEnded: () => void;
 }) {
+  const section = useRef<HTMLElement>(null);
   const holder = useRef<HTMLDivElement>(null);
   const player = useRef<Player | null>(null);
   const latest = useRef({ videoId, playRequest, onEnded });
@@ -63,10 +64,27 @@ export function PersonalYouTubePlayer({ videoId, playRequest, onEnded }: {
   const [error, setError] = useState<string | null>(null);
   const [animation, setAnimation] = useState(true);
   const [videoWidth, setVideoWidth] = useState(100);
+  const [availableWidth, setAvailableWidth] = useState(640);
   const [retry, setRetry] = useState(0);
   const [frame, setFrame] = useState(0);
   const [reducedMotion, setReducedMotion] = useState(() => window.matchMedia("(prefers-reduced-motion: reduce)").matches);
   const hasVideo = !!videoId;
+  const minimumVideoPercent = Math.min(100, (200 / Math.max(availableWidth, 200)) * 100);
+  const displayedVideoPercent = Math.max(videoWidth, minimumVideoPercent);
+  const displayedVideoWidth = Math.max(200, Math.round(availableWidth * displayedVideoPercent / 100));
+
+  useEffect(() => {
+    const element = section.current;
+    if (!element || typeof ResizeObserver === "undefined") return;
+    const measure = () => {
+      const width = Math.floor(element.getBoundingClientRect().width);
+      if (width > 0) setAvailableWidth(width);
+    };
+    const observer = new ResizeObserver(measure);
+    observer.observe(element);
+    measure();
+    return () => observer.disconnect();
+  }, []);
 
   useEffect(() => {
     const query = window.matchMedia("(prefers-reduced-motion: reduce)");
@@ -134,35 +152,35 @@ export function PersonalYouTubePlayer({ videoId, playRequest, onEnded }: {
   }, [playing, animation, reducedMotion]);
 
   return (
-    <section className="min-w-0" aria-label="Personal YouTube player">
+    <section ref={section} className="min-w-0" aria-label="Personal YouTube player">
       <div className="mb-1">
         <label className="flex items-center gap-2">
           <span className="shrink-0">Video size</span>
           <input
             type="range"
-            min={50}
+            min={minimumVideoPercent}
             max={100}
-            step={10}
-            value={videoWidth}
+            step={1}
+            value={displayedVideoPercent}
             onChange={(event) => setVideoWidth(Number(event.target.value))}
             aria-label="YouTube video width"
-            aria-valuetext={`${videoWidth}% width`}
+            aria-valuetext={`${displayedVideoWidth}px wide; player minimum is 200 by 200 pixels`}
             className="min-w-0 flex-1 accent-blue-700"
             data-testid="input-youtube-video-size"
           />
-          <output className="w-9 text-right tabular-nums" data-testid="text-youtube-video-size">
-            {videoWidth}%
+          <output className="w-16 text-right tabular-nums" data-testid="text-youtube-video-size">
+            {displayedVideoWidth}px
           </output>
         </label>
         <p className="text-[10px] text-gray-600">
-          Only the video changes size; controls and visualizer stay full-width.
+          The visible YouTube player can shrink to 200 × 200 px; controls and animation stay full-width.
         </p>
       </div>
       <div className="flex w-full justify-center">
         <div
           ref={holder}
-          style={{ width: `${videoWidth}%`, minWidth: "min(200px, 100%)" }}
-          className="min-h-[200px] max-w-full aspect-video overflow-hidden bg-black [&>iframe]:h-full [&>iframe]:w-full"
+          style={{ width: `${displayedVideoPercent}%`, minWidth: "200px" }}
+          className="min-h-[200px] aspect-video overflow-hidden bg-black [&>iframe]:h-full [&>iframe]:w-full"
           data-testid="personal-youtube-player"
         />
       </div>

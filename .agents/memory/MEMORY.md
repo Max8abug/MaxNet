@@ -6,7 +6,7 @@
 - [iOS release flow](ios-release-flow.md) — use Expo Launch, not manual EAS commands; require TestFlight and physical-iPhone evidence before release completion.
 - [Self-hosted uploads](self-hosted-uploads.md) — production runs on the owner's server; Replit storage checks do not establish production readiness.
 - [File mutation safety](file-mutation-safety.md) — logical deletion can succeed during storage outages; durable cleanup must not sacrifice live content.
-- [Personal playlist scope](personal-playlists.md) — personal playback must stay separate from shared rooms; YouTube uses a visible official player, not extracted audio.
+- [Personal playlist scope](personal-playlists.md) — keep YouTube embeds visible, at least 200×200, and on-device; never extract audio.
 - [External GIF previews](external-gif-previews.md) — provider share links must resolve and load as images before attachment, not merely normalize when sending.
 - [Eaglercraft launch configuration](eaglercraft-launch.md) — oversized bundled client exceeds the patch limit; launcher configuration depends on its pre-launch countdown.
 - [Feature archive scope](feature-archive-scope.md) — archiving hides launch entries; it is not deletion or a permission toggle, and administration stays accessible.

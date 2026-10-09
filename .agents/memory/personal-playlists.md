@@ -15,8 +15,8 @@ Shuffle changes the local playback queue, not the user's saved track ordering. W
 
 **How to apply:** Keep shuffle/history device-local, preserve normal ordering when shuffle is turned off, and handle library additions/removals without playing deleted entries.
 
-YouTube playback uses the official, visible embedded player. Do not extract or proxy audio or present decorative bars as a genuine audio spectrum.
+YouTube playback uses the official, visible embedded player. Its viewport must stay at least 200 × 200 px. Do not hide it during playback, separate or extract audio, proxy media, or present decorative bars as a genuine audio spectrum.
 
-**Why:** YouTube embeds do not expose their audio stream to Web Audio analysis, and audio-only extraction is not an appropriate substitute for supported embedding.
+**Why:** YouTube's current developer policies prohibit hidden background playback and separating a video's audio from its video; its minimum-functionality requirements set a 200 × 200 px player viewport. The owner wants the visible player to shrink as much as those rules allow.
 
-**How to apply:** Preserve the visible player and its controls. Label any playback animation honestly and handle unavailable videos and autoplay restrictions explicitly.
+**How to apply:** Keep the official player and controls visible and unobscured, and never size its viewport below 200 × 200 px. Label any playback animation honestly and handle unavailable videos and autoplay restrictions explicitly.
