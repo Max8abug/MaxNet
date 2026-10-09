@@ -18,8 +18,9 @@ import zipfile
 from datetime import datetime
 from pathlib import Path
 from launcher_diagnostics import (
-    DIAGNOSTICS_VERSION,
     build_crash_report,
+    is_error_log_line,
+    is_expected_api_exit,
     unseen_log_lines,
 )
 
@@ -50,12 +51,7 @@ API_KEY_SETTINGS = (
 RUN_DIR.mkdir(exist_ok=True)
 LOG_DIR.mkdir(exist_ok=True)
 
-# ── Error-line detection (covers Node stack traces + shell ERRORs) ─────────────
-_ERROR_RE = re.compile(
-    r"(error|crash|exception|uncaught|fatal|fail|ECONNREFUSED|EADDRINUSE"
-    r"|TypeError|ReferenceError|SyntaxError|unhandledRejection|\[CRASH\])",
-    re.IGNORECASE,
-)
+# ── Log-line detection ────────────────────────────────────────────────────────
 _WARN_RE = re.compile(r"\b(warn|warning|deprecated)\b", re.IGNORECASE)
 
 # ── Colour palette ─────────────────────────────────────────────────────────────
@@ -338,7 +334,7 @@ class App(tk.Tk):
                 lines = ERROR_LOG_FILE.read_text(errors="replace").splitlines()
         except Exception:
             pass
-        count = sum(1 for line in lines if line.strip())
+        count = sum(1 for line in lines if is_error_log_line(line))
 
         if count > 0:
             self._error_count_label.config(
@@ -379,7 +375,7 @@ class App(tk.Tk):
         for line in lines:
             if not colourise:
                 widget.insert("end", line + "\n", "normal")
-            elif _ERROR_RE.search(line):
+            elif is_error_log_line(line):
                 widget.insert("end", line + "\n", "error")
             elif _WARN_RE.search(line):
                 widget.insert("end", line + "\n", "warning")
@@ -579,9 +575,9 @@ class App(tk.Tk):
             node  = node_path()
             out_f = open(API_LOG_FILE,   "a")
             err_f = open(ERROR_LOG_FILE, "a")
-            # Write separator so restarts are visible in the logs
+            # Keep normal startup metadata in api.log, not the stderr/error log.
             stamp = f"\n{'─'*60}\n[{ts_now()}] [launcher] Starting API server\n{'─'*60}\n"
-            out_f.write(stamp); err_f.write(stamp)
+            out_f.write(stamp)
             proc = subprocess.Popen(
                 [node, "--enable-source-maps", str(API_BIN)],
                 env=full_env, stdout=out_f, stderr=err_f,
@@ -589,12 +585,6 @@ class App(tk.Tk):
             )
             API_PID_FILE.write_text(str(proc.pid))
             started_monotonic = time.monotonic()
-            monitor_stamp = (
-                f"[{ts_now()}] [launcher] Crash monitor {DIAGNOSTICS_VERSION} "
-                f"attached to API PID {proc.pid}\n"
-            )
-            with open(ERROR_LOG_FILE, "a") as log_file:
-                log_file.write(monitor_stamp)
             self._launcher_log(
                 f"[launcher] Started API (PID {proc.pid}) → port {port}\n")
             self._url_var.set(f"http://localhost:{port}")
@@ -610,9 +600,26 @@ class App(tk.Tk):
         try:
             return_code = process.wait()
             with self._api_state_lock:
-                expected_stop = pid in self._expected_api_stops
+                explicitly_marked = pid in self._expected_api_stops
                 self._expected_api_stops.discard(pid)
-            if expected_stop:
+
+            pid_file_pid = None
+            if return_code in (0, -signal.SIGTERM) and not explicitly_marked:
+                # stop.sh removes the PID file just after sending SIGTERM.
+                # Allow that shell command to finish before classifying the exit.
+                deadline = time.monotonic() + 1.0
+                while time.monotonic() < deadline:
+                    try:
+                        pid_file_pid = int(API_PID_FILE.read_text().strip())
+                    except (OSError, ValueError):
+                        pid_file_pid = None
+                    if pid_file_pid != pid:
+                        break
+                    time.sleep(0.05)
+
+            if is_expected_api_exit(
+                pid, return_code, explicitly_marked, pid_file_pid
+            ):
                 return
 
             uptime = max(0.0, time.monotonic() - started_monotonic)

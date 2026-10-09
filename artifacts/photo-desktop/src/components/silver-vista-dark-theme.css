@@ -63,7 +63,12 @@
 }
 :is(html, body)[data-app-theme="vista-dark"] .win98-window:not(:where(.theme-lab, .theme-lab *)) {
   overflow: hidden; padding: 7px; border: 1px solid rgba(150, 195, 230, .55); border-radius: 8px;
-  background: rgba(22, 38, 58, .89);
+  background: linear-gradient(
+    180deg,
+    rgba(22, 38, 58, .56) 0,
+    rgba(22, 38, 58, .56) 38px,
+    rgba(22, 38, 58, .89) 38px
+  );
   box-shadow: 0 0 0 1px rgba(0, 6, 14, .85), 0 7px 18px rgba(0, 4, 12, .6), inset 0 1px rgba(190, 225, 255, .35);
   color: var(--vg-ink); font-family: var(--vg-font);
 }
@@ -93,11 +98,13 @@
 :is(html, body)[data-app-theme="vista-dark"] .win98-titlebar:not(:where(.theme-lab, .theme-lab *)) {
   position: relative; z-index: 1; min-height: 31px; margin: -7px -7px 0; padding: 5px 7px; border: 0;
   border-radius: 7px 7px 0 0;
-  background: linear-gradient(180deg, rgba(70,110,150,.80), rgba(30,60,92,.82) 48%, rgba(14,32,54,.84));
+  background: linear-gradient(180deg, rgba(70,110,150,.62), rgba(30,60,92,.64) 48%, rgba(14,32,54,.66));
+  -webkit-backdrop-filter: blur(8px) saturate(1.25);
+  backdrop-filter: blur(8px) saturate(1.25);
   color: #eef6fd; font-family: var(--vg-font); font-weight: 650; text-shadow: 0 1px 3px rgba(0,0,0,.85);
 }
 :is(html, body)[data-app-theme="vista-dark"] .win98-titlebar.inactive:not(:where(.theme-lab, .theme-lab *)) {
-  background: linear-gradient(180deg, rgba(60,76,94,.80), rgba(32,43,57,.82)); color: #b9c6d3;
+  background: linear-gradient(180deg, rgba(60,76,94,.60), rgba(32,43,57,.62)); color: #b9c6d3;
 }
 
 /* Buttons */

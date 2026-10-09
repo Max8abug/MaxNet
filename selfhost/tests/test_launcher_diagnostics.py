@@ -11,6 +11,8 @@ from launcher_diagnostics import (  # noqa: E402
     build_crash_report,
     describe_exit,
     format_uptime,
+    is_expected_api_exit,
+    is_error_log_line,
     unseen_log_lines,
 )
 
@@ -70,6 +72,31 @@ class LauncherCrashDiagnosticsTests(unittest.TestCase):
 
         self.assertEqual(new_lines, [])
         self.assertEqual(next_offset, 1)
+
+    def test_gui_marked_stop_is_expected(self):
+        self.assertTrue(is_expected_api_exit(1234, -15, True, 1234))
+
+    def test_update_sigterm_with_removed_pid_file_is_expected(self):
+        self.assertTrue(is_expected_api_exit(1234, -15, False, None))
+
+    def test_unexpected_sigterm_with_unchanged_pid_file_is_reported(self):
+        self.assertFalse(is_expected_api_exit(1234, -15, False, 1234))
+
+    def test_nonzero_exit_is_not_hidden_by_removed_pid_file(self):
+        self.assertFalse(is_expected_api_exit(1234, 1, False, None))
+
+    def test_launcher_status_lines_are_not_errors(self):
+        self.assertFalse(
+            is_error_log_line("[2026-10-09 15:44:04] [launcher] Crash monitor v2 attached to API PID 954822")
+        )
+        self.assertFalse(
+            is_error_log_line("[2026-10-09 15:33:35] [launcher] Starting API server")
+        )
+
+    def test_actual_api_error_remains_an_error(self):
+        self.assertTrue(
+            is_error_log_line("Error: database connection failed")
+        )
 
 
 if __name__ == "__main__":

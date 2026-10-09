@@ -1,15 +1,41 @@
 """Crash-report helpers shared by the launcher and its non-GUI tests."""
 
+import re
 import signal
 
 
 DIAGNOSTICS_VERSION = "v2"
+
+_ERROR_LOG_RE = re.compile(
+    r"(error|crash|exception|uncaught|fatal|fail|ECONNREFUSED|EADDRINUSE"
+    r"|TypeError|ReferenceError|SyntaxError|unhandledRejection|\[CRASH\])",
+    re.IGNORECASE,
+)
+_INFO_LOG_RE = re.compile(
+    r"\[launcher\]\s+(?:Crash monitor\b|Starting API server\b)",
+    re.IGNORECASE,
+)
 
 
 def unseen_log_lines(lines: list[str], previous_line_count: int) -> tuple[list[str], int]:
     if previous_line_count < 0 or previous_line_count > len(lines):
         return [], len(lines)
     return lines[previous_line_count:], len(lines)
+
+
+def is_error_log_line(line: str) -> bool:
+    return not _INFO_LOG_RE.search(line) and bool(_ERROR_LOG_RE.search(line))
+
+
+def is_expected_api_exit(
+    pid: int,
+    return_code: int,
+    explicitly_marked: bool,
+    pid_file_pid: int | None,
+) -> bool:
+    if explicitly_marked:
+        return True
+    return pid_file_pid != pid and return_code in (0, -signal.SIGTERM)
 
 
 def format_uptime(seconds: float) -> str:
