@@ -68,6 +68,51 @@ GAMES = (
     },
 )
 
+PVZ_CACHE_FUNCTION_ORIGINAL = b"""    async function mergeFiles(fileParts, cacheKey) {
+      const cache = await caches.open("pvz-cache");
+      const cachedResponse = await cache.match(cacheKey);
+      if (cachedResponse) {
+        const blob = await cachedResponse.blob();
+        return URL.createObjectURL(blob);
+      }
+      const buffers = await Promise.all(
+        fileParts.map(part => fetchWithProgress(part))
+      );
+      const mergedBlob = new Blob(buffers);
+      const response = new Response(mergedBlob);
+      await cache.put(cacheKey, response);
+      return URL.createObjectURL(mergedBlob);
+    }
+"""
+
+PVZ_CACHE_FUNCTION_SANDBOX_SAFE = b"""    async function mergeFiles(fileParts, cacheKey) {
+      let cache;
+      try {
+        cache = await caches.open("pvz-cache");
+        const cachedResponse = await cache.match(cacheKey);
+        if (cachedResponse) {
+          const blob = await cachedResponse.blob();
+          return URL.createObjectURL(blob);
+        }
+      } catch (error) {
+        console.warn("PVZ cache unavailable; loading without persistent cache.", error);
+        cache = undefined;
+      }
+      const buffers = await Promise.all(
+        fileParts.map(part => fetchWithProgress(part))
+      );
+      const mergedBlob = new Blob(buffers);
+      if (cache) {
+        try {
+          await cache.put(cacheKey, new Response(mergedBlob));
+        } catch (error) {
+          console.warn("PVZ cache write failed; continuing without cache.", error);
+        }
+      }
+      return URL.createObjectURL(mergedBlob);
+    }
+"""
+
 
 def run_git(repo_dir: Path, *arguments: str) -> str:
     environment = os.environ.copy()
@@ -148,10 +193,17 @@ def source_tree(game: dict) -> list[dict]:
 
 
 def expected_local_bytes(game: dict) -> int:
+    cache_patch_delta = (
+        len(PVZ_CACHE_FUNCTION_SANDBOX_SAFE)
+        - len(PVZ_CACHE_FUNCTION_ORIGINAL)
+        if game["id"] == "pvz"
+        else 0
+    )
     return (
         game["expected_bytes"]
         - len(game["remote_base_href"].encode("utf-8"))
         + len("./".encode("utf-8"))
+        + cache_patch_delta
     )
 
 
@@ -171,6 +223,17 @@ def localize_base_href(game: dict, index_path: Path) -> None:
     if count != 1:
         raise RuntimeError(
             f"Expected the pinned CDN base URL in {game['id']}/index.html"
+        )
+    if game["id"] == "pvz":
+        cache_count = localized.count(PVZ_CACHE_FUNCTION_ORIGINAL)
+        if cache_count != 1:
+            raise RuntimeError(
+                "Expected the pinned CacheStorage mergeFiles function in pvz/index.html"
+            )
+        localized = localized.replace(
+            PVZ_CACHE_FUNCTION_ORIGINAL,
+            PVZ_CACHE_FUNCTION_SANDBOX_SAFE,
+            1,
         )
     index_path.write_bytes(localized)
 
