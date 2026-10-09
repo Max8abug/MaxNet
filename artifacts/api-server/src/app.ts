@@ -31,6 +31,52 @@ app.use(
     },
   }),
 );
+
+const isSelfHostedStatic = process.env["SERVE_STATIC"] === "1";
+const appModuleDirectory = path.dirname(fileURLToPath(import.meta.url));
+const repoRoot = path.resolve(appModuleDirectory, "../../..");
+const staticDir = path.resolve(repoRoot, "artifacts/photo-desktop/dist/public");
+
+if (isSelfHostedStatic) {
+  const gameAssetsOnly = express.Router();
+  gameAssetsOnly.use(
+    "/ported-games",
+    express.static(path.join(staticDir, "ported-games"), {
+      dotfiles: "deny",
+      fallthrough: true,
+      setHeaders(response, filePath) {
+        response.setHeader("X-Content-Type-Options", "nosniff");
+        if (filePath.endsWith("asset-manifest.json")) {
+          response.setHeader("Access-Control-Allow-Origin", "*");
+          response.setHeader("Cache-Control", "no-store");
+        } else if (filePath.endsWith(".html")) {
+          // Ported games are isolated on games.<site-host>. Keep their frames
+          // and network requests on that origin, away from the account app.
+          response.setHeader(
+            "Content-Security-Policy",
+            "default-src 'self' data: blob:; " +
+              "script-src 'self' 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval' blob:; " +
+              "style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; " +
+              "font-src 'self' data: blob:; media-src 'self' data: blob:; " +
+              "connect-src 'self' data: blob:; worker-src 'self' blob:; " +
+              "frame-src 'self' data: blob:; form-action 'self'; object-src 'none'; base-uri 'self'",
+          );
+        }
+      },
+    }),
+  );
+  gameAssetsOnly.use((_request, response) => {
+    response.status(404).type("text/plain").send("Game asset not found");
+  });
+
+  // The game hostname serves only static port files. This runs before device
+  // cookies, sessions, API routes, and the main app's SPA fallback.
+  app.use((request, response, next) => {
+    if (!request.hostname.toLowerCase().startsWith("games.")) return next();
+    return gameAssetsOnly(request, response, next);
+  });
+}
+
 app.use(cors({ origin: true, credentials: true }));
 // Global JSON body parser. We deliberately exclude /api/admin/import here
 // because that route installs its own parser with a much higher limit (a
@@ -53,12 +99,7 @@ app.use("/api", router);
 // Self-host mode: serve the built Vite frontend as a SPA from the same process.
 // Activated by SERVE_STATIC=1. The frontend build dir is expected at
 // <repo_root>/artifacts/photo-desktop/dist/public (produced by `pnpm run build`).
-if (process.env["SERVE_STATIC"] === "1") {
-  const __dirname = path.dirname(fileURLToPath(import.meta.url));
-  // When running the production bundle the cwd is the repo root; when running
-  // from dist/, __dirname is dist/ so we walk up two levels to the repo root.
-  const repoRoot = path.resolve(__dirname, "../../..");
-  const staticDir = path.resolve(repoRoot, "artifacts/photo-desktop/dist/public");
+if (isSelfHostedStatic) {
   app.use(express.static(staticDir));
   app.get("*splat", (_req, res) => {
     res.sendFile(path.join(staticDir, "index.html"));

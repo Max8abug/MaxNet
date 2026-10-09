@@ -20,6 +20,7 @@ import { Chess } from './Chess';
 import { Eaglercraft } from './Eaglercraft';
 import { NewClubPenguin } from './NewClubPenguin';
 import { TerrariaGame } from './TerrariaGame';
+import { PortedGame } from './PortedGame';
 import { DMs } from './DMs';
 import { UserPage } from './UserPage';
 import { RanksAdmin } from './RanksAdmin';
@@ -180,7 +181,9 @@ export function Window({
       : { width: w.width, height: w.height, transform: `translate3d(${w.x}px, ${w.y}px, 0)` };
 
   // Keep embedded game sessions and personal playlist playback alive while minimized.
-  const shouldPreserveState = w.type === 'eaglercraft' || w.type === 'newcp' || w.type === 'terraria' || w.type === 'personalplaylists';
+  const shouldPreserveState = [
+    'eaglercraft', 'newcp', 'terraria', 'gettingoverit', 'pvz', 'webfishing', 'undertale', 'personalplaylists',
+  ].includes(w.type);
   const windowStyle: React.CSSProperties = isMin && !shouldPreserveState
     ? { top: 0, left: 0, transform: `translate3d(${w.x}px, ${(boundsRef.current?.clientHeight || 600) - 64}px, 0)`, width: 160, zIndex: w.zIndex }
     : { ...maxStyle, zIndex: w.zIndex, top: 0, left: 0, willChange: 'transform', touchAction: mobile ? 'auto' : 'none', visibility: isMin && shouldPreserveState ? 'hidden' : 'visible' };
@@ -342,6 +345,10 @@ export function Window({
         {w.type === 'eaglercraft' && !isEditing && <Eaglercraft />}
         {w.type === 'newcp' && !isEditing && <NewClubPenguin />}
         {w.type === 'terraria' && !isEditing && <TerrariaGame />}
+        {w.type === 'gettingoverit' && !isEditing && <PortedGame game="gettingoverit" />}
+        {w.type === 'pvz' && !isEditing && <PortedGame game="pvz" />}
+        {w.type === 'webfishing' && !isEditing && <PortedGame game="webfishing" />}
+        {w.type === 'undertale' && !isEditing && <PortedGame game="undertale" />}
         {w.type === 'dms' && !isEditing && <DMs initialPeer={w.dmPeer} />}
         {w.type === 'userpage' && !isEditing && <UserPage username={w.username || ''} />}
         {w.type === 'browser' && !isEditing && <UserBrowser page={page} />}

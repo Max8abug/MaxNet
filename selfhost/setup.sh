@@ -115,6 +115,9 @@ export NVM_DIR="$HOME/.nvm"
 
 pnpm install --frozen-lockfile 2>&1 | tail -5
 
+echo "  Installing selected self-hosted game ports (about 1 GB on first setup)..."
+python3 "$REPO_DIR/selfhost/install-game-assets.py"
+
 echo "  Building API server..."
 pnpm --filter @workspace/api-server run build 2>&1 | tail -5
 

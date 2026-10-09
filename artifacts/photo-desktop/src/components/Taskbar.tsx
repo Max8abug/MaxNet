@@ -313,6 +313,10 @@ export function Taskbar({ page }: { page: string }) {
     { label: "Play Eaglercraft", feature: 'eaglercraft', act: () => open({ type: 'eaglercraft', title: 'Eaglercraft', width: 900, height: 600 }) },
     { label: "Play New Club Penguin", feature: 'newcp', act: () => open({ type: 'newcp', title: 'New Club Penguin', width: 1000, height: 680 }) },
     { label: "Play Terraria", feature: 'terraria', act: () => open({ type: 'terraria', title: 'Terraria', width: 1100, height: 680 }) },
+    { label: "Play Getting Over It", feature: 'gettingoverit', act: () => open({ type: 'gettingoverit', title: 'Getting Over It', width: 1000, height: 700 }) },
+    { label: "Play Plants vs. Zombies", feature: 'pvz', act: () => open({ type: 'pvz', title: 'Plants vs. Zombies', width: 1000, height: 700 }) },
+    { label: "Play Web Fishing", feature: 'webfishing', act: () => open({ type: 'webfishing', title: 'Web Fishing', width: 1000, height: 700 }) },
+    { label: "Play Undertale", feature: 'undertale', act: () => open({ type: 'undertale', title: 'Undertale', width: 1000, height: 700 }) },
   ];
 
   const socialItems: StartMenuItem[] = [

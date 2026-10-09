@@ -38,6 +38,7 @@ elif [[ "$*" == "--filter @workspace/api-server run build" || "$*" == "--filter 
 else
   echo "Unexpected pnpm call: $*" >&2; exit 23
 fi`);
+    script("python3", 'echo games >> "$TEST_ROOT/events"');
     for (const name of ["stop", "start"]) {
       writeFileSync(join(root, "selfhost", `${name}.sh`), `#!/usr/bin/env bash\necho ${name} >> "$TEST_ROOT/events"\n`);
     }
@@ -80,7 +81,7 @@ test("frozen-lockfile preflight failure leaves services untouched", () => {
 test("successful update validates before stopping, installing, building and starting", () => {
   const result = runUpdate();
   assert.equal(result.status, 0, result.output);
-  assert.deepEqual(result.events, ["pull", "preflight", "stop", "install", "build", "build", "start"]);
+  assert.deepEqual(result.events, ["pull", "preflight", "games", "stop", "install", "build", "build", "start"]);
 });
 
 test("dirty worktree fails before pulling or stopping services", () => {

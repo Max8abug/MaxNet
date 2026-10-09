@@ -96,6 +96,13 @@ if ! pnpm install --frozen-lockfile --lockfile-only --ignore-scripts --offline 2
   exit 1
 fi
 
+# ── Game asset preflight: download before stopping the current site ──────────
+log "Preparing self-hosted game assets (about 1 GB on first install)..."
+if ! python3 "$REPO_DIR/selfhost/install-game-assets.py" 2>&1 | tee -a "$LOG_DIR/update.log"; then
+  log "ERROR: Game asset installation failed. Services have not been stopped."
+  exit 1
+fi
+
 # ── 4. Stop services ─────────────────────────────────────────
 log "Stopping services..."
 bash "$REPO_DIR/selfhost/stop.sh" 2>&1 | tee -a "$LOG_DIR/update.log"

@@ -445,6 +445,17 @@ The updater pulls a fast-forward update, validates dependencies, then stops,
 installs, builds and restarts the services. If code is already up to date but a
 previous build/install failed, answer **yes** when asked to force a rebuild.
 
+Setup and updates also fetch the four selected game-port folders (about 1.01 GB
+the first time) into an ignored Vite public directory. Only the pinned game
+folders are downloaded; the binaries are not added to Git and can be fetched
+again if removed. Downloads finish before the updater stops the running site.
+
+The game frames load from `games.<current-site-host>` on the same server port.
+For `localhost`, browsers resolve `games.localhost` automatically. For a public
+domain, add a DNS record for that hostname and route it to the same self-hosted
+app port, preserving the `Host` header. The game hostname serves only static
+game files and does not create login sessions or expose the site's API.
+
 Use the exact pnpm version in the root `package.json` `packageManager` field.
 Setup installs that version even if a different pnpm is already installed; the
 updater checks it and validates the frozen lockfile **before stopping services**.

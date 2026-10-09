@@ -7,11 +7,14 @@ export NVM_DIR="$HOME/.nvm"
 # shellcheck disable=SC1091
 [ -s "$NVM_DIR/nvm.sh" ] && source "$NVM_DIR/nvm.sh"
 
+cd "$REPO_DIR"
+echo "Preparing selected self-hosted game assets..."
+python3 "$REPO_DIR/selfhost/install-game-assets.py"
+
 echo "Stopping services..."
 "$REPO_DIR/selfhost/stop.sh"
 
 echo "Installing dependencies..."
-cd "$REPO_DIR"
 pnpm install --frozen-lockfile
 
 echo "Building API server..."

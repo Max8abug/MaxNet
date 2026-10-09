@@ -51,3 +51,4 @@ Thumbs.db
 /selfhost/.env
 /selfhost/logs/
 /selfhost/run/
+/artifacts/photo-desktop/public/ported-games/

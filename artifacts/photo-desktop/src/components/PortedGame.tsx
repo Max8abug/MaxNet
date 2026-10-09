@@ -34,15 +34,24 @@ type AssetManifest = {
   games?: Record<string, { installed?: boolean }>;
 };
 
+function getGameOrigin() {
+  const hostname = window.location.hostname;
+  const gameHostname = hostname.startsWith("games.") ? hostname : `games.${hostname}`;
+  const origin = new URL(window.location.origin);
+  origin.hostname = gameHostname;
+  return origin.origin;
+}
+
 export function PortedGame({ game }: { game: PortedGameId }) {
   const [assetsReady, setAssetsReady] = useState(false);
   const [checkingAssets, setCheckingAssets] = useState(true);
   const port = PORTS[game];
-  const gameUrl = `/ported-games/${port.assetId}/index.html`;
+  const gameOrigin = getGameOrigin();
+  const gameUrl = `${gameOrigin}/ported-games/${port.assetId}/index.html`;
 
   useEffect(() => {
     const controller = new AbortController();
-    fetch("/ported-games/asset-manifest.json", {
+    fetch(`${gameOrigin}/ported-games/asset-manifest.json`, {
       cache: "no-store",
       signal: controller.signal,
     })
@@ -53,11 +62,15 @@ export function PortedGame({ game }: { game: PortedGameId }) {
       .then(manifest => {
         setAssetsReady(manifest.version === 1 && manifest.games?.[port.assetId]?.installed === true);
       })
-      .catch(() => setAssetsReady(false))
-      .finally(() => setCheckingAssets(false));
+      .catch(() => {
+        if (!controller.signal.aborted) setAssetsReady(false);
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setCheckingAssets(false);
+      });
 
     return () => controller.abort();
-  }, [port.assetId]);
+  }, [gameOrigin, port.assetId]);
 
   return (
     <div className="flex h-full min-h-0 flex-col bg-[#101b18] text-[#e9f4ec]">
@@ -96,6 +109,7 @@ export function PortedGame({ game }: { game: PortedGameId }) {
           src={gameUrl}
           title={`${port.title} game`}
           allow="autoplay; fullscreen; gamepad; pointer-lock"
+          sandbox="allow-forms allow-modals allow-pointer-lock allow-downloads allow-scripts allow-same-origin"
           allowFullScreen
           referrerPolicy="strict-origin-when-cross-origin"
         />
@@ -103,9 +117,13 @@ export function PortedGame({ game }: { game: PortedGameId }) {
         <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-3 p-6 text-center">
           <p className="text-base font-semibold">{port.title} files are not installed here.</p>
           <p className="max-w-lg text-xs leading-relaxed text-[#c2d2c8]">
-            On the self-hosted server, run <code>bash selfhost/update.sh</code>. The updater
-            downloads only this game’s pinned repository folder and keeps the files outside
-            Git history.
+            The self-host updater downloads only this game’s pinned repository folder. It
+            serves the game from <code>{`games.${window.location.hostname}`}</code> so game
+            code cannot access the main site’s login session.
+          </p>
+          <p className="max-w-lg text-xs leading-relaxed text-[#c2d2c8]">
+            If this is a public site, route that hostname to the same self-hosted server and
+            port. On the server, run <code>bash selfhost/update.sh</code> to install the files.
           </p>
           <a
             className="win98-button inline-flex items-center gap-1 px-2 py-1 text-xs"
