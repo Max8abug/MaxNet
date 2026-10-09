@@ -1,14 +1,18 @@
 #!/usr/bin/env python3
-"""Install the selected static game ports into Vite's ignored public asset folder."""
+"""Install the selected static game ports into the self-hosted asset directory."""
 
 from __future__ import annotations
 
 import argparse
 import concurrent.futures
+import hashlib
 import json
 import os
+import re
 import shutil
+import subprocess
 import sys
+import tempfile
 import time
 import urllib.error
 import urllib.parse
@@ -31,88 +35,144 @@ GAMES = (
         "repo": "genizy/web-port",
         "commit": "a8bea5fd11f88e5a9192857f434e299c40efe7e6",
         "path": "getting-over-it",
+        "remote_base_href": "https://cdn.jsdelivr.net/gh/genizy/web-port@main/getting-over-it/",
+        "expected_files": 49,
+        "expected_bytes": 692_185_540,
     },
     {
         "id": "web-fishing",
         "repo": "genizy/web-port",
         "commit": "a8bea5fd11f88e5a9192857f434e299c40efe7e6",
         "path": "web-fishing",
+        "remote_base_href": "https://cdn.jsdelivr.net/gh/genizy/web-port@main/web-fishing/",
+        "expected_files": 11,
+        "expected_bytes": 64_277_360,
     },
     {
         "id": "pvz",
         "repo": "web-ports/pvz",
         "commit": "e3b5ddce5a318df69698d906a6d78313e327f965",
         "path": "",
+        "remote_base_href": "https://cdn.jsdelivr.net/gh/web-ports/pvz@latest/",
+        "expected_files": 11,
+        "expected_bytes": 51_397_666,
     },
     {
         "id": "undertale",
         "repo": "bandit968thegamer-ops/undertale",
         "commit": "5a0e1d886142b69eeb21ec6642469757c5fcb307",
         "path": "undertale",
+        "remote_base_href": "https://cdn.jsdelivr.net/gh/genizy/web-port@master/undertale/",
+        "expected_files": 230,
+        "expected_bytes": 202_508_178,
     },
 )
 
 
-def request(url: str, *, accept: str = "*/*", timeout: int = 45):
-    return urllib.request.Request(
-        url,
-        headers={"User-Agent": USER_AGENT, "Accept": accept},
+def run_git(repo_dir: Path, *arguments: str) -> str:
+    environment = os.environ.copy()
+    environment["GIT_TERMINAL_PROMPT"] = "0"
+    result = subprocess.run(
+        ["git", *arguments],
+        cwd=repo_dir,
+        env=environment,
+        check=False,
+        capture_output=True,
+        text=True,
     )
-
-
-def get_json(url: str) -> dict:
-    with urllib.request.urlopen(
-        request(url, accept="application/vnd.github+json"), timeout=45
-    ) as response:
-        return json.load(response)
+    if result.returncode != 0:
+        detail = result.stderr.strip() or result.stdout.strip()
+        raise RuntimeError(f"git {' '.join(arguments)} failed: {detail}")
+    return result.stdout
 
 
 def source_tree(game: dict) -> list[dict]:
-    api_root = f"https://api.github.com/repos/{game['repo']}"
-    if game["path"]:
-        root_entries = get_json(
-            f"{api_root}/contents?ref={game['commit']}"
+    with tempfile.TemporaryDirectory(prefix="portfolio98-game-tree-") as temporary:
+        repo_dir = Path(temporary)
+        run_git(repo_dir, "init", "--quiet")
+        run_git(
+            repo_dir,
+            "remote",
+            "add",
+            "origin",
+            f"https://github.com/{game['repo']}.git",
         )
-        folder = next(
-            (entry for entry in root_entries if entry.get("name") == game["path"]),
-            None,
+        run_git(
+            repo_dir,
+            "-c",
+            "protocol.version=2",
+            "fetch",
+            "--quiet",
+            "--depth=1",
+            "--filter=blob:none",
+            "origin",
+            game["commit"],
         )
-        if not folder or folder.get("type") != "dir":
+        fetched_commit = run_git(repo_dir, "rev-parse", "FETCH_HEAD").strip()
+        if fetched_commit != game["commit"]:
             raise RuntimeError(
-                f"Could not find requested source folder {game['repo']}/{game['path']}"
+                f"Unexpected source revision for {game['id']}: {fetched_commit}"
             )
-        tree_sha = folder["sha"]
-    else:
-        commit = get_json(f"{api_root}/git/commits/{game['commit']}")
-        tree_sha = commit["tree"]["sha"]
 
-    tree = get_json(f"{api_root}/git/trees/{tree_sha}?recursive=1")
-    if tree.get("truncated"):
-        raise RuntimeError(
-            f"GitHub returned an incomplete file listing for {game['id']}"
-        )
+        arguments = ["ls-tree", "-r", "FETCH_HEAD"]
+        if game["path"]:
+            arguments.extend(["--", game["path"]])
+        output = run_git(repo_dir, *arguments)
 
     files = []
-    for entry in tree.get("tree", []):
-        if entry.get("type") != "blob":
-            continue
-        relative_path = PurePosixPath(entry["path"])
+    prefix = f"{game['path']}/" if game["path"] else ""
+    for line in output.splitlines():
+        metadata, source_path = line.split("\t", 1)
+        mode, object_type, object_id = metadata.split()
+        if object_type != "blob":
+            raise RuntimeError(f"Unsupported source object in {game['id']}: {source_path}")
+        if mode == "120000":
+            raise RuntimeError(f"Refusing source symlink in {game['id']}: {source_path}")
+        if prefix:
+            if not source_path.startswith(prefix):
+                raise RuntimeError(f"Unexpected source path in {game['id']}: {source_path}")
+            source_path = source_path[len(prefix):]
+        relative_path = PurePosixPath(source_path)
         if relative_path.is_absolute() or ".." in relative_path.parts:
-            raise RuntimeError(f"Unsafe source path in {game['id']}: {entry['path']}")
-        if entry.get("mode") == "120000":
-            raise RuntimeError(
-                f"Refusing to install symlink from {game['id']}: {entry['path']}"
-            )
-        files.append(
-            {
-                "path": relative_path.as_posix(),
-                "size": int(entry.get("size", 0)),
-            }
-        )
+            raise RuntimeError(f"Unsafe source path in {game['id']}: {source_path}")
+        files.append({"path": relative_path.as_posix(), "oid": object_id})
 
+    if len(files) != game["expected_files"]:
+        raise RuntimeError(
+            f"Unexpected file count for {game['id']}: "
+            f"expected {game['expected_files']}, found {len(files)}"
+        )
     if not files:
         raise RuntimeError(f"No files were found for {game['id']}")
     return files
+
+
+def expected_local_bytes(game: dict) -> int:
+    return (
+        game["expected_bytes"]
+        - len(game["remote_base_href"].encode("utf-8"))
+        + len("./".encode("utf-8"))
+    )
+
+
+def localize_base_href(game: dict, index_path: Path) -> None:
+    content = index_path.read_bytes()
+    pattern = re.compile(
+        rb'(<base\b[^>]*\bhref\s*=\s*)(["\'])'
+        + re.escape(game["remote_base_href"].encode("ascii"))
+        + rb'\2',
+        re.IGNORECASE,
+    )
+    localized, count = pattern.subn(
+        lambda match: match.group(1) + match.group(2) + b"./" + match.group(2),
+        content,
+        count=1,
+    )
+    if count != 1:
+        raise RuntimeError(
+            f"Expected the pinned CDN base URL in {game['id']}/index.html"
+        )
+    index_path.write_bytes(localized)
 
 
 def raw_file_url(game: dict, relative_path: str) -> str:
@@ -126,23 +186,43 @@ def raw_file_url(game: dict, relative_path: str) -> str:
     )
 
 
-def download_file(url: str, destination: Path, expected_size: int) -> None:
+def download_file(url: str, destination: Path, expected_oid: str) -> None:
     partial = destination.with_name(destination.name + ".part")
     last_error: Exception | None = None
 
     for attempt in range(4):
         try:
             downloaded = 0
-            with urllib.request.urlopen(request(url), timeout=120) as response:
+            with urllib.request.urlopen(
+                urllib.request.Request(url, headers={"User-Agent": USER_AGENT}),
+                timeout=120,
+            ) as response:
+                size_header = response.headers.get("Content-Length")
+                expected_size = int(size_header) if size_header and size_header.isdigit() else None
+                digest = hashlib.sha1()
+                if expected_size is not None:
+                    digest.update(f"blob {expected_size}\0".encode("ascii"))
                 with partial.open("wb") as output:
                     while chunk := response.read(1024 * 1024):
                         output.write(chunk)
                         downloaded += len(chunk)
-                        if downloaded > expected_size:
+                        if expected_size is not None:
+                            digest.update(chunk)
+                        if expected_size is not None and downloaded > expected_size:
                             raise RuntimeError(f"Unexpectedly large download: {url}")
-            if downloaded != expected_size:
+                if expected_size is not None and downloaded != expected_size:
+                    raise RuntimeError(
+                        f"Size mismatch for {url}: expected {expected_size}, got {downloaded}"
+                    )
+            if expected_size is None:
+                actual_size = partial.stat().st_size
+                digest.update(f"blob {actual_size}\0".encode("ascii"))
+                with partial.open("rb") as source:
+                    while chunk := source.read(1024 * 1024):
+                        digest.update(chunk)
+            if digest.hexdigest() != expected_oid:
                 raise RuntimeError(
-                    f"Size mismatch for {url}: expected {expected_size}, got {downloaded}"
+                    f"Git content verification failed for {url}"
                 )
             os.replace(partial, destination)
             return
@@ -166,17 +246,19 @@ def game_is_installed(game: dict, files: list[dict], previous: dict) -> bool:
     recorded = previous.get("games", {}).get(game["id"], {})
     if (
         recorded.get("commit") != game["commit"]
-        or recorded.get("files") != len(files)
-        or recorded.get("bytes") != sum(item["size"] for item in files)
+        or recorded.get("files") != game["expected_files"]
+        or recorded.get("bytes") != expected_local_bytes(game)
     ):
         return False
 
     game_root = ASSET_ROOT / game["id"]
+    actual_bytes = 0
     for item in files:
         target = game_root.joinpath(*PurePosixPath(item["path"]).parts)
-        if not target.is_file() or target.stat().st_size != item["size"]:
+        if not target.is_file() or target.is_symlink():
             return False
-    return True
+        actual_bytes += target.stat().st_size
+    return len(files) == game["expected_files"] and actual_bytes == expected_local_bytes(game)
 
 
 def install_game(game: dict, files: list[dict]) -> None:
@@ -197,17 +279,28 @@ def install_game(game: dict, files: list[dict]) -> None:
             download_file(
                 raw_file_url(game, item["path"]),
                 destination,
-                item["size"],
+                item["oid"],
             )
 
         print(
             f"Downloading {game['id']}: {len(files)} files, "
-            f"{sum(item['size'] for item in files):,} bytes"
+            f"{game['expected_bytes']:,} bytes"
         )
         with concurrent.futures.ThreadPoolExecutor(max_workers=MAX_WORKERS) as pool:
             futures = [pool.submit(install_one, item) for item in files]
             for future in concurrent.futures.as_completed(futures):
                 future.result()
+
+        localize_base_href(game, staging / "index.html")
+        installed_files = [path for path in staging.rglob("*") if path.is_file()]
+        installed_bytes = sum(path.stat().st_size for path in installed_files)
+        if (
+            len(installed_files) != game["expected_files"]
+            or installed_bytes != expected_local_bytes(game)
+        ):
+            raise RuntimeError(
+                f"Installed files for {game['id']} did not match the pinned manifest"
+            )
 
         if target.exists():
             os.replace(target, backup)
@@ -231,8 +324,8 @@ def write_manifest(games: list[dict]) -> None:
             game["id"]: {
                 "installed": True,
                 "commit": game["commit"],
-                "files": len(game["_files"]),
-                "bytes": sum(item["size"] for item in game["_files"]),
+                "files": game["expected_files"],
+                "bytes": expected_local_bytes(game),
             }
             for game in games
         },
@@ -263,7 +356,7 @@ def main() -> int:
         for game in GAMES:
             files = source_tree(game)
             game["_files"] = files
-            game_bytes = sum(item["size"] for item in files)
+            game_bytes = game["expected_bytes"]
             total_bytes += game_bytes
             prepared.append(game)
             print(
