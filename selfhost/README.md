@@ -1,7 +1,8 @@
 # Portfolio98 — Self-Host on Linux Mint / Ubuntu / Debian
 
 Everything lives in one Node.js process (API + frontend).  
-PostgreSQL stores all data.
+PostgreSQL stores records and file metadata. Wiki and mini-site uploads live
+on the server's disk.
 
 ---
 
@@ -58,6 +59,51 @@ Run `setup.sh` once and it writes this file automatically with a generated passw
 ---
 
 ## Updating
+
+### Uploaded files
+
+Self-hosted mode (`SERVE_STATIC=1`) automatically uses local file storage.
+Existing installations do not need to re-run setup. The default upload directory
+is `$HOME/.local/share/photo-desktop/uploads`, owned by the user running Node.
+It is outside the Git checkout and is not removed by rebuilds or updates.
+
+To choose another persistent directory, add these settings to `selfhost/.env`:
+
+```bash
+STORAGE_BACKEND=local
+UPLOAD_STORAGE_DIR=/absolute/path/to/uploads
+```
+
+The directory must be writable by the server user and should not be writable by
+other users. Do not expose it as an nginx static directory: the API enforces
+publish/offline status and rank permissions when serving files. Keep the same
+directory when restarting or changing launch methods.
+
+**Back up both PostgreSQL and the upload directory.** The in-app database export
+does not include the uploaded file bytes. If moving servers or changing this
+directory, copy the files with their folder structure intact before restarting.
+
+Replit previews use their App Storage bucket instead. Creating a bucket in
+Replit does not provision storage on your own server or transfer files there.
+Development and self-hosted production uploads remain separate.
+
+For developers, the opt-in storage regression checks create unique disposable
+users, ranks, pages, and files in the configured database and both storage
+backends, then remove them:
+
+```bash
+cd artifacts/api-server
+node tests/run-storage-tests.mjs --disposable-data
+```
+
+Run these only with a development database and a configured Replit bucket,
+never against your live self-hosted database.
+
+When using nginx, add `client_max_body_size 10m;` inside the `server` block to
+permit the app's 6 MB per-file uploads (JSON base64 encoding increases the request
+size). The default nginx limit is too small for these uploads.
+
+### Pulling updates
 
 ```bash
 git pull

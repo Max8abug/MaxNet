@@ -224,7 +224,13 @@ router.put("/custom-sites/:username/file", requireAuth, async (req, res) => {
     return;
   }
   const encoded = req.body?.dataBase64;
-  if (typeof encoded !== "string" || !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(encoded)) {
+  // Bound before decoding, and avoid repeated regex capture groups: on
+  // multi-megabyte uploads V8 can overflow its regex backtracking stack.
+  if (typeof encoded === "string" && encoded.length > Math.ceil(MAX_FILE_BYTES / 3) * 4) {
+    res.status(413).json({ error: "Each file must be between 1 byte and 6 MB." });
+    return;
+  }
+  if (typeof encoded !== "string" || encoded.length % 4 !== 0 || !/^[A-Za-z0-9+/]*={0,2}$/.test(encoded)) {
     res.status(400).json({ error: "A base64 file body is required." });
     return;
   }
@@ -235,7 +241,11 @@ router.put("/custom-sites/:username/file", requireAuth, async (req, res) => {
   }
 
   await db.insert(hostedSitesTable).values({ username, active: false, entryPath: "index.html" }).onConflictDoNothing();
-  const objectKey = `user-sites/${encodeURIComponent(username)}/${randomUUID()}`;
+  // URL encoding leaves punctuation (and dot-only names) unchanged. Use a
+  // path-safe, reversible namespace for every username. Existing file keys
+  // remain valid because reads/deletes use the key saved in the database.
+  const ownerKey = Buffer.from(username, "utf8").toString("base64url");
+  const objectKey = `user-sites/${ownerKey}/${randomUUID()}`;
   let uploaded = false;
   let oldKey: string | null = null;
   try {
@@ -280,7 +290,7 @@ router.put("/custom-sites/:username/file", requireAuth, async (req, res) => {
       return;
     }
     if (error instanceof SiteStorageError) {
-      res.status(503).json({ error: "App Storage is unavailable. Set up an App Storage bucket and retry." });
+      res.status(503).json({ error: "File storage is unavailable. Check the server's upload directory or App Storage setup and retry." });
       return;
     }
     throw error;
@@ -310,7 +320,7 @@ router.delete("/custom-sites/:username/file", requireAuth, async (req, res) => {
   }
   const deleted = await storage.delete(file.objectKey, { ignoreNotFound: true });
   if (!deleted.ok) {
-    res.status(503).json({ error: "App Storage is unavailable; the file was not removed." });
+    res.status(503).json({ error: "File storage is unavailable; the file was not removed." });
     return;
   }
   await db.transaction(async (tx) => {
@@ -336,7 +346,7 @@ router.delete("/custom-sites/:username", requireAuth, async (req, res) => {
   for (const file of files) {
     const deleted = await storage.delete(file.objectKey, { ignoreNotFound: true });
     if (!deleted.ok) {
-      res.status(503).json({ error: "App Storage is unavailable; the site was not deleted." });
+      res.status(503).json({ error: "File storage is unavailable; the site was not deleted." });
       return;
     }
   }
@@ -367,6 +377,10 @@ router.get("/custom-sites/:username/*sitePath", async (req, res) => {
     return;
   }
   const permissions = await getUserPermissions(username);
+  if (!permissions.includes("createHtmlPage")) {
+    res.status(404).end();
+    return;
+  }
   const scriptsAllowed = permissions.includes("createHtmlPage") && permissions.includes("runHtmlPageJs");
   const isHtml = file.contentType.startsWith("text/html");
   res.setHeader("Content-Type", file.contentType);

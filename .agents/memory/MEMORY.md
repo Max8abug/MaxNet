@@ -4,3 +4,4 @@
 - [Shifted hover submenus](shifted-hover-submenus.md) — upward-repositioned cascading menus must guard sibling hover transitions so item activation is not interrupted.
 - [Native and hosted-site scope](native-hosted-site-scope.md) — iOS first; mini-sites require rank permissions and rank-adjustable quotas, with JavaScript off by default.
 - [iOS release flow](ios-release-flow.md) — use Expo Launch, not manual EAS commands; require TestFlight and physical-iPhone evidence before release completion.
+- [Self-hosted uploads](self-hosted-uploads.md) — production runs on the owner's server; Replit storage checks do not establish production readiness.

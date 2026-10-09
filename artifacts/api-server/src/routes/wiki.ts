@@ -40,7 +40,7 @@ function cleanFileName(value: unknown): string {
 }
 
 function parseMediaDataUrl(value: unknown): { contentType: string; bytes: Buffer } | null {
-  if (typeof value !== "string") return null;
+  if (typeof value !== "string" || value.length > Math.ceil(MAX_WIKI_MEDIA_BYTES / 3) * 4 + 100) return null;
   const match = /^data:([a-z0-9/+.-]+);base64,([A-Za-z0-9+/]*={0,2})$/i.exec(value);
   if (!match || !MEDIA_TYPES.has(match[1].toLowerCase())) return null;
   const bytes = Buffer.from(match[2], "base64");
@@ -175,7 +175,7 @@ router.post("/wiki/pages/:slug/assets", requireAuth, requireWikiEditor, async (r
     const result = await storage.uploadFromBytes(objectKey, media.bytes, { compress: false });
     if (!result.ok) {
       logger.error({ error: result.error }, "Wiki media upload failed");
-      res.status(503).json({ error: "App Storage is unavailable. Set up an App Storage bucket and retry." });
+      res.status(503).json({ error: "File storage is unavailable. Check the server's upload directory or App Storage setup and retry." });
       return;
     }
     const [asset] = await db.insert(wikiAssetsTable).values({
@@ -188,8 +188,9 @@ router.post("/wiki/pages/:slug/assets", requireAuth, requireWikiEditor, async (r
     }).returning();
     res.status(201).json({ ...asset, url: `/api/wiki/assets/${asset.id}` });
   } catch (error) {
+    await storage.delete(objectKey, { ignoreNotFound: true });
     logger.error({ err: error }, "Wiki media upload failed");
-    res.status(503).json({ error: "App Storage is unavailable. Set up an App Storage bucket and retry." });
+    res.status(503).json({ error: "File storage is unavailable. Check the server's upload directory or App Storage setup and retry." });
   }
 });
 

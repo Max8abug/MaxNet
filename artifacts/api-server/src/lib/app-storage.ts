@@ -1,5 +1,12 @@
 import { Client, type Result, type RequestError } from "@replit/object-storage";
 import { PassThrough } from "node:stream";
+import { localStorage } from "./local-storage";
+
+function backend(): "local" | "replit" {
+  const value = process.env.STORAGE_BACKEND || (process.env.SERVE_STATIC === "1" ? "local" : "replit");
+  if (value !== "local" && value !== "replit") throw new Error("STORAGE_BACKEND must be local or replit.");
+  return value;
+}
 
 let ready: Promise<Client> | undefined;
 
@@ -33,6 +40,7 @@ function unavailable(error: unknown): Result<null, RequestError> {
 export const appStorage = {
   async uploadFromBytes(...args: Parameters<Client["uploadFromBytes"]>) {
     try {
+      if (backend() === "local") return await localStorage.uploadFromBytes(...args);
       return await (await getClient()).uploadFromBytes(...args);
     } catch (error) {
       return unavailable(error);
@@ -40,6 +48,7 @@ export const appStorage = {
   },
   async delete(...args: Parameters<Client["delete"]>) {
     try {
+      if (backend() === "local") return await localStorage.delete(...args);
       return await (await getClient()).delete(...args);
     } catch (error) {
       return unavailable(error);
@@ -47,7 +56,7 @@ export const appStorage = {
   },
   downloadAsStream(objectKey: string) {
     const output = new PassThrough();
-    void getClient().then((client) => {
+    void Promise.resolve().then(async () => backend() === "local" ? localStorage : await getClient()).then((client) => {
       const source = client.downloadAsStream(objectKey);
       source.on("error", (error) => output.destroy(error));
       output.on("close", () => source.destroy());

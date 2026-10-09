@@ -67,3 +67,6 @@ externalPort = 80
 
 [userenv.production]
 EXPO_PUBLIC_API_BASE_URL = "https://moonbat.ddns.net"
+
+[objectStorage]
+defaultBucketID = "replit-objstore-9a180052-1f95-49e5-b191-8fe3dbca1f34"

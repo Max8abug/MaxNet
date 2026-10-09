@@ -86,6 +86,7 @@ DATABASE_URL=postgresql://${DB_USER}:${DB_PASS}@localhost:5432/${DB_NAME}
 SESSION_SECRET=${SESSION_SECRET}
 PORT=3000
 SERVE_STATIC=1
+STORAGE_BACKEND=local
 NODE_ENV=production
 # Set to "true" ONLY when serving over HTTPS (nginx + Certbot).
 # Leave false for plain HTTP — a Secure cookie over HTTP silently breaks login.

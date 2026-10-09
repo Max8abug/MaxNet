@@ -123,6 +123,7 @@ export function WikiBrowser() {
     setStatus(null);
     setError(null);
     const selected = Array.from(files);
+    let uploaded = 0;
     for (const file of selected) {
       if (file.size > 6 * 1024 * 1024) {
         setError(`${file.name} is larger than the 6 MB per-file limit.`);
@@ -140,6 +141,7 @@ export function WikiBrowser() {
           reader.readAsDataURL(file);
         });
         await uploadWikiAsset(page.slug, file.name, dataUrl);
+        uploaded++;
       } catch (uploadError) {
         setError(uploadError instanceof Error ? uploadError.message : `Could not upload ${file.name}.`);
         break;
@@ -149,9 +151,9 @@ export function WikiBrowser() {
     try {
       const result = await fetchWikiPage(page.slug);
       setAssets(result.assets);
-      setStatus("Media upload complete.");
-    } catch {
-      // Keep the upload result visible through the existing asset list if refresh fails.
+      if (uploaded) setStatus(`${uploaded} media file${uploaded === 1 ? "" : "s"} uploaded.`);
+    } catch (refreshError) {
+      setError(refreshError instanceof Error ? refreshError.message : "Could not refresh the media list. Reopen the page to see uploaded files.");
     }
   }
 
