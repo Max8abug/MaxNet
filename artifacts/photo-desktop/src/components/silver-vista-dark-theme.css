@@ -1,0 +1,249 @@
+/*
+ * Silver picture frame (cool counterpart to Gold) and Vista Dark (dark Aero).
+ * Geometry mirrors the gold/vista families; every rule excludes Theme Lab.
+ * No taskbar backdrop-filter: it would anchor fixed dialogs to the taskbar.
+ */
+:is(html, body)[data-app-theme="silver"] {
+  --vg-page: #3a4656; --vg-page-deep: #1c2431; --vg-ink: #1c2633; --vg-muted-ink: #495769;
+  --vg-paper: #f3f6f9; --vg-surface: #dde4ec; --vg-border: #8795a6; --vg-accent: #243b5e;
+  --vg-navy: #1d2f4d; --vg-steel: #c9d2dd; --vg-focus: #1d4f91;
+  --vg-font: "Palatino Linotype", Palatino, Georgia, serif;
+  color-scheme: light; color: var(--vg-ink); font-family: var(--vg-font);
+}
+:is(html, body)[data-app-theme="vista-dark"] {
+  --vg-page: #16263a; --vg-page-deep: #0a121d; --vg-ink: #e4edf6; --vg-muted-ink: #a3b6c9;
+  --vg-paper: #172232; --vg-surface: #1f2f43; --vg-border: #4c6781; --vg-accent: #5aa6d6;
+  --vg-focus: #f4cf66;
+  --vg-font: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+  color-scheme: dark; color: var(--vg-ink); font-family: var(--vg-font);
+}
+:is(html, body)[data-app-theme="silver"] body,
+:is(html, body)[data-app-theme="vista-dark"] body { color: var(--vg-ink); font-family: var(--vg-font); }
+
+/* Backdrops */
+:is(html, body)[data-app-theme="silver"] .desktop-surface:not(:where(.theme-lab, .theme-lab *)),
+:is(html, body)[data-app-theme="silver"] .mobile-shell:not(:where(.theme-lab, .theme-lab *)),
+:is(html, body)[data-app-theme="vista-dark"] .desktop-surface:not(:where(.theme-lab, .theme-lab *)),
+:is(html, body)[data-app-theme="vista-dark"] .mobile-shell:not(:where(.theme-lab, .theme-lab *)) {
+  background-color: var(--vg-page-deep) !important; font-family: var(--vg-font);
+}
+:is(html, body)[data-app-theme="silver"] .desktop-surface:not(:where(.theme-lab, .theme-lab *)),
+:is(html, body)[data-app-theme="silver"] .mobile-shell:not(:where(.theme-lab, .theme-lab *)) { color: #e9eff6; }
+:is(html, body)[data-app-theme="vista-dark"] .desktop-surface:not(:where(.theme-lab, .theme-lab *)),
+:is(html, body)[data-app-theme="vista-dark"] .mobile-shell:not(:where(.theme-lab, .theme-lab *)) { color: #eaf3fb; }
+:is(html, body)[data-app-theme="silver"] .desktop-surface:not([style*="background-image"]):not(:where(.theme-lab, .theme-lab *)),
+:is(html, body)[data-app-theme="silver"] .mobile-shell:not([style*="background-image"]):not(:where(.theme-lab, .theme-lab *)) {
+  background-image:
+    radial-gradient(ellipse at 50% 0%, rgba(190, 205, 224, .22), transparent 54%),
+    repeating-linear-gradient(90deg, rgba(255,255,255,.025) 0 1px, transparent 1px 6px),
+    linear-gradient(145deg, #4a586b 0%, #2f3a4a 56%, #1a212d 100%) !important;
+}
+:is(html, body)[data-app-theme="vista-dark"] .desktop-surface:not([style*="background-image"]):not(:where(.theme-lab, .theme-lab *)),
+:is(html, body)[data-app-theme="vista-dark"] .mobile-shell:not([style*="background-image"]):not(:where(.theme-lab, .theme-lab *)) {
+  background-image:
+    radial-gradient(ellipse at 19% 17%, rgba(60, 150, 170, .3), transparent 38%),
+    radial-gradient(ellipse at 83% 75%, rgba(40, 70, 140, .38), transparent 44%),
+    linear-gradient(145deg, #12303f 0%, #0d2036 52%, #070f1b 100%) !important;
+}
+
+/* Window geometry */
+:is(html, body)[data-app-theme="silver"] .win98-window:not(:where(.theme-lab, .theme-lab *)) {
+  overflow: hidden; padding: 25px; border: 0; border-radius: 3px;
+  background: linear-gradient(135deg, #fbfdff 0%, #aab4c1 18%, #5d6876 34%, #e4eaf1 49%, #8590a0 68%, #f4f7fb 86%, #6b7686 100%);
+  box-shadow:
+    inset 0 0 0 2px #2a3340, inset 0 0 0 5px #eef3f8, inset 0 0 0 9px #7b8797, inset 0 0 0 12px #3b4552,
+    inset 3px 3px 6px 12px rgba(255,255,255,.3), inset -4px -4px 8px 12px rgba(0,0,0,.33),
+    0 8px 18px rgba(0,0,0,.55);
+  color: var(--vg-ink); font-family: var(--vg-font);
+}
+:is(html, body)[data-app-theme="silver"] .win98-window:not(:where(.theme-lab, .theme-lab *))::before {
+  content: ""; position: absolute; z-index: 2; inset: 13px; pointer-events: none;
+  border: 2px solid #2a3340;
+  box-shadow: 0 0 0 1px #eef3f8, inset 0 0 0 1px #eef3f8, inset 3px 3px 5px rgba(0,0,0,.4);
+}
+:is(html, body)[data-app-theme="vista-dark"] .win98-window:not(:where(.theme-lab, .theme-lab *)) {
+  overflow: hidden; padding: 7px; border: 1px solid rgba(150, 195, 230, .55); border-radius: 8px;
+  background: rgba(22, 38, 58, .94);
+  box-shadow: 0 0 0 1px rgba(0, 6, 14, .85), 0 7px 18px rgba(0, 4, 12, .6), inset 0 1px rgba(190, 225, 255, .35);
+  color: var(--vg-ink); font-family: var(--vg-font);
+}
+:is(html, body)[data-app-theme="vista-dark"] .win98-window:not(:where(.theme-lab, .theme-lab *))::before {
+  content: ""; position: absolute; z-index: 0; inset: 0; pointer-events: none;
+  background: linear-gradient(115deg, rgba(150,200,240,.14) 0 23%, transparent 23% 48%, rgba(150,200,240,.05) 48% 62%, transparent 62%);
+}
+:is(html, body)[data-app-theme="silver"] .win98-window:not(:where(.theme-lab, .theme-lab *)) > :not([class~="absolute"]):not([class~="fixed"]):not([class~="sticky"]):not([style*="position: absolute"]),
+:is(html, body)[data-app-theme="vista-dark"] .win98-window:not(:where(.theme-lab, .theme-lab *)) > :not(.win98-titlebar):not([class~="absolute"]):not([class~="fixed"]):not([class~="sticky"]):not([style*="position: absolute"]) {
+  position: relative; z-index: 1;
+}
+:is(html, body)[data-app-theme="silver"] .win98-window:not(:where(.theme-lab, .theme-lab *, .absolute, .fixed, .sticky, [style*="position:"])),
+:is(html, body)[data-app-theme="vista-dark"] .win98-window:not(:where(.theme-lab, .theme-lab *, .absolute, .fixed, .sticky, [style*="position:"])) {
+  position: relative;
+}
+
+/* Titlebars */
+:is(html, body)[data-app-theme="silver"] .win98-titlebar:not(:where(.theme-lab, .theme-lab *)) {
+  min-height: 31px; margin: 0; padding: 5px 8px; border: 0; border-bottom: 2px solid #d5dde7;
+  background: linear-gradient(180deg, #2f4668, #1d2f4d 55%, #15233b);
+  color: #eaf0f8; font-family: var(--vg-font); font-style: italic; font-weight: 700;
+  letter-spacing: .035em; text-shadow: 0 1px rgba(0,0,0,.5);
+}
+:is(html, body)[data-app-theme="silver"] .win98-titlebar.inactive:not(:where(.theme-lab, .theme-lab *)) {
+  background: linear-gradient(180deg, #6b7686, #535e6e); color: #e6ebf2;
+}
+:is(html, body)[data-app-theme="vista-dark"] .win98-titlebar:not(:where(.theme-lab, .theme-lab *)) {
+  position: relative; z-index: 1; min-height: 31px; margin: -7px -7px 0; padding: 5px 7px; border: 0;
+  border-radius: 7px 7px 0 0;
+  background: linear-gradient(180deg, rgba(70,110,150,.92), rgba(30,60,92,.94) 48%, rgba(14,32,54,.96));
+  color: #eef6fd; font-family: var(--vg-font); font-weight: 650; text-shadow: 0 1px 3px rgba(0,0,0,.85);
+}
+:is(html, body)[data-app-theme="vista-dark"] .win98-titlebar.inactive:not(:where(.theme-lab, .theme-lab *)) {
+  background: linear-gradient(180deg, rgba(60,76,94,.92), rgba(32,43,57,.94)); color: #b9c6d3;
+}
+
+/* Buttons */
+:is(html, body)[data-app-theme="silver"] .win98-button:not(:where(.theme-lab, .theme-lab *)) {
+  min-height: 26px; border: 2px solid #5f6b7b; border-radius: 2px;
+  background: linear-gradient(180deg, #fafcfe, #cbd3de 72%, #aab4c2);
+  box-shadow: inset 0 1px rgba(255,255,255,.85), 0 1px 2px rgba(20,30,45,.3);
+  color: #1c2633; font-family: var(--vg-font); font-weight: 700;
+}
+:is(html, body)[data-app-theme="silver"] .win98-titlebar .win98-button:not(:where(.theme-lab, .theme-lab *)),
+:is(html, body)[data-app-theme="silver"] .win98-titlebar .win98-button:last-child:not(:where(.theme-lab, .theme-lab *)) {
+  min-height: 23px; width: 25px; border: 1px solid #d5dde7; border-radius: 50%; background: #101b2e; color: #eaf0f8;
+}
+:is(html, body)[data-app-theme="silver"] .win98-button:not(:where(.theme-lab, .theme-lab *)):hover { background: linear-gradient(180deg, #fff, #dbe3ed 72%, #bcc6d3); }
+:is(html, body)[data-app-theme="silver"] .win98-titlebar .win98-button:not(:where(.theme-lab, .theme-lab *)):hover { background: #2c4468; }
+:is(html, body)[data-app-theme="silver"] .win98-button:not(:where(.theme-lab, .theme-lab *)):active {
+  background: linear-gradient(180deg, #aab4c2, #dfe5ee); box-shadow: inset 0 2px 4px rgba(20,30,45,.35);
+}
+:is(html, body)[data-app-theme="vista-dark"] .win98-button:not(:where(.theme-lab, .theme-lab *)) {
+  min-height: 25px; border: 1px solid #5c7892; border-radius: 3px;
+  background: linear-gradient(180deg, #44607c 0%, #30475f 48%, #1f3248 51%, #28405a 100%);
+  box-shadow: inset 0 1px rgba(200,230,255,.3), 0 1px 2px rgba(0,0,0,.45);
+  color: #eaf3fb; font-family: var(--vg-font); font-weight: 600;
+}
+:is(html, body)[data-app-theme="vista-dark"] .win98-button:not(:where(.theme-lab, .theme-lab *)):hover {
+  border-color: #8dc4ec; background: linear-gradient(180deg, #55789a 0%, #3b5b7a 48%, #284761 51%, #34597a 100%);
+}
+:is(html, body)[data-app-theme="vista-dark"] .win98-titlebar .win98-button:not(:where(.theme-lab, .theme-lab *)) {
+  min-height: 23px; border-color: rgba(10,25,40,.9);
+}
+:is(html, body)[data-app-theme="vista-dark"] .win98-titlebar .win98-button:last-child:not(:where(.theme-lab, .theme-lab *)) {
+  background: linear-gradient(#e59a8a, #c24432 52%, #8f1d12 53%); color: #fff;
+}
+:is(html, body)[data-app-theme="vista-dark"] .win98-button:not(:where(.theme-lab, .theme-lab *)):active {
+  background: linear-gradient(#1a2b3e, #2b4560); box-shadow: inset 0 1px 3px rgba(0,0,0,.6);
+}
+
+/* Inset work areas (opaque) */
+:is(html, body)[data-app-theme="silver"] .win98-inset:not(:where(.theme-lab, .theme-lab *)) {
+  border: 1px solid #7b8797; background: #f7f9fb; box-shadow: inset 0 1px 8px rgba(30,45,65,.25); color: #1c2633;
+}
+:is(html, body)[data-app-theme="vista-dark"] .win98-inset:not(:where(.theme-lab, .theme-lab *)) {
+  border: 1px solid #3d566e; background: #101a27; box-shadow: inset 0 1px 4px rgba(0,0,0,.55); color: #e4edf6;
+}
+
+/* Menus: independent of window clipping and thick rails */
+:is(html, body)[data-app-theme="silver"] .win98-menu:not(:where(.theme-lab, .theme-lab *)),
+:is(html, body)[data-app-theme="vista-dark"] .win98-menu:not(:where(.theme-lab, .theme-lab *)) {
+  overflow: visible; padding: 4px; background: var(--vg-paper); color: var(--vg-ink); font-family: var(--vg-font);
+}
+:is(html, body)[data-app-theme="silver"] .win98-menu:not(:where(.theme-lab, .theme-lab *)) {
+  border: 2px solid #aeb8c6; border-radius: 3px; box-shadow: inset 0 0 0 1px #5f6b7b, 0 4px 10px rgba(10,16,26,.4);
+}
+:is(html, body)[data-app-theme="vista-dark"] .win98-menu:not(:where(.theme-lab, .theme-lab *)) {
+  border: 1px solid var(--vg-border); border-radius: 5px; box-shadow: 0 5px 14px rgba(0,0,0,.6);
+}
+
+/* Legacy utility surfaces, text, popups */
+:is(html, body)[data-app-theme="silver"] :is([class~="bg-white"],[class~="bg-gray-50"],[class~="bg-gray-100"],[class~="bg-gray-200"],[class~="bg-gray-300"],[class~="bg-[#c0c0c0]"],[class~="bg-[#f4f4f4]"],[class~="bg-[#ffffe1]"]):not(:where(.theme-lab, .theme-lab *)) {
+  background-color: var(--vg-paper); color: #1c2633;
+}
+:is(html, body)[data-app-theme="vista-dark"] :is([class~="bg-white"],[class~="bg-gray-50"],[class~="bg-gray-100"],[class~="bg-gray-200"],[class~="bg-gray-300"],[class~="bg-[#c0c0c0]"],[class~="bg-[#f4f4f4]"],[class~="bg-[#ffffe1]"]):not(:where(.theme-lab, .theme-lab *)) {
+  background-color: #1b2a3c !important; color: #e4edf6;
+}
+:is(html, body)[data-app-theme="silver"] :where(.win98-window, .mobile-shell) [class*="absolute"][class*="z-"]:not(:where(.theme-lab, .theme-lab *)),
+:is(html, body)[data-app-theme="silver"] :is([role="menu"],[role="listbox"]):not(:where(.theme-lab, .theme-lab *)) {
+  border-color: #7b8797; background-color: #f3f6f9; color: #1c2633; box-shadow: 0 4px 10px rgba(10,16,26,.4);
+}
+:is(html, body)[data-app-theme="vista-dark"] :where(.win98-window, .mobile-shell) [class*="absolute"][class*="z-"]:not(:where(.theme-lab, .theme-lab *)),
+:is(html, body)[data-app-theme="vista-dark"] :is([role="menu"],[role="listbox"]):not(:where(.theme-lab, .theme-lab *)) {
+  border-color: var(--vg-border); background-color: rgba(23,34,50,.98); color: #e4edf6; box-shadow: 0 5px 14px rgba(0,0,0,.6);
+}
+:is(html, body)[data-app-theme="silver"] [class*="hover:bg-[#000080]"]:hover:not(:where(.theme-lab, .theme-lab *)),
+:is(html, body)[data-app-theme="silver"] [role="menu"] [aria-selected="true"]:not(:where(.theme-lab, .theme-lab *)) {
+  background-color: var(--vg-navy); color: #eaf0f8;
+}
+:is(html, body)[data-app-theme="vista-dark"] [class*="hover:bg-[#000080]"]:hover:not(:where(.theme-lab, .theme-lab *)),
+:is(html, body)[data-app-theme="vista-dark"] [role="menu"] [aria-selected="true"]:not(:where(.theme-lab, .theme-lab *)) {
+  background-color: #2f6f9f; color: #fff;
+}
+:is(html, body)[data-app-theme="silver"] :is([class~="text-black"],[class~="text-gray-800"]):not(:where(.theme-lab, .theme-lab *)) { color: #1c2633 !important; }
+:is(html, body)[data-app-theme="silver"] :is([class~="text-gray-500"],[class~="text-gray-600"],[class~="text-gray-700"]):not(:where(.theme-lab, .theme-lab *)) { color: #495769 !important; }
+:is(html, body)[data-app-theme="vista-dark"] :is([class~="text-black"],[class~="text-gray-800"]):not(:where(.theme-lab, .theme-lab *)) { color: #e4edf6 !important; }
+:is(html, body)[data-app-theme="vista-dark"] :is([class~="text-gray-500"],[class~="text-gray-600"],[class~="text-gray-700"]):not(:where(.theme-lab, .theme-lab *)) { color: #a3b6c9 !important; }
+:is(html, body)[data-app-theme="vista-dark"] :is([class~="border-white"],[class~="border-gray-300"],[class~="border-gray-400"]):not(:where(.theme-lab, .theme-lab *)) { border-color: #4c6781 !important; }
+
+/* Forms */
+:is(html, body)[data-app-theme="silver"] :is(input:not([type="color"]), textarea, select):not(:where(.theme-lab, .theme-lab *)) {
+  border-color: #7b8797; background-color: #fbfcfe; color: #1c2633; accent-color: #243b5e;
+}
+:is(html, body)[data-app-theme="vista-dark"] :is(input:not([type="color"]), textarea, select):not(:where(.theme-lab, .theme-lab *)) {
+  border-color: #4c6781; background-color: #0f1925; color: #e4edf6; accent-color: #5aa6d6; color-scheme: dark;
+}
+:is(html, body)[data-app-theme="vista-dark"] :is(input, textarea):not(:where(.theme-lab, .theme-lab *))::placeholder { color: #7f94a8; }
+:is(html, body)[data-app-theme="silver"] :is(input:not([type="color"]), textarea, select):hover:not(:where(.theme-lab, .theme-lab *)) { border-color: #3b4f70; }
+:is(html, body)[data-app-theme="vista-dark"] :is(input:not([type="color"]), textarea, select):hover:not(:where(.theme-lab, .theme-lab *)) { border-color: #7aa8cc; }
+
+/* Taskbar: gradient only, never backdrop-filter */
+:is(html, body)[data-app-theme="silver"] [class*="bottom-0"][class*="left-0"][class*="right-0"][class*="h-10"]:not(:where(.theme-lab, .theme-lab *)) {
+  min-height: 40px; border-top: 2px solid #d5dde7;
+  background: linear-gradient(180deg, #34486a, #1d2f4d 54%, #121f36);
+  box-shadow: inset 0 1px rgba(255,255,255,.3), 0 -2px 8px rgba(5,10,20,.45); color: #eaf0f8;
+}
+:is(html, body)[data-app-theme="vista-dark"] [class*="bottom-0"][class*="left-0"][class*="right-0"][class*="h-10"]:not(:where(.theme-lab, .theme-lab *)) {
+  min-height: 40px; border-top: 1px solid rgba(150,200,240,.5);
+  background: linear-gradient(180deg, rgba(48,78,110,.97), rgba(20,40,64,.98) 48%, rgba(8,18,32,.99));
+  box-shadow: inset 0 1px rgba(200,230,255,.28), 0 -2px 9px rgba(0,0,0,.5); color: #f2f8fd; text-shadow: 0 1px 2px rgba(0,0,0,.7);
+}
+
+/* Mobile launcher and settings */
+:is(html, body)[data-app-theme="silver"] .mobile-phone-status:not(:where(.theme-lab, .theme-lab *)) { background: rgba(18,28,44,.88); color: #eef3f9; }
+:is(html, body)[data-app-theme="vista-dark"] .mobile-phone-status:not(:where(.theme-lab, .theme-lab *)) { background: rgba(4,12,22,.82); color: #eef6fd; }
+:is(html, body)[data-app-theme="silver"] .mobile-phone-heading:not(:where(.theme-lab, .theme-lab *)) { background: linear-gradient(180deg, rgba(180,196,216,.25), transparent); }
+:is(html, body)[data-app-theme="vista-dark"] .mobile-phone-heading:not(:where(.theme-lab, .theme-lab *)) { background: linear-gradient(180deg, rgba(70,130,180,.22), transparent); }
+:is(html, body)[data-app-theme="silver"] .mobile-section-label:not(:where(.theme-lab, .theme-lab *)),
+:is(html, body)[data-app-theme="vista-dark"] .mobile-section-label:not(:where(.theme-lab, .theme-lab *)) { color: #e8eff7; text-shadow: 0 1px 2px rgba(0,0,0,.65); }
+:is(html, body)[data-app-theme="silver"] .mobile-tile:not(:where(.theme-lab, .theme-lab *)) {
+  border: 1px solid rgba(220,228,238,.8); border-radius: 2px; box-shadow: 0 2px 5px rgba(0,0,0,.35), inset 0 1px rgba(255,255,255,.3);
+}
+:is(html, body)[data-app-theme="vista-dark"] .mobile-tile:not(:where(.theme-lab, .theme-lab *)) {
+  border: 1px solid rgba(150,200,240,.55); border-radius: 3px; box-shadow: 0 2px 6px rgba(0,0,0,.5), inset 0 1px rgba(200,230,255,.2);
+}
+:is(html, body)[data-app-theme="silver"] .mobile-all-apps-footer:not(:where(.theme-lab, .theme-lab *)) { background: linear-gradient(to top, rgba(14,22,36,.94), rgba(60,76,98,.2)); }
+:is(html, body)[data-app-theme="vista-dark"] .mobile-all-apps-footer:not(:where(.theme-lab, .theme-lab *)) { background: linear-gradient(to top, rgba(3,9,18,.94), rgba(20,50,82,.15)); }
+:is(html, body)[data-app-theme="silver"] :is(.mobile-dock, .mobile-settings):not(:where(.theme-lab, .theme-lab *)) { border-color: #8795a6; background-color: #dde4ec; color: #1c2633; }
+:is(html, body)[data-app-theme="vista-dark"] :is(.mobile-dock, .mobile-settings):not(:where(.theme-lab, .theme-lab *)) { border-color: #4c6781; background-color: #1a283a; color: #e4edf6; }
+:is(html, body)[data-app-theme="silver"] .mobile-settings-hero:not(:where(.theme-lab, .theme-lab *)) { background: linear-gradient(135deg, #3a5078, #17263f); color: #eaf0f8; }
+:is(html, body)[data-app-theme="vista-dark"] .mobile-settings-hero:not(:where(.theme-lab, .theme-lab *)) { background: linear-gradient(135deg, #24597f, #0d2037); color: #f2f8fd; }
+:is(html, body)[data-app-theme="vista-dark"] :is(.mobile-settings-card .text-gray-600, .mobile-settings .text-gray-600):not(:where(.theme-lab, .theme-lab *)) { color: #a3b6c9; }
+
+/* Focus */
+:is(html, body)[data-app-theme="silver"] :where(button, a, input, textarea, select, [tabindex]):focus-visible:not(:where(.theme-lab, .theme-lab *)) {
+  outline: 2px solid #1d4f91; outline-offset: 2px; box-shadow: 0 0 0 1px #f3f6f9;
+}
+:is(html, body)[data-app-theme="vista-dark"] :where(button, a, input, textarea, select, [tabindex]):focus-visible:not(:where(.theme-lab, .theme-lab *)) {
+  outline: 2px solid #f4cf66; outline-offset: 2px; box-shadow: 0 0 0 1px rgba(0,8,18,.85);
+}
+
+@media (max-width: 640px) {
+  :is(html, body)[data-app-theme="silver"] .win98-window:not(:where(.theme-lab, .theme-lab *)) { padding: 19px; }
+  :is(html, body)[data-app-theme="silver"] .win98-window:not(:where(.theme-lab, .theme-lab *))::before { inset: 10px; }
+  :is(html, body)[data-app-theme="silver"] .win98-titlebar:not(:where(.theme-lab, .theme-lab *)) { min-height: 34px; padding-inline: 6px; }
+  :is(html, body)[data-app-theme="vista-dark"] .win98-window:not(:where(.theme-lab, .theme-lab *)) { padding: 5px; border-radius: 7px; }
+  :is(html, body)[data-app-theme="vista-dark"] .win98-titlebar:not(:where(.theme-lab, .theme-lab *)) { min-height: 34px; margin: -5px -5px 0; }
+}
+@media (max-width: 380px) {
+  :is(html, body)[data-app-theme="silver"] .win98-window:not(:where(.theme-lab, .theme-lab *)) { padding: 15px; }
+  :is(html, body)[data-app-theme="silver"] .win98-window:not(:where(.theme-lab, .theme-lab *))::before { inset: 8px; }
+}

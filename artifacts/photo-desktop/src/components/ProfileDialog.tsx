@@ -3,6 +3,7 @@ import { useAuth } from "../lib/auth-store";
 import { changePassword, changeUsername } from "../lib/api";
 import { THEME_OPTIONS, useThemeMode } from "../lib/theme";
 import { TIME_ZONE_OPTIONS } from "../lib/time-settings";
+import { ProfileDialogFrame } from "./ProfileDialogFrame";
 
 interface Props { onClose: () => void; mobile?: boolean; }
 
@@ -167,19 +168,9 @@ export function ProfileDialog({ onClose, mobile = false }: Props) {
   }
 
   return (
-    <div
-      className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/30"
-      onPointerDown={(e) => { if (e.target === e.currentTarget) onClose(); }}
-    >
-      <div
-        className={`win98-window bg-[#c0c0c0] flex w-[360px] max-w-[calc(100vw-1rem)] flex-col ${mobile ? 'mobile-profile-dialog max-h-[calc(100dvh-1rem)]' : ''}`}
-        onPointerDown={(e) => e.stopPropagation()}
-      >
-        <div className="bg-[#000080] text-white px-2 py-1 flex items-center justify-between text-sm">
-          <span>Profile Settings — {user.username}</span>
-          <button className="win98-button px-1.5 leading-none" onClick={onClose}>x</button>
-        </div>
-        <div className="flex flex-col gap-3 overflow-y-auto p-3 text-sm">
+    <ProfileDialogFrame title={`Profile Settings — ${user.username}`} mobile={mobile} onClose={onClose}>
+        <div className="win98-inset bg-[#c0c0c0] min-h-0 flex-1 overflow-y-auto p-3 text-sm" data-testid="profile-settings-content">
+          <div className="flex flex-col gap-3">
           <div className="flex items-center gap-3">
             {user.avatarUrl
               ? <img src={user.avatarUrl} alt="" className="w-16 h-16 win98-inset object-cover" style={{ imageRendering: "auto" }} />
@@ -343,8 +334,8 @@ export function ProfileDialog({ onClose, mobile = false }: Props) {
             </div>
           </div>
           {err && <div className="text-red-700 text-xs">{err}</div>}
+          </div>
         </div>
-      </div>
-    </div>
+    </ProfileDialogFrame>
   );
 }

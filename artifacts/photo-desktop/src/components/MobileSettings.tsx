@@ -1,14 +1,13 @@
-import { useState } from 'react';
 import { LogIn, Moon, Palette, UserRound } from 'lucide-react';
 import { useAuth } from '../lib/auth-store';
 import { THEME_OPTIONS, useThemeMode } from '../lib/theme';
 import { LoginDialog } from './LoginDialog';
-import { ProfileDialog } from './ProfileDialog';
+import { useProfileDialogStore } from '../lib/profile-dialog-store';
 
 export function MobileSettings({ onRequestLogin }: { onRequestLogin: () => void }) {
   const user = useAuth((state) => state.user);
   const { theme, setTheme, themeSaving, themeError } = useThemeMode();
-  const [profileOpen, setProfileOpen] = useState(false);
+  const setProfileOpen = useProfileDialogStore(state => state.setProfileOpen);
 
   return (
     <div className="mobile-settings flex h-full flex-col gap-3 overflow-y-auto p-3 text-sm">
@@ -85,9 +84,6 @@ export function MobileSettings({ onRequestLogin }: { onRequestLogin: () => void 
         )}
       </section>
 
-      {profileOpen && (
-        <ProfileDialog mobile onClose={() => setProfileOpen(false)} />
-      )}
     </div>
   );
 }

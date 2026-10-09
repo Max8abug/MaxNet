@@ -345,12 +345,9 @@
   color: #fff;
   text-shadow: 0 1px 2px rgba(0,24,48,.6);
 }
-@supports ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
-  :is(html, body)[data-app-theme="vista"] [class*="bottom-0"][class*="left-0"][class*="right-0"][class*="h-10"]:not(:where(.theme-lab, .theme-lab *)) {
-    -webkit-backdrop-filter: blur(12px) saturate(1.25);
-    backdrop-filter: blur(12px) saturate(1.25);
-  }
-}
+/* Do not blur this container: backdrop-filter creates a containing block for
+   fixed descendants (login dialogs and notifications), anchoring them to the
+   40px taskbar instead of the viewport. The gradient retains the Aero finish. */
 :is(html, body)[data-app-theme="gold"] [class*="bottom-0"][class*="left-0"][class*="right-0"][class*="h-10"]:not(:where(.theme-lab, .theme-lab *)) {
   min-height: 40px;
   border-top: 2px solid #dfbd62;

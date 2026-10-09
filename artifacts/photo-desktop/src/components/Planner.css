@@ -852,6 +852,8 @@
 }
 
 :is(html, body)[data-app-theme="vista"] .planner-root,
+:is(html, body)[data-app-theme="vista-dark"] .planner-root,
+:is(html, body)[data-app-theme="silver"] .planner-root,
 :is(html, body)[data-app-theme="gold"] .planner-root {
   --planner-bg: var(--vg-surface);
   --planner-paper: var(--vg-paper);
@@ -874,6 +876,11 @@
   --planner-accent-text: #fff3d1;
   --planner-accent-soft: color-mix(in srgb, var(--vg-gold) 24%, var(--vg-paper));
   --planner-focus: var(--vg-gold);
+}
+
+:is(html, body)[data-app-theme="vista-dark"] .planner-root {
+  --planner-accent-text: #08131f;
+  --planner-today: color-mix(in srgb, var(--vg-paper) 76%, var(--vg-accent));
 }
 
 @container planner (min-width: 680px) {

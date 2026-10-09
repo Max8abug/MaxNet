@@ -31,18 +31,23 @@ export function ThemePreferencePrompt() {
             {THEME_OPTIONS.map((option) => {
               const isDark = option.value.endsWith("dark");
               const isXp = option.value.startsWith("xp-");
-              const isVista = option.value === "vista";
+              const isVista = option.value === "vista" || option.value === "vista-dark";
               const isGold = option.value === "gold";
+              const isSilver = option.value === "silver";
               const Icon = isDark ? Moon : Sun;
               const description = isXp
                 ? isDark ? "XP blue with dark surfaces" : "Classic XP blue and green"
-                : isVista ? "Translucent glass and Aero blue"
+                : isVista ? isDark ? "Dark Aero glass and midnight surfaces" : "Translucent glass and Aero blue"
                   : isGold ? "Ornate carved gold window frames"
+                    : isSilver ? "Ornate silver frames with cool blue accents"
                     : isDark ? "Classic desktop in low-light colors" : "Classic bright desktop";
               const iconSurface = isXp
                 ? "rounded-md bg-gradient-to-b from-[#3d8cf5] to-[#0640b0]"
-                : isVista ? "rounded-md bg-gradient-to-br from-[#7fe3d4] via-[#4e9ed2] to-[#14385c]"
+                : isVista ? isDark
+                  ? "rounded-md bg-gradient-to-br from-[#446c86] via-[#26394c] to-[#0d1623]"
+                  : "rounded-md bg-gradient-to-br from-[#7fe3d4] via-[#4e9ed2] to-[#14385c]"
                   : isGold ? "bg-gradient-to-br from-[#fff3b0] via-[#c8921e] to-[#5a3b05]"
+                    : isSilver ? "bg-gradient-to-br from-[#f4f7fb] via-[#aebbc9] to-[#374d65]"
                     : isDark ? "bg-[#6d185f]" : "bg-[#008080]";
               return (
                 <button

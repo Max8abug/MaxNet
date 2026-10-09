@@ -3,7 +3,7 @@ import { useDesktopStore } from '../store';
 import { useLocation } from 'wouter';
 import { useAuth, userColor } from '../lib/auth-store';
 import { LoginDialog } from './LoginDialog';
-import { ProfileDialog } from './ProfileDialog';
+import { useProfileDialogStore } from '../lib/profile-dialog-store';
 import { useThemeMode } from '../lib/theme';
 import { Toaster } from './Toaster';
 import { fetchDMConversations, fetchChat, fetchCafeState, fetchNews } from '../lib/api';
@@ -24,7 +24,7 @@ export function Taskbar({ page }: { page: string }) {
   const { addWindow, isStringMode, setStringMode, resetState, windows, toggleWindowState, bringToFront } = useDesktopStore();
   const [startOpen, setStartOpen] = useState(false);
   const [loginOpen, setLoginOpen] = useState(false);
-  const [profileOpen, setProfileOpen] = useState(false);
+  const setProfileOpen = useProfileDialogStore(state => state.setProfileOpen);
   const [, setLocation] = useLocation();
   const { user, ranks, refresh, refreshRanks, logout, siteSettings, refreshSiteSettings, refreshFeatureArchives } = useAuth();
   const { darkMode } = useThemeMode();
@@ -675,7 +675,6 @@ export function Taskbar({ page }: { page: string }) {
       </div>
 
       {loginOpen && <LoginDialog onClose={() => setLoginOpen(false)} />}
-      {profileOpen && <ProfileDialog onClose={() => setProfileOpen(false)} />}
       <Toaster onClick={(toast) => toast.kind === "planner" ? openPlanner() : openDms()} />
     </div>
   );

@@ -270,7 +270,7 @@ router.patch("/auth/profile", async (req, res) => {
   const { avatarUrl, backgroundUrl, darkBackgroundUrl, backgroundColor, timeZone, displayTheme } = req.body ?? {};
   const update: Record<string, string | null> = {};
   if (displayTheme !== undefined) {
-    if (typeof displayTheme !== "string" || !["classic-light", "classic-dark", "xp-light", "xp-dark", "vista", "gold"].includes(displayTheme)) {
+    if (typeof displayTheme !== "string" || !["classic-light", "classic-dark", "xp-light", "xp-dark", "vista", "vista-dark", "gold", "silver"].includes(displayTheme)) {
       res.status(400).json({ error: "Invalid display theme" });
       return;
     }

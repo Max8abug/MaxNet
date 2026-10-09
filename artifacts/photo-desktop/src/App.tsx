@@ -12,6 +12,8 @@ import { syncServerClock } from "@/lib/server-clock";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { MobileShell } from "@/components/MobileShell";
 import { ThemePreferencePrompt } from "@/components/ThemePreferencePrompt";
+import { ProfileDialog } from "@/components/ProfileDialog";
+import { useProfileDialogStore } from "@/lib/profile-dialog-store";
 
 function AppLayout() {
   const [location] = useLocation();
@@ -20,6 +22,11 @@ function AppLayout() {
   const user = useAuth((s) => s.user);
   const timeZone = useTimeZone();
   const isMobile = useIsMobile();
+  const { profileOpen, setProfileOpen } = useProfileDialogStore();
+
+  useEffect(() => {
+    setProfileOpen(false);
+  }, [user?.id, setProfileOpen]);
 
   useEffect(() => {
     if (sessionStorage.getItem("pd-visited")) return;
@@ -56,6 +63,7 @@ function AppLayout() {
       )}
       <NotificationPrompt />
       <ThemePreferencePrompt />
+      {profileOpen && user && <ProfileDialog mobile={isMobile} onClose={() => setProfileOpen(false)} />}
     </div>
   );
 }

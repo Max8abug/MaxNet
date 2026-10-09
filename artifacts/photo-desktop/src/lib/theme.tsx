@@ -11,7 +11,9 @@ export const THEME_OPTIONS = [
   { value: "xp-light", label: "Windows XP light" },
   { value: "xp-dark", label: "Windows XP dark" },
   { value: "vista", label: "Windows Vista" },
+  { value: "vista-dark", label: "Windows Vista dark" },
   { value: "gold", label: "Gold picture frame" },
+  { value: "silver", label: "Silver picture frame" },
 ] as const;
 
 export type AppTheme = (typeof THEME_OPTIONS)[number]["value"];
@@ -45,7 +47,7 @@ function getInitialTheme(): AppTheme {
 }
 
 function isDarkTheme(theme: AppTheme): boolean {
-  return theme === "classic-dark" || theme === "xp-dark";
+  return theme === "classic-dark" || theme === "xp-dark" || theme === "vista-dark";
 }
 
 function normalizeTheme(theme: AppTheme | boolean): AppTheme {
