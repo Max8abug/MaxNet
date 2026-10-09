@@ -17,7 +17,11 @@ import tempfile
 import zipfile
 from datetime import datetime
 from pathlib import Path
-from launcher_diagnostics import DIAGNOSTICS_VERSION, build_crash_report
+from launcher_diagnostics import (
+    DIAGNOSTICS_VERSION,
+    build_crash_report,
+    unseen_log_lines,
+)
 
 try:
     import tkinter as tk
