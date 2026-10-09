@@ -34,6 +34,8 @@ type AssetManifest = {
   games?: Record<string, { installed?: boolean }>;
 };
 
+type AssetStatus = "checking" | "ready" | "missing" | "unavailable";
+
 function getGameOrigin() {
   const hostname = window.location.hostname;
   const gameHostname = hostname.startsWith("games.") ? hostname : `games.${hostname}`;
@@ -43,8 +45,7 @@ function getGameOrigin() {
 }
 
 export function PortedGame({ game }: { game: PortedGameId }) {
-  const [assetsReady, setAssetsReady] = useState(false);
-  const [checkingAssets, setCheckingAssets] = useState(true);
+  const [assetStatus, setAssetStatus] = useState<AssetStatus>("checking");
   const port = PORTS[game];
   const gameOrigin = getGameOrigin();
   const gameUrl = `${gameOrigin}/ported-games/${port.assetId}/index.html`;
@@ -56,17 +57,30 @@ export function PortedGame({ game }: { game: PortedGameId }) {
       signal: controller.signal,
     })
       .then(async response => {
-        if (!response.ok) throw new Error("Game asset manifest is unavailable");
+        if (!response.ok) {
+          const responseText = await response.text().catch(() => "");
+          if (
+            !controller.signal.aborted &&
+            response.status === 404 &&
+            responseText.trim() === "Game asset not found"
+          ) {
+            setAssetStatus("missing");
+            return null;
+          }
+          throw new Error("Game asset manifest is unavailable");
+        }
         return response.json() as Promise<AssetManifest>;
       })
       .then(manifest => {
-        setAssetsReady(manifest.version === 1 && manifest.games?.[port.assetId]?.installed === true);
+        if (!manifest || controller.signal.aborted) return;
+        setAssetStatus(
+          manifest.version === 1 && manifest.games?.[port.assetId]?.installed === true
+            ? "ready"
+            : "missing",
+        );
       })
       .catch(() => {
-        if (!controller.signal.aborted) setAssetsReady(false);
-      })
-      .finally(() => {
-        if (!controller.signal.aborted) setCheckingAssets(false);
+        if (!controller.signal.aborted) setAssetStatus("unavailable");
       });
 
     return () => controller.abort();
@@ -79,7 +93,7 @@ export function PortedGame({ game }: { game: PortedGameId }) {
         <p className="min-w-0 flex-1 text-[10px] leading-snug">
           Self-hosted game port · source files are installed by the site updater.
         </p>
-        {assetsReady && (
+        {assetStatus === "ready" && (
           <a
             className="win98-button inline-flex shrink-0 items-center gap-1 px-2 py-1 text-[10px]"
             href={gameUrl}
@@ -99,11 +113,11 @@ export function PortedGame({ game }: { game: PortedGameId }) {
           Source
         </a>
       </div>
-      {checkingAssets ? (
+      {assetStatus === "checking" ? (
         <div className="flex min-h-0 flex-1 items-center justify-center p-6 text-center text-sm">
           Checking for installed game files…
         </div>
-      ) : assetsReady ? (
+      ) : assetStatus === "ready" ? (
         <iframe
           className="min-h-0 w-full flex-1 border-0 bg-black"
           src={gameUrl}
@@ -113,17 +127,29 @@ export function PortedGame({ game }: { game: PortedGameId }) {
           allowFullScreen
           referrerPolicy="strict-origin-when-cross-origin"
         />
+      ) : assetStatus === "unavailable" ? (
+        <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-3 p-6 text-center">
+          <p className="text-base font-semibold">Can’t reach the game files host.</p>
+          <p className="max-w-lg text-xs leading-relaxed text-[#c2d2c8]">
+            The site could not read the game manifest at{" "}
+            <code>{`${gameOrigin}/ported-games/asset-manifest.json`}</code>. Check that the
+            games hostname routes to the same self-hosted API server and port, and that
+            HTTPS has a valid certificate for that hostname. A proxy 404 or certificate
+            warning means the game files have not been checked yet.
+          </p>
+        </div>
       ) : (
         <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-3 p-6 text-center">
           <p className="text-base font-semibold">{port.title} files are not installed here.</p>
           <p className="max-w-lg text-xs leading-relaxed text-[#c2d2c8]">
-            The self-host updater downloads only this game’s pinned repository folder. It
-            serves the game from <code>{`games.${window.location.hostname}`}</code> so game
-            code cannot access the main site’s login session.
+            The game host is reachable, but its manifest does not list this game as
+            installed. The updater downloads the pinned game files into the self-hosted
+            asset directory.
           </p>
           <p className="max-w-lg text-xs leading-relaxed text-[#c2d2c8]">
-            If this is a public site, route that hostname to the same self-hosted server and
-            port. On the server, run <code>bash selfhost/update.sh</code> to install the files.
+            On the server, run <code>python3 selfhost/install-game-assets.py</code> from the
+            repository root, or run <code>bash selfhost/update.sh</code>. The first install
+            downloads about 1 GB; refresh this window when it completes.
           </p>
           <a
             className="win98-button inline-flex items-center gap-1 px-2 py-1 text-xs"
