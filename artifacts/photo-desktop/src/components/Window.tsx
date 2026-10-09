@@ -24,6 +24,7 @@ import { UserPage } from './UserPage';
 import { RanksAdmin } from './RanksAdmin';
 import { SiteSettingsDialog } from './SiteSettingsDialog';
 import { FeatureArchivePanel } from './FeatureArchivePanel';
+import { ThemeLab } from './ThemeLab';
 import { IpLookup } from './IpLookup';
 import { News } from './News';
 import { Planner } from './Planner';
@@ -345,6 +346,7 @@ export function Window({
         {w.type === 'ranksadmin' && !isEditing && <RanksAdmin />}
         {w.type === 'sitesettings' && !isEditing && <SiteSettingsDialog />}
         {w.type === 'featurearchive' && !isEditing && <FeatureArchivePanel />}
+        {w.type === 'themelab' && !isEditing && <ThemeLab />}
         {w.type === 'iplookup' && !isEditing && <IpLookup username={w.username || ''} />}
         {w.type === 'news' && !isEditing && <News />}
         {w.type === 'planner' && !isEditing && <Planner />}

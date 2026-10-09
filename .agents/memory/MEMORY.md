@@ -10,6 +10,7 @@
 - [External GIF previews](external-gif-previews.md) — provider share links must resolve and load as images before attachment, not merely normalize when sending.
 - [Eaglercraft launch configuration](eaglercraft-launch.md) — oversized bundled client exceeds the patch limit; launcher configuration depends on its pre-launch countdown.
 - [Feature archive scope](feature-archive-scope.md) — archiving hides launch entries; it is not deletion or a permission toggle, and administration stays accessible.
+- [Theme Lab scope](theme-lab-scope.md) — experimental themes and fonts are admin-only, isolated previews; they must not change the surrounding desktop.
 - [Backup restore isolation](backup-restore-safety.md) — full-site restore tests need a disposable database, not merely generated test records.
 - [Storage inventory safety](storage-report-safety.md) — take reference snapshots after locking; unknown object ages must remain uncertain, not cleanup candidates.
 - [Unattended backup safeguards](scheduled-backup-safety.md) — crash locks need liveness review; scheduled encryption needs only a public recipient.

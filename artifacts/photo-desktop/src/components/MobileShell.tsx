@@ -92,6 +92,7 @@ const APPS: AppDefinition[] = [
   { label: 'Account Admin', type: 'accountadmin', icon: UserCog, tone: 'bg-[#c493d3]', size: 'medium', adminOnly: true },
   { label: 'Site Settings', type: 'sitesettings', icon: Settings, tone: 'bg-[#a78cdb]', size: 'medium', adminOnly: true },
   { label: 'Feature Archive', type: 'featurearchive', icon: Settings, tone: 'bg-[#a78cdb]', size: 'medium', adminOnly: true },
+  { label: 'Theme Lab', type: 'themelab', icon: Settings, tone: 'bg-[#b899cf]', size: 'medium', adminOnly: true },
   { label: 'Backup / Restore', type: 'sitebackup', icon: DatabaseBackup, tone: 'bg-[#c29c75]', size: 'medium', adminOnly: true },
   { label: 'Diagnostics', type: 'diagnostics', icon: Activity, tone: 'bg-[#8fb2ce]', size: 'medium', adminOnly: true },
 ];

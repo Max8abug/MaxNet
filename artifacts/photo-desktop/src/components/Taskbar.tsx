@@ -347,6 +347,7 @@ export function Taskbar({ page }: { page: string }) {
   if (user?.isAdmin) settingsItems.push({ label: "★ Manage Accounts", act: () => open({ type: 'accountadmin', title: 'Account Admin', width: 430, height: 470 }) });
   if (user?.isAdmin) settingsItems.push({ label: "★ Site Settings", act: () => open({ type: 'sitesettings', title: 'Site Settings', width: 420, height: 400 }) });
   if (user?.isAdmin) settingsItems.push({ label: "★ Feature Archive", act: () => open({ type: 'featurearchive', title: 'Feature Archive', width: 550, height: 520 }) });
+  if (user?.isAdmin) settingsItems.push({ label: "★ Theme Lab", act: () => open({ type: 'themelab', title: 'Theme Lab', width: 780, height: 640 }) });
   if (user?.isAdmin) settingsItems.push({ label: "★ Site Backup / Restore", act: () => open({ type: 'sitebackup', title: 'Site Backup', width: 480, height: 420 }) });
   if (user?.isAdmin) settingsItems.push({ label: "★ Diagnostics", act: () => open({ type: 'diagnostics', title: 'Server Diagnostics', width: 640, height: 460 }) });
 
