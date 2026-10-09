@@ -16,7 +16,10 @@ try {
     external: ["@replit/object-storage", "pg-native", "pino", "bcryptjs"],
     banner: { js: "import { createRequire } from 'node:module'; const require = createRequire(import.meta.url);" },
   });
-  const result = spawnSync(process.execPath, [outfile], { stdio: "inherit", env: { ...process.env, NODE_ENV: "production" } });
+  const result = spawnSync(process.execPath, [outfile], {
+    stdio: "inherit",
+    env: { ...process.env, NODE_ENV: "production", ...(process.argv.includes("--local-only") ? { TEST_STORAGE_BACKENDS: "local" } : {}) },
+  });
   process.exitCode = result.status ?? 1;
 } finally {
   await rm(dir, { recursive: true, force: true });

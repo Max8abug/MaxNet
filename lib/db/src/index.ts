@@ -19,4 +19,13 @@ export const pool = new Pool({
 });
 export const db = drizzle(pool, { schema });
 
+// Upload intents must commit independently of the file-metadata transaction.
+// Reserve a separate small pool so writers waiting on advisory locks cannot
+// exhaust the main pool and deadlock the intent write.
+export const storageJournalPool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  options: "-c timezone=UTC",
+  max: 2,
+});
+
 export * from "./schema";

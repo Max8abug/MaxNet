@@ -1,5 +1,6 @@
 import { pool } from "@workspace/db";
 import { logger } from "./logger";
+import { cleanupSchema } from "./storage-mutations";
 
 /**
  * Idempotent production-safe schema bootstrap.
@@ -544,6 +545,7 @@ export async function ensureSchema(): Promise<void> {
     // metadata reads.
     await client.query("BEGIN");
     await client.query(sql);
+    await client.query(cleanupSchema);
     await client.query("COMMIT");
     logger.info("Database schema bootstrap complete");
   } catch (err) {

@@ -6,12 +6,14 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { once } from "node:events";
-import { db, pool, usersTable, ranksTable, wikiPagesTable, wikiAssetsTable, hostedSitesTable, hostedSiteFilesTable } from "@workspace/db";
+import { db, pool, storageJournalPool, usersTable, ranksTable, wikiPagesTable, wikiAssetsTable, hostedSitesTable, hostedSiteFilesTable } from "@workspace/db";
 import { eq, inArray } from "drizzle-orm";
 import wiki from "../src/routes/wiki";
 import sites from "../src/routes/hosted-sites";
 import { appStorage } from "../src/lib/app-storage";
 import { localStorage } from "../src/lib/local-storage";
+import { cleanupSchema } from "../src/lib/storage-mutations";
+import { runStorageFaultChecks } from "./storage-faults";
 
 const id = randomUUID().slice(0, 8);
 // Signup allows punctuation: URI encoding alone does not make it disk-safe.
@@ -71,8 +73,10 @@ async function cleanup() {
   await db.delete(wikiPagesTable).where(eq(wikiPagesTable.slug, slug));
   await db.delete(hostedSiteFilesTable).where(eq(hostedSiteFilesTable.username, owner));
   await db.delete(hostedSitesTable).where(eq(hostedSitesTable.username, owner));
+  await pool.query("DELETE FROM storage_cleanup WHERE lock_key = ANY($1::text[])", [[owner, `wiki:${slug}`]]);
 }
 try {
+  await pool.query(cleanupSchema);
   await db.insert(ranksTable).values({ name: rank, permissions: ["editWiki", "createHtmlPage"], siteStorageLimitBytes: quota });
   await db.insert(usersTable).values([
     { username: owner, passwordHash: "unusable-test-hash", rank },
@@ -91,7 +95,7 @@ try {
   process.env.UPLOAD_STORAGE_DIR = disk;
   await rm(blocker);
 
-  for (const backend of ["local", "replit"]) {
+  for (const backend of (process.env.TEST_STORAGE_BACKENDS || "local,replit").split(",")) {
     process.env.STORAGE_BACKEND = backend;
     await request("/wiki/pages", "POST", { title: slug, slug }, undefined, 401);
     await request("/wiki/pages", "POST", { title: slug, slug }, stranger, 403);
@@ -195,6 +199,10 @@ try {
     await request(site, "DELETE", undefined, owner);
     assert.equal((await request(site, "GET", undefined, owner)).json().exists, false);
     await cleanup();
+    if (backend === "local") {
+      await runStorageFaultChecks({ owner, slug, site, png, disk, request, put });
+      await cleanup();
+    }
     console.log(`PASS ${backend}: wiki image/video; site HTML/CSS/media; replacement/deletion; publish/offline; ranks/JavaScript; quota/concurrency; disposable cleanup`);
   }
 } finally {
@@ -206,5 +214,6 @@ try {
   } finally {
     await new Promise<void>((resolve) => server.close(() => resolve()));
     await pool.end();
+    await storageJournalPool.end();
   }
 }

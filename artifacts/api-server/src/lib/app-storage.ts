@@ -1,11 +1,20 @@
 import { Client, type Result, type RequestError } from "@replit/object-storage";
 import { PassThrough } from "node:stream";
 import { localStorage } from "./local-storage";
+import path from "node:path";
+import { homedir } from "node:os";
 
 function backend(): "local" | "replit" {
   const value = process.env.STORAGE_BACKEND || (process.env.SERVE_STATIC === "1" ? "local" : "replit");
   if (value !== "local" && value !== "replit") throw new Error("STORAGE_BACKEND must be local or replit.");
   return value;
+}
+
+// Cleanup must never switch buckets/directories when a server's configuration changes.
+export function storageScope(): string {
+  return backend() === "local"
+    ? `local:${path.resolve(process.env.UPLOAD_STORAGE_DIR || path.join(homedir(), ".local/share/photo-desktop/uploads"))}`
+    : "replit";
 }
 
 let ready: Promise<Client> | undefined;

@@ -7,6 +7,7 @@ import { db, hostedSiteFilesTable, hostedSitesTable } from "@workspace/db";
 import { logger } from "../lib/logger";
 import { requireAuth } from "../lib/auth";
 import { getUserPermissions, getUserSiteStorageLimitBytes } from "./ranks";
+import { lockStorage, trackUpload, queueCleanup, cleanupAfterMutation } from "../lib/storage-mutations";
 
 const router: IRouter = Router();
 const MAX_FILE_BYTES = 6 * 1024 * 1024;
@@ -137,7 +138,10 @@ router.post("/custom-sites/:username", requireAuth, async (req, res) => {
     res.status(403).json({ error: "Your rank does not have permission to create an HTML page." });
     return;
   }
-  await db.insert(hostedSitesTable).values({ username, active: false, entryPath: "index.html" }).onConflictDoNothing();
+  await db.transaction(async tx => {
+    await lockStorage(tx, username);
+    await tx.insert(hostedSitesTable).values({ username, active: false, entryPath: "index.html" }).onConflictDoNothing();
+  });
   const summary = await loadSiteSummary(username);
   res.status(201).json({
     exists: true,
@@ -156,41 +160,45 @@ router.patch("/custom-sites/:username", requireAuth, async (req, res) => {
     res.status(403).json({ error: "You can only manage your own site." });
     return;
   }
-  const [site] = await db.select().from(hostedSitesTable).where(eq(hostedSitesTable.username, username)).limit(1);
-  if (!site) {
-    res.status(404).json({ error: "Create your site before changing its settings." });
-    return;
-  }
   const access = await capabilities(username);
-  const active = typeof req.body?.active === "boolean" ? req.body.active : site.active;
-  const entryPath = req.body?.entryPath === undefined ? site.entryPath : cleanSitePath(req.body.entryPath);
-  if (!entryPath) {
-    res.status(400).json({ error: "The entry file path is invalid." });
-    return;
-  }
-  if (active && !access.canCreate) {
-    res.status(403).json({ error: "Your rank no longer has permission to publish an HTML page." });
-    return;
-  }
-  if (active) {
-    const [entry] = await db.select({ id: hostedSiteFilesTable.id })
-      .from(hostedSiteFilesTable)
-      .where(and(
-        eq(hostedSiteFilesTable.username, username),
-        eq(hostedSiteFilesTable.path, entryPath),
-        eq(hostedSiteFilesTable.contentType, "text/html; charset=utf-8"),
-      ))
-      .limit(1);
-    if (!entry) {
-      res.status(400).json({ error: "Upload the selected HTML entry file before publishing." });
+  const updated = await db.transaction(async tx => {
+    await lockStorage(tx, username);
+    const [site] = await tx.select().from(hostedSitesTable).where(eq(hostedSitesTable.username, username)).limit(1);
+    if (!site) {
+      res.status(404).json({ error: "Create your site before changing its settings." });
       return;
     }
-  }
-  const [updated] = await db.update(hostedSitesTable)
-    .set({ active, entryPath, updatedAt: new Date() })
-    .where(eq(hostedSitesTable.username, username))
-    .returning();
-  res.json({ exists: true, active: updated.active, entryPath: updated.entryPath, updatedAt: updated.updatedAt });
+    const active = typeof req.body?.active === "boolean" ? req.body.active : site.active;
+    const entryPath = req.body?.entryPath === undefined ? site.entryPath : cleanSitePath(req.body.entryPath);
+    if (!entryPath) {
+      res.status(400).json({ error: "The entry file path is invalid." });
+      return;
+    }
+    if (active && !access.canCreate) {
+      res.status(403).json({ error: "Your rank no longer has permission to publish an HTML page." });
+      return;
+    }
+    if (active) {
+      const [entry] = await tx.select({ id: hostedSiteFilesTable.id })
+        .from(hostedSiteFilesTable)
+        .where(and(
+          eq(hostedSiteFilesTable.username, username),
+          eq(hostedSiteFilesTable.path, entryPath),
+          eq(hostedSiteFilesTable.contentType, "text/html; charset=utf-8"),
+        ))
+        .limit(1);
+      if (!entry) {
+        res.status(400).json({ error: "Upload the selected HTML entry file before publishing." });
+        return;
+      }
+    }
+    const [updated] = await tx.update(hostedSitesTable)
+      .set({ active, entryPath, updatedAt: new Date() })
+      .where(eq(hostedSitesTable.username, username))
+      .returning();
+    return updated;
+  });
+  if (updated) res.json({ exists: true, active: updated.active, entryPath: updated.entryPath, updatedAt: updated.updatedAt });
 });
 
 router.put("/custom-sites/:username/file", requireAuth, async (req, res) => {
@@ -240,17 +248,16 @@ router.put("/custom-sites/:username/file", requireAuth, async (req, res) => {
     return;
   }
 
-  await db.insert(hostedSitesTable).values({ username, active: false, entryPath: "index.html" }).onConflictDoNothing();
   // URL encoding leaves punctuation (and dot-only names) unchanged. Use a
   // path-safe, reversible namespace for every username. Existing file keys
   // remain valid because reads/deletes use the key saved in the database.
   const ownerKey = Buffer.from(username, "utf8").toString("base64url");
   const objectKey = `user-sites/${ownerKey}/${randomUUID()}`;
-  let uploaded = false;
   let oldKey: string | null = null;
   try {
     await db.transaction(async (tx) => {
-      await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${username}))`);
+      await lockStorage(tx, username);
+      await tx.insert(hostedSitesTable).values({ username, active: false, entryPath: "index.html" }).onConflictDoNothing();
       const [site] = await tx.select().from(hostedSitesTable)
         .where(eq(hostedSitesTable.username, username))
         .for("update")
@@ -266,8 +273,8 @@ router.put("/custom-sites/:username/file", requireAuth, async (req, res) => {
       const usedBytes = Number(usage?.bytes ?? 0) - (previous?.size ?? 0);
       if (usedBytes + bytes.length > access.quotaBytes) throw new SiteQuotaError("Rank storage limit exceeded.");
 
+      await trackUpload(username, objectKey);
       await uploadObject(objectKey, bytes);
-      uploaded = true;
       oldKey = previous?.objectKey ?? null;
       await tx.insert(hostedSiteFilesTable).values({
         username,
@@ -282,9 +289,10 @@ router.put("/custom-sites/:username/file", requireAuth, async (req, res) => {
       });
       await tx.update(hostedSitesTable).set({ updatedAt: new Date() })
         .where(eq(hostedSitesTable.username, username));
+      if (oldKey) await queueCleanup(tx, username, oldKey);
     });
   } catch (error) {
-    if (uploaded) await storage.delete(objectKey, { ignoreNotFound: true }).catch(() => {});
+    await cleanupAfterMutation([objectKey]);
     if (error instanceof SiteQuotaError) {
       res.status(413).json({ error: "This upload would exceed your rank's hosted-site storage limit." });
       return;
@@ -295,7 +303,7 @@ router.put("/custom-sites/:username/file", requireAuth, async (req, res) => {
     }
     throw error;
   }
-  if (oldKey) await storage.delete(oldKey, { ignoreNotFound: true }).catch(() => {});
+  await cleanupAfterMutation([objectKey, ...(oldKey ? [oldKey] : [])]);
   res.json({ ok: true, path: filePath, contentType, size: bytes.length });
 });
 
@@ -310,20 +318,19 @@ router.delete("/custom-sites/:username/file", requireAuth, async (req, res) => {
     res.status(400).json({ error: "Invalid file path." });
     return;
   }
-  const [file] = await db.select().from(hostedSiteFilesTable).where(and(
-    eq(hostedSiteFilesTable.username, username),
-    eq(hostedSiteFilesTable.path, filePath),
-  )).limit(1);
-  if (!file) {
-    res.status(404).json({ error: "File not found." });
-    return;
-  }
-  const deleted = await storage.delete(file.objectKey, { ignoreNotFound: true });
-  if (!deleted.ok) {
-    res.status(503).json({ error: "File storage is unavailable; the file was not removed." });
-    return;
-  }
+  let objectKey: string | undefined;
   await db.transaction(async (tx) => {
+    await lockStorage(tx, username);
+    const [file] = await tx.select().from(hostedSiteFilesTable).where(and(
+      eq(hostedSiteFilesTable.username, username),
+      eq(hostedSiteFilesTable.path, filePath),
+    )).limit(1);
+    if (!file) {
+      res.status(404).json({ error: "File not found." });
+      return;
+    }
+    objectKey = file.objectKey;
+    await queueCleanup(tx, username, file.objectKey);
     await tx.delete(hostedSiteFilesTable).where(eq(hostedSiteFilesTable.id, file.id));
     await tx.update(hostedSitesTable).set({
       active: false,
@@ -333,6 +340,8 @@ router.delete("/custom-sites/:username/file", requireAuth, async (req, res) => {
       eq(hostedSitesTable.entryPath, filePath),
     ));
   });
+  if (!objectKey) return;
+  await cleanupAfterMutation([objectKey]);
   res.json({ ok: true });
 });
 
@@ -342,16 +351,18 @@ router.delete("/custom-sites/:username", requireAuth, async (req, res) => {
     res.status(403).json({ error: "You can only manage your own site." });
     return;
   }
-  const files = await db.select().from(hostedSiteFilesTable).where(eq(hostedSiteFilesTable.username, username));
-  for (const file of files) {
-    const deleted = await storage.delete(file.objectKey, { ignoreNotFound: true });
-    if (!deleted.ok) {
-      res.status(503).json({ error: "File storage is unavailable; the site was not deleted." });
-      return;
+  const keys: string[] = [];
+  await db.transaction(async tx => {
+    await lockStorage(tx, username);
+    const files = await tx.select().from(hostedSiteFilesTable).where(eq(hostedSiteFilesTable.username, username));
+    for (const file of files) {
+      await queueCleanup(tx, username, file.objectKey);
+      keys.push(file.objectKey);
     }
-  }
-  await db.delete(hostedSiteFilesTable).where(eq(hostedSiteFilesTable.username, username));
-  await db.delete(hostedSitesTable).where(eq(hostedSitesTable.username, username));
+    await tx.delete(hostedSiteFilesTable).where(eq(hostedSiteFilesTable.username, username));
+    await tx.delete(hostedSitesTable).where(eq(hostedSitesTable.username, username));
+  });
+  await cleanupAfterMutation(keys);
   res.json({ ok: true });
 });
 

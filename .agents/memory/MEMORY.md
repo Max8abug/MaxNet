@@ -5,3 +5,4 @@
 - [Native and hosted-site scope](native-hosted-site-scope.md) — iOS first; mini-sites require rank permissions and rank-adjustable quotas, with JavaScript off by default.
 - [iOS release flow](ios-release-flow.md) — use Expo Launch, not manual EAS commands; require TestFlight and physical-iPhone evidence before release completion.
 - [Self-hosted uploads](self-hosted-uploads.md) — production runs on the owner's server; Replit storage checks do not establish production readiness.
+- [File mutation safety](file-mutation-safety.md) — logical deletion can succeed during storage outages; durable cleanup must not sacrifice live content.

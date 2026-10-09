@@ -7,6 +7,7 @@ import { db, wikiAssetsTable, wikiPagesTable } from "@workspace/db";
 import { logger } from "../lib/logger";
 import { requireAuth } from "../lib/auth";
 import { getUserPermissions } from "./ranks";
+import { lockStorage, trackUpload, queueCleanup, cleanupAfterMutation } from "../lib/storage-mutations";
 
 const router: IRouter = Router();
 const MAX_WIKI_MEDIA_BYTES = 6 * 1024 * 1024;
@@ -96,13 +97,17 @@ router.post("/wiki/pages", requireAuth, requireWikiEditor, async (req, res) => {
     return;
   }
   try {
-    const [page] = await db.insert(wikiPagesTable).values({
-      slug,
-      title,
-      content,
-      createdBy: req.session.username!,
-      updatedBy: req.session.username!,
-    }).returning();
+    const page = await db.transaction(async tx => {
+      await lockStorage(tx, `wiki:${slug}`);
+      const [page] = await tx.insert(wikiPagesTable).values({
+        slug,
+        title,
+        content,
+        createdBy: req.session.username!,
+        updatedBy: req.session.username!,
+      }).returning();
+      return page;
+    });
     res.status(201).json({ page, assets: [] });
   } catch {
     res.status(409).json({ error: "A page with this title already exists." });
@@ -121,48 +126,48 @@ router.patch("/wiki/pages/:slug", requireAuth, requireWikiEditor, async (req, re
     res.status(413).json({ error: "Wiki page content is too large." });
     return;
   }
-  const [page] = await db.update(wikiPagesTable)
-    .set({ title, content, updatedBy: req.session.username!, updatedAt: new Date() })
-    .where(eq(wikiPagesTable.slug, slug))
-    .returning();
-  if (!page) {
-    res.status(404).json({ error: "Wiki page not found." });
-    return;
-  }
-  const assets = await db.select({
-    id: wikiAssetsTable.id,
-    fileName: wikiAssetsTable.fileName,
-    contentType: wikiAssetsTable.contentType,
-    size: wikiAssetsTable.size,
-    uploadedBy: wikiAssetsTable.uploadedBy,
-    createdAt: wikiAssetsTable.createdAt,
-  }).from(wikiAssetsTable).where(eq(wikiAssetsTable.pageSlug, slug));
-  res.json({ page, assets: assets.map((asset) => ({ ...asset, url: `/api/wiki/assets/${asset.id}` })) });
+  const result = await db.transaction(async tx => {
+    await lockStorage(tx, `wiki:${slug}`);
+    const [page] = await tx.update(wikiPagesTable)
+      .set({ title, content, updatedBy: req.session.username!, updatedAt: new Date() })
+      .where(eq(wikiPagesTable.slug, slug))
+      .returning();
+    if (!page) {
+      res.status(404).json({ error: "Wiki page not found." });
+      return;
+    }
+    const assets = await tx.select({
+      id: wikiAssetsTable.id,
+      fileName: wikiAssetsTable.fileName,
+      contentType: wikiAssetsTable.contentType,
+      size: wikiAssetsTable.size,
+      uploadedBy: wikiAssetsTable.uploadedBy,
+      createdAt: wikiAssetsTable.createdAt,
+    }).from(wikiAssetsTable).where(eq(wikiAssetsTable.pageSlug, slug));
+    return { page, assets: assets.map((asset) => ({ ...asset, url: `/api/wiki/assets/${asset.id}` })) };
+  });
+  if (result) res.json(result);
 });
 
 router.delete("/wiki/pages/:slug", requireAuth, requireWikiEditor, async (req, res) => {
   const slug = String(req.params.slug || "");
-  const assets = await db.select().from(wikiAssetsTable).where(eq(wikiAssetsTable.pageSlug, slug));
-  for (const asset of assets) {
-    const deleted = await storage.delete(asset.objectKey, { ignoreNotFound: true });
-    if (!deleted.ok) {
-      logger.error({ error: deleted.error, assetId: asset.id }, "Failed to remove wiki media");
-      res.status(503).json({ error: "File storage is unavailable; the wiki page was not deleted." });
-      return;
+  const keys: string[] = [];
+  await db.transaction(async tx => {
+    await lockStorage(tx, `wiki:${slug}`);
+    const assets = await tx.select().from(wikiAssetsTable).where(eq(wikiAssetsTable.pageSlug, slug));
+    for (const asset of assets) {
+      await queueCleanup(tx, `wiki:${slug}`, asset.objectKey);
+      keys.push(asset.objectKey);
     }
-  }
-  await db.delete(wikiAssetsTable).where(eq(wikiAssetsTable.pageSlug, slug));
-  await db.delete(wikiPagesTable).where(eq(wikiPagesTable.slug, slug));
+    await tx.delete(wikiAssetsTable).where(eq(wikiAssetsTable.pageSlug, slug));
+    await tx.delete(wikiPagesTable).where(eq(wikiPagesTable.slug, slug));
+  });
+  await cleanupAfterMutation(keys);
   res.json({ ok: true });
 });
 
 router.post("/wiki/pages/:slug/assets", requireAuth, requireWikiEditor, async (req, res) => {
   const slug = String(req.params.slug || "");
-  const [page] = await db.select({ slug: wikiPagesTable.slug }).from(wikiPagesTable).where(eq(wikiPagesTable.slug, slug)).limit(1);
-  if (!page) {
-    res.status(404).json({ error: "Wiki page not found." });
-    return;
-  }
   const media = parseMediaDataUrl(req.body?.dataUrl);
   if (!media) {
     res.status(400).json({ error: "Upload a PNG, JPEG, GIF, WebP, MP4, or WebM file up to 6 MB." });
@@ -172,23 +177,34 @@ router.post("/wiki/pages/:slug/assets", requireAuth, requireWikiEditor, async (r
   const extension = path.extname(fileName).toLowerCase() || (media.contentType === "video/mp4" ? ".mp4" : "");
   const objectKey = `wiki/${slug}/${randomUUID()}${extension}`;
   try {
-    const result = await storage.uploadFromBytes(objectKey, media.bytes, { compress: false });
-    if (!result.ok) {
-      logger.error({ error: result.error }, "Wiki media upload failed");
-      res.status(503).json({ error: "File storage is unavailable. Check the server's upload directory or App Storage setup and retry." });
+    const asset = await db.transaction(async tx => {
+      await lockStorage(tx, `wiki:${slug}`);
+      const [page] = await tx.select({ slug: wikiPagesTable.slug }).from(wikiPagesTable).where(eq(wikiPagesTable.slug, slug)).limit(1);
+      if (!page) return null;
+      await trackUpload(`wiki:${slug}`, objectKey);
+      const result = await storage.uploadFromBytes(objectKey, media.bytes, { compress: false });
+      if (!result.ok) {
+        logger.error({ error: result.error }, "Wiki media upload failed");
+        throw new Error("Wiki media storage is unavailable.");
+      }
+      const [asset] = await tx.insert(wikiAssetsTable).values({
+        pageSlug: slug,
+        objectKey,
+        fileName,
+        contentType: media.contentType,
+        size: media.bytes.length,
+        uploadedBy: req.session.username!,
+      }).returning();
+      return asset;
+    });
+    if (!asset) {
+      res.status(404).json({ error: "Wiki page not found." });
       return;
     }
-    const [asset] = await db.insert(wikiAssetsTable).values({
-      pageSlug: slug,
-      objectKey,
-      fileName,
-      contentType: media.contentType,
-      size: media.bytes.length,
-      uploadedBy: req.session.username!,
-    }).returning();
+    await cleanupAfterMutation([objectKey]);
     res.status(201).json({ ...asset, url: `/api/wiki/assets/${asset.id}` });
   } catch (error) {
-    await storage.delete(objectKey, { ignoreNotFound: true });
+    await cleanupAfterMutation([objectKey]);
     logger.error({ err: error }, "Wiki media upload failed");
     res.status(503).json({ error: "File storage is unavailable. Check the server's upload directory or App Storage setup and retry." });
   }
@@ -205,12 +221,14 @@ router.delete("/wiki/assets/:id", requireAuth, requireWikiEditor, async (req, re
     res.status(404).json({ error: "Wiki media not found." });
     return;
   }
-  const deleted = await storage.delete(asset.objectKey, { ignoreNotFound: true });
-  if (!deleted.ok) {
-    res.status(503).json({ error: "File storage is unavailable; media was not removed." });
-    return;
-  }
-  await db.delete(wikiAssetsTable).where(eq(wikiAssetsTable.id, id));
+  await db.transaction(async tx => {
+    await lockStorage(tx, `wiki:${asset.pageSlug}`);
+    const [current] = await tx.select().from(wikiAssetsTable).where(eq(wikiAssetsTable.id, id)).limit(1);
+    if (!current) return;
+    await queueCleanup(tx, `wiki:${current.pageSlug}`, current.objectKey);
+    await tx.delete(wikiAssetsTable).where(eq(wikiAssetsTable.id, id));
+  });
+  await cleanupAfterMutation([asset.objectKey]);
   res.json({ ok: true });
 });
 
