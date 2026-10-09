@@ -6,6 +6,12 @@ import signal
 DIAGNOSTICS_VERSION = "v2"
 
 
+def unseen_log_lines(lines: list[str], previous_line_count: int) -> tuple[list[str], int]:
+    if previous_line_count < 0 or previous_line_count > len(lines):
+        return [], len(lines)
+    return lines[previous_line_count:], len(lines)
+
+
 def format_uptime(seconds: float) -> str:
     total_seconds = max(0, int(seconds))
     hours, remainder = divmod(total_seconds, 3600)

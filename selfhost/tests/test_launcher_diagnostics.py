@@ -11,6 +11,7 @@ from launcher_diagnostics import (  # noqa: E402
     build_crash_report,
     describe_exit,
     format_uptime,
+    unseen_log_lines,
 )
 
 
@@ -47,6 +48,28 @@ class LauncherCrashDiagnosticsTests(unittest.TestCase):
 
         self.assertEqual(detail, "exited with code 0")
         self.assertIn("exited cleanly", hint)
+
+    def test_existing_crash_lines_are_not_treated_as_new(self):
+        lines = ["old startup", "[CRASH] historical event", ""]
+
+        new_lines, next_offset = unseen_log_lines(lines, len(lines))
+
+        self.assertEqual(new_lines, [])
+        self.assertEqual(next_offset, len(lines))
+
+    def test_only_appended_lines_are_new(self):
+        lines = ["old startup", "[CRASH] historical event", "[CRASH] new event"]
+
+        new_lines, next_offset = unseen_log_lines(lines, 2)
+
+        self.assertEqual(new_lines, ["[CRASH] new event"])
+        self.assertEqual(next_offset, 3)
+
+    def test_truncated_log_resets_offset_without_replaying_old_alert(self):
+        new_lines, next_offset = unseen_log_lines(["new file contents"], 8)
+
+        self.assertEqual(new_lines, [])
+        self.assertEqual(next_offset, 1)
 
 
 if __name__ == "__main__":

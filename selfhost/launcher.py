@@ -167,7 +167,12 @@ class App(tk.Tk):
         self.geometry("820x680")
         self.minsize(700, 520)
         self._crash_alerted = False
-        self._last_error_count = 0
+        try:
+            self._last_error_line_count = len(
+                ERROR_LOG_FILE.read_text(errors="replace").splitlines()
+            )
+        except OSError:
+            self._last_error_line_count = 0
         self._api_state_lock = threading.Lock()
         self._expected_api_stops: set[int] = set()
         self._build_ui()
@@ -323,13 +328,13 @@ class App(tk.Tk):
             row["status"].config(text="stopped", fg=RED)
 
     def _check_error_count(self):
-        count = 0
+        lines = []
         try:
             if ERROR_LOG_FILE.exists():
                 lines = ERROR_LOG_FILE.read_text(errors="replace").splitlines()
-                count = sum(1 for l in lines if l.strip())
         except Exception:
             pass
+        count = sum(1 for line in lines if line.strip())
 
         if count > 0:
             self._error_count_label.config(
@@ -338,17 +343,12 @@ class App(tk.Tk):
             self._error_count_label.config(text="")
 
         # Crash alert: new crash entry since last check
-        if count > self._last_error_count:
-            new_lines = []
-            try:
-                all_lines = ERROR_LOG_FILE.read_text(errors="replace").splitlines()
-                new_lines = all_lines[self._last_error_count:]
-            except Exception:
-                pass
-            crashes = [l for l in new_lines if "[CRASH]" in l]
-            if crashes and not self._crash_alerted:
-                self._show_alert(f"💥  Crash detected: {crashes[-1].strip()}")
-        self._last_error_count = count
+        new_lines, self._last_error_line_count = unseen_log_lines(
+            lines, self._last_error_line_count
+        )
+        crashes = [line for line in new_lines if "[CRASH]" in line]
+        if crashes and not self._crash_alerted:
+            self._show_alert(f"💥  Crash detected: {crashes[-1].strip()}")
 
     # ── Alert banner ──────────────────────────────────────────────────────────
     def _show_alert(self, msg: str):
@@ -406,8 +406,9 @@ class App(tk.Tk):
             tabs[idx].config(state="normal")
             tabs[idx].delete("1.0", "end")
             tabs[idx].config(state="disabled")
-            self._last_error_count = 0
-            self._error_count_label.config(text="")
+            if files[idx] == ERROR_LOG_FILE:
+                self._last_error_line_count = 0
+                self._error_count_label.config(text="")
         except Exception as e:
             messagebox.showerror("Error", str(e))
 
