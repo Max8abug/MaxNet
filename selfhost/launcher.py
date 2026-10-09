@@ -36,6 +36,11 @@ API_LOG_FILE    = LOG_DIR / "api.log"
 ERROR_LOG_FILE  = LOG_DIR / "error.log"
 UPDATE_LOG_FILE = LOG_DIR / "update.log"
 API_BIN         = REPO_DIR / "artifacts" / "api-server" / "dist" / "index.mjs"
+API_KEY_SETTINGS = (
+    ("Spotify Client ID", "SPOTIFY_CLIENT_ID"),
+    ("Spotify Client Secret", "SPOTIFY_CLIENT_SECRET"),
+    ("YouTube Data API Key", "YOUTUBE_DATA_API_KEY"),
+)
 
 RUN_DIR.mkdir(exist_ok=True)
 LOG_DIR.mkdir(exist_ok=True)
@@ -69,6 +74,44 @@ def load_env() -> dict:
                 k, _, v = line.partition("=")
                 env[k.strip()] = v.strip()
     return env
+
+def save_env_values(path: Path, updates: dict) -> None:
+    """Update selected single-line values without replacing unrelated .env settings."""
+    if not path.exists():
+        raise FileNotFoundError(f"{path} does not exist. Run Setup or create .env first.")
+
+    allowed_keys = {key for _, key in API_KEY_SETTINGS}
+    normalized = {}
+    for key, value in updates.items():
+        if key not in allowed_keys:
+            raise ValueError(f"{key} is not an API key setting.")
+        if not isinstance(value, str):
+            raise ValueError(f"{key} must be text.")
+        value = value.strip()
+        if any(char in value for char in "\r\n\0") or any(char.isspace() for char in value):
+            raise ValueError(f"{key} must be a single-line API key without spaces.")
+        if any(char in value for char in ("#", '"', "'", "\\")):
+            raise ValueError(f"{key} contains a character that needs quoting in .env.")
+        normalized[key] = value
+
+    lines = path.read_text().splitlines()
+    output = []
+    written = set()
+    for line in lines:
+        stripped = line.lstrip()
+        if stripped and not stripped.startswith("#") and "=" in line:
+            key = line.partition("=")[0].strip()
+            if key in normalized:
+                if key not in written:
+                    output.append(f"{key}={normalized[key]}")
+                    written.add(key)
+                continue
+        output.append(line)
+
+    for key, value in normalized.items():
+        if key not in written:
+            output.append(f"{key}={value}")
+    path.write_text("\n".join(output).rstrip("\n") + "\n")
 
 def get_pid(pid_file: Path):
     try:
@@ -215,6 +258,7 @@ class App(tk.Tk):
             ("🔧 Setup",   self._run_setup),
             ("🔨 Rebuild", self._run_rebuild),
             ("⬆ Update",  self._run_update),
+            ("🔑 API keys", self._configure_api_keys),
             ("✏ Edit .env", self._edit_env),
             ("🔄 Refresh", self._update_status),
         ]
@@ -403,6 +447,65 @@ class App(tk.Tk):
             if temp_path is not None:
                 temp_path.unlink(missing_ok=True)
             messagebox.showerror("Export failed", str(exc))
+
+    def _configure_api_keys(self):
+        if not ENV_FILE.exists():
+            messagebox.showerror(
+                "No .env",
+                f"{ENV_FILE} doesn't exist. Run Setup or create .env with Edit .env first.",
+            )
+            return
+
+        env = load_env()
+        win = tk.Toplevel(self)
+        win.title("API key settings")
+        win.geometry("560x250")
+        win.resizable(False, False)
+        tk.Label(
+            win,
+            text="These server-side keys enable public Spotify playlist imports.",
+            anchor="w",
+        ).pack(fill="x", padx=10, pady=(10, 4))
+
+        entries = {}
+        for label, key in API_KEY_SETTINGS:
+            row = tk.Frame(win)
+            row.pack(fill="x", padx=10, pady=4)
+            tk.Label(row, text=label, width=22, anchor="w").pack(side="left")
+            entry = tk.Entry(row, show="*", width=38)
+            entry.pack(side="left", fill="x", expand=True, padx=(0, 8))
+            entry.insert(0, env.get(key, ""))
+            status = "Configured" if env.get(key, "") else "Not set"
+            tk.Label(
+                row,
+                text=status,
+                width=10,
+                anchor="w",
+                fg=GREEN if status == "Configured" else DIM_FG,
+            ).pack(side="right")
+            entries[key] = entry
+
+        tk.Label(
+            win,
+            text="Values are masked and saved only to selfhost/.env. Restart the API after saving.",
+            anchor="w",
+            wraplength=530,
+        ).pack(fill="x", padx=10, pady=4)
+
+        def save():
+            try:
+                save_env_values(ENV_FILE, {key: entry.get() for key, entry in entries.items()})
+            except Exception as exc:
+                messagebox.showerror("Could not save API keys", str(exc), parent=win)
+                return
+            messagebox.showinfo(
+                "Saved",
+                "API key settings saved. Restart the API server for changes to take effect.",
+                parent=win,
+            )
+            win.destroy()
+
+        tk.Button(win, text="Save API keys", command=save).pack(pady=(2, 10))
 
     # ── Service control ────────────────────────────────────────────────────────
     def _start(self, name: str):
