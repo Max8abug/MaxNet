@@ -31,14 +31,17 @@ const registry = await loadRegistry(registrySource);
 const {
   ARCHIVABLE_FEATURES,
   PROTECTED_LAUNCHER_IDS,
-  TEMPORARILY_DISABLED_FEATURES,
+  API_DISABLED_FEATURES,
+  HIDDEN_LAUNCHER_FEATURES,
   isArchivableFeatureId,
-  isFeatureTemporarilyDisabled,
+  isApiFeatureDisabled,
+  isFeatureHiddenFromLaunchers,
   cleanArchivedFeatures,
 } = registry;
 const featureIds = new Set(ARCHIVABLE_FEATURES.map((f) => f.id));
-const disabledFeatureIds = new Set(TEMPORARILY_DISABLED_FEATURES);
-const activeFeatureIds = new Set([...featureIds].filter((id) => !disabledFeatureIds.has(id)));
+const apiDisabledFeatureIds = new Set(API_DISABLED_FEATURES);
+const hiddenLauncherFeatureIds = new Set(HIDDEN_LAUNCHER_FEATURES);
+const activeFeatureIds = new Set([...featureIds].filter((id) => !hiddenLauncherFeatureIds.has(id)));
 const protectedIds = new Set(PROTECTED_LAUNCHER_IDS);
 const desktop = parse(read("artifacts/photo-desktop/src/components/Taskbar.tsx"));
 const mobile = parse(read("artifacts/photo-desktop/src/components/MobileShell.tsx"));
@@ -111,10 +114,25 @@ test("validation accepts every registry ID and rejects protected, unknown, and m
   for (const invalid of [null, {}, "planner", 1]) assert.deepEqual(cleanArchivedFeatures(invalid), []);
 });
 
-test("temporarily disabled features remain registered but are excluded from launchers", () => {
-  for (const id of disabledFeatureIds) {
-    assert.ok(featureIds.has(id), `Disabled feature must remain registered: ${id}`);
-    assert.equal(isFeatureTemporarilyDisabled(id), true);
+test("Cafe stays hidden from launchers while its API remains enabled", () => {
+  assert.ok(featureIds.has("cafe"), "Cafe remains registered for feature metadata");
+  assert.deepEqual(HIDDEN_LAUNCHER_FEATURES, ["cafe"]);
+  assert.equal(isFeatureHiddenFromLaunchers("cafe"), true);
+  assert.equal(isFeatureHiddenFromLaunchers("chat"), false);
+  assert.equal(isApiFeatureDisabled("cafe"), false);
+  for (const id of apiDisabledFeatureIds) {
+    assert.ok(featureIds.has(id), `API-disabled feature must remain registered: ${id}`);
+    assert.equal(isApiFeatureDisabled(id), true);
+  }
+
+  const featureGuard = read("artifacts/api-server/src/lib/feature-guards.ts");
+  assert.match(featureGuard, /isApiFeatureDisabled\(feature\)/);
+  for (const route of [
+    "artifacts/api-server/src/routes/cafe.ts",
+    "artifacts/api-server/src/routes/cafe-rooms.ts",
+    "artifacts/api-server/src/routes/cafe-objects.ts",
+  ]) {
+    assert.match(read(route), /requireEnabledFeature\("cafe"\)/);
   }
 });
 

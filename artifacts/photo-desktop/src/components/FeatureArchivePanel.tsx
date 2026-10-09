@@ -2,9 +2,9 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { fetchFeatureArchiveState, setFeatureArchived } from "../lib/api";
 import { useAuth } from "../lib/auth-store";
 import { FEATURE_CATALOG } from "../lib/feature-catalog";
-import { isFeatureTemporarilyDisabled } from "@workspace/feature-registry";
+import { isFeatureHiddenFromLaunchers } from "@workspace/feature-registry";
 
-const visibleFeatureCatalog = FEATURE_CATALOG.filter((feature) => !isFeatureTemporarilyDisabled(feature.id));
+const visibleFeatureCatalog = FEATURE_CATALOG.filter((feature) => !isFeatureHiddenFromLaunchers(feature.id));
 
 type View = "all" | "active" | "archived";
 

@@ -7,7 +7,7 @@ import { useProfileDialogStore } from '../lib/profile-dialog-store';
 import { useThemeMode } from '../lib/theme';
 import { Toaster } from './Toaster';
 import { fetchDMConversations, fetchChat, fetchNews } from '../lib/api';
-import { isFeatureTemporarilyDisabled } from '@workspace/feature-registry';
+import { isFeatureHiddenFromLaunchers } from '@workspace/feature-registry';
 import {
   enablePushNotifications,
   registerServiceWorker,
@@ -30,7 +30,7 @@ export function Taskbar({ page }: { page: string }) {
   const { user, ranks, refresh, refreshRanks, logout, siteSettings, refreshSiteSettings, refreshFeatureArchives } = useAuth();
   const { darkMode } = useThemeMode();
   const serverNow = useServerNow();
-  const wins = (windows[page] || []).filter((window) => !isFeatureTemporarilyDisabled(window.type));
+  const wins = (windows[page] || []).filter((window) => !isFeatureHiddenFromLaunchers(window.type));
   const [dmUnread, setDmUnread] = useState(0);
   const [chatUnread, setChatUnread] = useState(0);
   useEffect(() => { void refresh(); void refreshRanks(); }, [refresh, refreshRanks]);

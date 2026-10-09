@@ -33,7 +33,7 @@ import {
 } from 'lucide-react';
 import { Window } from './Window';
 import { useDesktopStore, type WindowData } from '../store';
-import { isArchivableFeatureId, isFeatureTemporarilyDisabled, type LauncherWindowId } from '@workspace/feature-registry';
+import { isArchivableFeatureId, isFeatureHiddenFromLaunchers, type LauncherWindowId } from '@workspace/feature-registry';
 import { useAuth } from '../lib/auth-store';
 import { useThemeMode } from '../lib/theme';
 import { formatLocalTime } from '../lib/dates';
@@ -141,7 +141,7 @@ export function MobileShell({ page }: { page: string }) {
   const savedWindows = useDesktopStore(
     (state) => state.windows[page] ?? EMPTY_WINDOWS,
   );
-  const windows = savedWindows.filter((window) => !isFeatureTemporarilyDisabled(window.type));
+  const windows = savedWindows.filter((window) => !isFeatureHiddenFromLaunchers(window.type));
   const addWindow = useDesktopStore((state) => state.addWindow);
   const updateWindow = useDesktopStore((state) => state.updateWindow);
   const bringToFront = useDesktopStore((state) => state.bringToFront);

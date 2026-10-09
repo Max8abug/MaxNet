@@ -36,7 +36,7 @@ import { DiagnosticsPanel } from './DiagnosticsPanel';
 import { AccountAdmin } from './AccountAdmin';
 import { MobileSettings } from './MobileSettings';
 import { useAuth } from '../lib/auth-store';
-import { isFeatureTemporarilyDisabled } from '@workspace/feature-registry';
+import { isFeatureHiddenFromLaunchers } from '@workspace/feature-registry';
 
 function getYouTubeEmbedUrl(url: string): string | null {
   if (!url) return null;
@@ -166,7 +166,7 @@ export function Window({
   };
 
   const isActive = useDesktopStore(state => state.maxZIndex === w.zIndex);
-  if (isFeatureTemporarilyDisabled(w.type)) return null;
+  if (isFeatureHiddenFromLaunchers(w.type)) return null;
 
   const bounds = boundsRef.current;
   // Mobile windows are app screens, not floating desktop windows. The mobile

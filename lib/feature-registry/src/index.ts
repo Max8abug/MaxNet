@@ -32,14 +32,22 @@ export const ARCHIVABLE_FEATURES = [
 
 export type ArchivableFeatureId = (typeof ARCHIVABLE_FEATURES)[number]["id"];
 
-// Temporary owner-requested shutdowns are enforced in the UI and API.
-// Keep the Cafe's schema and saved data intact; remove it from this list only
-// when the owner asks to reactivate the feature.
-export const TEMPORARILY_DISABLED_FEATURES = ["cafe"] as const satisfies readonly ArchivableFeatureId[];
-const temporarilyDisabledFeatureIds: ReadonlySet<string> = new Set(TEMPORARILY_DISABLED_FEATURES);
+// UI visibility and API availability are intentionally separate. Cafe stays
+// unavailable from launchers while its API remains available to dependent apps.
+export const HIDDEN_LAUNCHER_FEATURES = ["cafe"] as const satisfies readonly ArchivableFeatureId[];
+const hiddenLauncherFeatureIds: ReadonlySet<string> = new Set(HIDDEN_LAUNCHER_FEATURES);
 
-export function isFeatureTemporarilyDisabled(value: unknown): value is (typeof TEMPORARILY_DISABLED_FEATURES)[number] {
-  return typeof value === "string" && temporarilyDisabledFeatureIds.has(value);
+export function isFeatureHiddenFromLaunchers(value: unknown): boolean {
+  return typeof value === "string" && hiddenLauncherFeatureIds.has(value);
+}
+
+// Only list features here when their API must return 503. Hiding a launcher
+// must never disable service endpoints used by other features.
+export const API_DISABLED_FEATURES: readonly ArchivableFeatureId[] = [];
+const apiDisabledFeatureIds: ReadonlySet<string> = new Set(API_DISABLED_FEATURES);
+
+export function isApiFeatureDisabled(value: unknown): boolean {
+  return typeof value === "string" && apiDisabledFeatureIds.has(value);
 }
 
 // These launchers must remain available to manage access and restore features.
