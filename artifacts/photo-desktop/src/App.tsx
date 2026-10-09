@@ -54,7 +54,9 @@ function AppLayout() {
   }, [user?.timeZone]);
 
   return (
-    <div className="w-screen h-[100dvh] relative overflow-hidden bg-background select-none" data-time-zone={timeZone}>
+    // Desktop window z-indices grow as windows receive focus. Keep them local
+    // so body-portaled settings dialogs always stay above the entire desktop.
+    <div className="w-screen h-[100dvh] relative isolate overflow-hidden bg-background select-none" data-time-zone={timeZone}>
       {isMobile ? <MobileShell page={page} /> : (
         <>
           <Desktop page={page} />
