@@ -9,6 +9,7 @@
     "typecheck:libs": "tsc --build",
     "test:feature-registry": "node --test scripts/tests/feature-registry.test.mjs",
     "test:selfhost-update": "node --test selfhost/tests/update.test.mjs",
+    "test:selfhost-linux-smoke": "bash selfhost/tests/linux-smoke.sh",
     "typecheck": "pnpm run test:feature-registry && pnpm run typecheck:libs && pnpm -r --filter \"./artifacts/**\" --filter \"./scripts\" --if-present run typecheck"
   },
   "private": true,

@@ -60,6 +60,23 @@ Run `setup.sh` once and it writes this file automatically with a generated passw
 
 ## Updating
 
+
+### Checking a clean Linux install
+
+Before a self-hosted release, run the opt-in install/build smoke check from the
+repository on Linux x86_64 with Node.js 24 and the exact pnpm version in the
+root `package.json`:
+
+```bash
+pnpm run test:selfhost-linux-smoke
+```
+
+It makes a disposable checkout, runs the frozen workspace install with native
+dependency scripts enabled, and builds the API and frontend using the same
+commands as setup. It does not run `setup.sh`, access PostgreSQL, copy local
+`.env` files or `.npmrc` files, or modify the working checkout's package and
+lock/config files. It needs network access to install packages.
+
 ### Uploaded files
 
 Self-hosted mode (`SERVE_STATIC=1`) automatically uses local file storage.
