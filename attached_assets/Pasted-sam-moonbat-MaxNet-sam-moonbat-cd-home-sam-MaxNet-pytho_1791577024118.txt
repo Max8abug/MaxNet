@@ -1,0 +1,51 @@
+sam@moonbat:~/MaxNet$ sam@moonbat:~$ cd /home/sam/MaxNet
+python3 ./selfhost/launcher.py
+Traceback (most recent call last):
+  File "/home/sam/MaxNet/./selfhost/launcher.py", line 765, in <module>
+    app = App()
+          ^^^^^
+  File "/home/sam/MaxNet/./selfhost/launcher.py", line 179, in __init__
+    self._poll()
+  File "/home/sam/MaxNet/./selfhost/launcher.py", line 294, in _poll
+    self._update_status()
+  File "/home/sam/MaxNet/./selfhost/launcher.py", line 319, in _update_status
+    self._check_error_count()
+  File "/home/sam/MaxNet/./selfhost/launcher.py", line 346, in _check_error_count
+    new_lines, self._last_error_line_count = unseen_log_lines(
+                                             ^^^^^^^^^^^^^^^^
+NameError: name 'unseen_log_lines' is not defined
+sam@moonbat:~/MaxNet$ 
+
+
+sam@moonbat:~$: command not found
+Traceback (most recent call last):
+  File "/home/sam/MaxNet/./selfhost/launcher.py", line 765, in <module>
+    app = App()
+          ^^^^^
+  File "/home/sam/MaxNet/./selfhost/launcher.py", line 179, in __init__
+    self._poll()
+  File "/home/sam/MaxNet/./selfhost/launcher.py", line 294, in _poll
+    self._update_status()
+  File "/home/sam/MaxNet/./selfhost/launcher.py", line 319, in _update_status
+    self._check_error_count()
+  File "/home/sam/MaxNet/./selfhost/launcher.py", line 346, in _check_error_count
+    new_lines, self._last_error_line_count = unseen_log_lines(
+                                             ^^^^^^^^^^^^^^^^
+NameError: name 'unseen_log_lines' is not defined
+bash: syntax error near unexpected token `most'
+bash: syntax error near unexpected token `newline'
+bash: syntax error near unexpected token `('
+^^^^^: command not found
+Command 'File' not found, did you mean:
+  command 'vile' from deb vile (9.8y-3)
+  command 'kile' from deb kile (4:2.9.93-2)
+  command 'zile' from deb zile (2.6.2-2)
+  command 'file' from deb file (1:5.45-2)
+Try: sudo apt install <deb name>
+bash: syntax error near unexpected token `File'
+bash: syntax error near unexpected token `File'
+bash: syntax error near unexpected token `File'
+bash: syntax error near unexpected token `('
+^^^^^^^^^^^^^^^^: command not found
+NameError:: command not found
+bash: sam@moonbat:~/MaxNet$: No such file or directory
