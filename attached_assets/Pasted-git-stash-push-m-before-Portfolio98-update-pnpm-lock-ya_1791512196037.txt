@@ -1,0 +1,290 @@
+git stash push -m "before Portfolio98 update" -- pnpm-lock.yaml
+git status --short
+bash selfhost/update.sh
+Saved working directory and index state On main: before Portfolio98 update
+?? "tatus --short"
+[2026-10-08 22:16:04] ============================================================
+[2026-10-08 22:16:04]   Portfolio98 Update
+[2026-10-08 22:16:04]   Repo: /home/sam/MaxNet
+[2026-10-08 22:16:04] ============================================================
+[2026-10-08 22:16:04] Current branch : main
+[2026-10-08 22:16:04] Current commit : 724a641
+[2026-10-08 22:16:04] Pulling from origin/main ...
+From https://github.com/Max8abug/MaxNet
+ * branch            main       -> FETCH_HEAD
+   bc87041..5499891  main       -> origin/main
+Updating 724a641..5499891
+Fast-forward
+ .agents/memory/MEMORY.md                           |   16 +-
+ .agents/memory/backup-restore-safety.md            |   26 +
+ .agents/memory/development-environment.md          |   20 +-
+ .agents/memory/eaglercraft-launch.md               |   10 +
+ .agents/memory/external-gif-previews.md            |   16 +
+ .agents/memory/feature-archive-scope.md            |   37 +
+ .agents/memory/file-mutation-safety.md             |   28 +
+ .agents/memory/ios-release-flow.md                 |   37 +
+ .agents/memory/native-hosted-site-scope.md         |   12 +
+ .agents/memory/personal-playlists.md               |   16 +
+ .agents/memory/scheduled-backup-safety.md          |   26 +
+ .agents/memory/self-hosted-uploads.md              |   14 +
+ .agents/memory/storage-report-safety.md            |   17 +
+ .agents/memory/theme-lab-scope.md                  |   10 +
+ .gitignore                                         |    4 +
+ .replit                                            |   24 +-
+ artifacts/api-server/build.mjs                     |    7 +-
+ artifacts/api-server/package.json                  |    9 +-
+ artifacts/api-server/src/index.ts                  |    4 +
+ artifacts/api-server/src/lib/app-storage.ts        |   97 +
+ artifacts/api-server/src/lib/backup-files.ts       |  202 +
+ artifacts/api-server/src/lib/emoji-shortcodes.ts   |   21 +
+ artifacts/api-server/src/lib/ensure-schema.ts      |   58 +
+ artifacts/api-server/src/lib/gif-links.ts          |   99 +
+ artifacts/api-server/src/lib/local-storage.ts      |   93 +
+ artifacts/api-server/src/lib/personal-playlists.ts |   58 +
+ artifacts/api-server/src/lib/planner-reminders.ts  |   59 +
+ artifacts/api-server/src/lib/push.ts               |   94 +-
+ artifacts/api-server/src/lib/run-storage-report.ts |   53 +
+ artifacts/api-server/src/lib/scheduled-backup.ts   |  123 +
+ artifacts/api-server/src/lib/site-backup.ts        |   83 +
+ artifacts/api-server/src/lib/storage-inventory.ts  |   72 +
+ artifacts/api-server/src/lib/storage-lock.ts       |    3 +
+ artifacts/api-server/src/lib/storage-mutations.ts  |  117 +
+ artifacts/api-server/src/lib/storage-report.ts     |   72 +
+ artifacts/api-server/src/routes/admin-backup.ts    |  387 +-
+ artifacts/api-server/src/routes/auth.ts            |   10 +-
+ artifacts/api-server/src/routes/dms.ts             |    7 +-
+ artifacts/api-server/src/routes/hosted-sites.ts    |  426 +
+ artifacts/api-server/src/routes/index.ts           |    8 +
+ .../api-server/src/routes/personal-playlists.ts    |  126 +
+ artifacts/api-server/src/routes/planner.ts         |  140 +
+ artifacts/api-server/src/routes/push.ts            |   33 +-
+ artifacts/api-server/src/routes/ranks.ts           |   62 +-
+ artifacts/api-server/src/routes/site-settings.ts   |   44 +-
+ artifacts/api-server/src/routes/social.ts          |   60 +-
+ artifacts/api-server/src/routes/wiki.ts            |  260 +
+ artifacts/api-server/src/scheduled-backup-cli.ts   |   47 +
+ artifacts/api-server/src/storage-report-cli.ts     |   53 +
+ artifacts/api-server/tests/backup.integration.ts   |  432 +
+ artifacts/api-server/tests/feature-archives-db.ts  |   20 +
+ .../api-server/tests/feature-archives.test.ts      |  110 +
+ artifacts/api-server/tests/run-backup-tests.mjs    |  137 +
+ .../tests/run-feature-archives-tests.mjs           |   32 +
+ .../api-server/tests/run-storage-report-tests.mjs  |   19 +
+ artifacts/api-server/tests/run-storage-tests.mjs   |   26 +
+ .../tests/scheduled-backup.integration.ts          |  129 +
+ artifacts/api-server/tests/storage-faults.ts       |  274 +
+ artifacts/api-server/tests/storage-report.test.ts  |   96 +
+ artifacts/api-server/tests/storage.integration.ts  |  219 +
+ artifacts/api-server/tsconfig.json                 |    3 +
+ artifacts/photo-desktop-mobile/.gitignore          |   41 +
+ .../.replit-artifact/artifact.toml                 |   24 +
+ artifacts/photo-desktop-mobile/app.json            |   23 +
+ .../photo-desktop-mobile/app/(tabs)/_layout.tsx    |  126 +
+ .../photo-desktop-mobile/app/(tabs)/browser.tsx    |  135 +
+ .../photo-desktop-mobile/app/(tabs)/index.tsx      |   84 +
+ .../photo-desktop-mobile/app/(tabs)/profile.tsx    |  203 +
+ artifacts/photo-desktop-mobile/app/(tabs)/wiki.tsx |  129 +
+ artifacts/photo-desktop-mobile/app/+not-found.tsx  |   44 +
+ artifacts/photo-desktop-mobile/app/_layout.tsx     |  109 +
+ .../photo-desktop-mobile/assets/images/icon.png    |  Bin 0 -> 393493 bytes
+ .../assets/images/photo-desktop-icon.png           |  Bin 0 -> 851794 bytes
+ .../components/ErrorBoundary.tsx                   |   53 +
+ .../components/ErrorFallback.tsx                   |  274 +
+ .../components/KeyboardAwareScrollViewCompat.tsx   |   32 +
+ .../photo-desktop-mobile/components/Retro.tsx      |  103 +
+ artifacts/photo-desktop-mobile/constants/colors.ts |   59 +
+ artifacts/photo-desktop-mobile/docs/ios-release.md |   96 +
+ artifacts/photo-desktop-mobile/hooks/useColors.ts  |   23 +
+ artifacts/photo-desktop-mobile/lib/api.ts          |  159 +
+ .../photo-desktop-mobile/lib/auth-context.tsx      |   58 +
+ artifacts/photo-desktop-mobile/lib/query-client.ts |   11 +
+ artifacts/photo-desktop-mobile/metro.config.js     |    3 +
+ artifacts/photo-desktop-mobile/package.json        |   60 +
+ artifacts/photo-desktop-mobile/scripts/build.js    |  589 ++
+ artifacts/photo-desktop-mobile/server/serve.js     |  154 +
+ .../server/templates/landing-page.html             |  464 +
+ artifacts/photo-desktop-mobile/tsconfig.json       |   22 +
+ artifacts/photo-desktop/package.json               |    3 +
+ artifacts/photo-desktop/public/sw.js               |    1 +
+ artifacts/photo-desktop/src/components/ChatBox.tsx |   53 +-
+ .../photo-desktop/src/components/ChatImage.tsx     |   27 +
+ artifacts/photo-desktop/src/components/DMs.tsx     |    2 +-
+ .../photo-desktop/src/components/Eaglercraft.tsx   |   17 +
+ .../src/components/FeatureArchivePanel.tsx         |  150 +
+ .../src/components/HostedSitePanel.tsx             |  283 +
+ .../photo-desktop/src/components/MobileShell.tsx   |   74 +-
+ .../src/components/PersonalPlaylists.tsx           |  294 +
+ .../src/components/PersonalYouTubePlayer.tsx       |  160 +
+ artifacts/photo-desktop/src/components/Planner.tsx |  413 +
+ .../photo-desktop/src/components/RanksAdmin.tsx    |   29 +-
+ .../photo-desktop/src/components/SiteBackup.tsx    |  119 +-
+ artifacts/photo-desktop/src/components/Taskbar.tsx |  161 +-
+ .../photo-desktop/src/components/ThemeLab.tsx      |  143 +
+ artifacts/photo-desktop/src/components/Toaster.tsx |    3 +
+ .../photo-desktop/src/components/UserBrowser.tsx   |   32 +-
+ .../photo-desktop/src/components/UserPage.tsx      |   18 +-
+ .../photo-desktop/src/components/WikiBrowser.tsx   |  332 +
+ artifacts/photo-desktop/src/components/Window.tsx  |   12 +-
+ .../photo-desktop/src/components/theme-lab.css     |   80 +
+ artifacts/photo-desktop/src/lib/api.ts             |  131 +-
+ artifacts/photo-desktop/src/lib/auth-store.ts      |   50 +-
+ artifacts/photo-desktop/src/lib/chat-gif.ts        |   24 +
+ .../photo-desktop/src/lib/eaglercraft-config.ts    |   22 +
+ artifacts/photo-desktop/src/lib/feature-catalog.ts |    1 +
+ artifacts/photo-desktop/src/lib/notifications.ts   |    2 +-
+ .../src/lib/personal-playlists-api.ts              |   32 +
+ artifacts/photo-desktop/src/lib/planner-api.ts     |   26 +
+ artifacts/photo-desktop/src/store.ts               |    2 +-
+ artifacts/photo-desktop/tests/backup-ui.tsx        |   22 +
+ artifacts/photo-desktop/tsconfig.json              |    3 +
+ lib/db/src/index.ts                                |    9 +
+ lib/db/src/schema/index.ts                         |    5 +-
+ lib/db/src/schema/personal-playlists.ts            |   12 +
+ lib/db/src/schema/planner.ts                       |   15 +
+ lib/db/src/schema/social.ts                        |   56 +-
+ lib/db/src/schema/storage-cleanup.ts               |   12 +
+ lib/feature-registry/README.md                     |   22 +
+ lib/feature-registry/package.json                  |    9 +
+ lib/feature-registry/src/index.ts                  |   50 +
+ lib/feature-registry/tsconfig.json                 |   11 +
+ package.json                                       |    3 +-
+ pnpm-lock.yaml                                     | 9636 +++++++++++++++++---
+ scripts/tests/feature-registry.test.mjs            |  181 +
+ selfhost/.env.example                              |    6 +
+ selfhost/README.md                                 |  363 +-
+ selfhost/STORAGE-REPORT.md                         |   82 +
+ selfhost/backup.conf.example                       |    7 +
+ selfhost/backup.sh                                 |   26 +
+ selfhost/setup.sh                                  |    1 +
+ selfhost/update.sh                                 |   19 +-
+ tsconfig.json                                      |    3 +
+ 143 files changed, 19218 insertions(+), 1906 deletions(-)
+ create mode 100644 .agents/memory/backup-restore-safety.md
+ create mode 100644 .agents/memory/eaglercraft-launch.md
+ create mode 100644 .agents/memory/external-gif-previews.md
+ create mode 100644 .agents/memory/feature-archive-scope.md
+ create mode 100644 .agents/memory/file-mutation-safety.md
+ create mode 100644 .agents/memory/ios-release-flow.md
+ create mode 100644 .agents/memory/native-hosted-site-scope.md
+ create mode 100644 .agents/memory/personal-playlists.md
+ create mode 100644 .agents/memory/scheduled-backup-safety.md
+ create mode 100644 .agents/memory/self-hosted-uploads.md
+ create mode 100644 .agents/memory/storage-report-safety.md
+ create mode 100644 .agents/memory/theme-lab-scope.md
+ create mode 100644 artifacts/api-server/src/lib/app-storage.ts
+ create mode 100644 artifacts/api-server/src/lib/backup-files.ts
+ create mode 100644 artifacts/api-server/src/lib/emoji-shortcodes.ts
+ create mode 100644 artifacts/api-server/src/lib/gif-links.ts
+ create mode 100644 artifacts/api-server/src/lib/local-storage.ts
+ create mode 100644 artifacts/api-server/src/lib/personal-playlists.ts
+ create mode 100644 artifacts/api-server/src/lib/planner-reminders.ts
+ create mode 100644 artifacts/api-server/src/lib/run-storage-report.ts
+ create mode 100644 artifacts/api-server/src/lib/scheduled-backup.ts
+ create mode 100644 artifacts/api-server/src/lib/site-backup.ts
+ create mode 100644 artifacts/api-server/src/lib/storage-inventory.ts
+ create mode 100644 artifacts/api-server/src/lib/storage-lock.ts
+ create mode 100644 artifacts/api-server/src/lib/storage-mutations.ts
+ create mode 100644 artifacts/api-server/src/lib/storage-report.ts
+ create mode 100644 artifacts/api-server/src/routes/hosted-sites.ts
+ create mode 100644 artifacts/api-server/src/routes/personal-playlists.ts
+ create mode 100644 artifacts/api-server/src/routes/planner.ts
+ create mode 100644 artifacts/api-server/src/routes/wiki.ts
+ create mode 100644 artifacts/api-server/src/scheduled-backup-cli.ts
+ create mode 100644 artifacts/api-server/src/storage-report-cli.ts
+ create mode 100644 artifacts/api-server/tests/backup.integration.ts
+ create mode 100644 artifacts/api-server/tests/feature-archives-db.ts
+ create mode 100644 artifacts/api-server/tests/feature-archives.test.ts
+ create mode 100644 artifacts/api-server/tests/run-backup-tests.mjs
+ create mode 100644 artifacts/api-server/tests/run-feature-archives-tests.mjs
+ create mode 100644 artifacts/api-server/tests/run-storage-report-tests.mjs
+ create mode 100644 artifacts/api-server/tests/run-storage-tests.mjs
+ create mode 100644 artifacts/api-server/tests/scheduled-backup.integration.ts
+ create mode 100644 artifacts/api-server/tests/storage-faults.ts
+ create mode 100644 artifacts/api-server/tests/storage-report.test.ts
+ create mode 100644 artifacts/api-server/tests/storage.integration.ts
+ create mode 100644 artifacts/photo-desktop-mobile/.gitignore
+ create mode 100644 artifacts/photo-desktop-mobile/.replit-artifact/artifact.toml
+ create mode 100644 artifacts/photo-desktop-mobile/app.json
+ create mode 100644 artifacts/photo-desktop-mobile/app/(tabs)/_layout.tsx
+ create mode 100644 artifacts/photo-desktop-mobile/app/(tabs)/browser.tsx
+ create mode 100644 artifacts/photo-desktop-mobile/app/(tabs)/index.tsx
+ create mode 100644 artifacts/photo-desktop-mobile/app/(tabs)/profile.tsx
+ create mode 100644 artifacts/photo-desktop-mobile/app/(tabs)/wiki.tsx
+ create mode 100644 artifacts/photo-desktop-mobile/app/+not-found.tsx
+ create mode 100644 artifacts/photo-desktop-mobile/app/_layout.tsx
+ create mode 100644 artifacts/photo-desktop-mobile/assets/images/icon.png
+ create mode 100644 artifacts/photo-desktop-mobile/assets/images/photo-desktop-icon.png
+ create mode 100644 artifacts/photo-desktop-mobile/components/ErrorBoundary.tsx
+ create mode 100644 artifacts/photo-desktop-mobile/components/ErrorFallback.tsx
+ create mode 100644 artifacts/photo-desktop-mobile/components/KeyboardAwareScrollViewCompat.tsx
+ create mode 100644 artifacts/photo-desktop-mobile/components/Retro.tsx
+ create mode 100644 artifacts/photo-desktop-mobile/constants/colors.ts
+ create mode 100644 artifacts/photo-desktop-mobile/docs/ios-release.md
+ create mode 100644 artifacts/photo-desktop-mobile/hooks/useColors.ts
+ create mode 100644 artifacts/photo-desktop-mobile/lib/api.ts
+ create mode 100644 artifacts/photo-desktop-mobile/lib/auth-context.tsx
+ create mode 100644 artifacts/photo-desktop-mobile/lib/query-client.ts
+ create mode 100644 artifacts/photo-desktop-mobile/metro.config.js
+ create mode 100644 artifacts/photo-desktop-mobile/package.json
+ create mode 100644 artifacts/photo-desktop-mobile/scripts/build.js
+ create mode 100644 artifacts/photo-desktop-mobile/server/serve.js
+ create mode 100644 artifacts/photo-desktop-mobile/server/templates/landing-page.html
+ create mode 100644 artifacts/photo-desktop-mobile/tsconfig.json
+ create mode 100644 artifacts/photo-desktop/src/components/ChatImage.tsx
+ create mode 100644 artifacts/photo-desktop/src/components/FeatureArchivePanel.tsx
+ create mode 100644 artifacts/photo-desktop/src/components/HostedSitePanel.tsx
+ create mode 100644 artifacts/photo-desktop/src/components/PersonalPlaylists.tsx
+ create mode 100644 artifacts/photo-desktop/src/components/PersonalYouTubePlayer.tsx
+ create mode 100644 artifacts/photo-desktop/src/components/Planner.tsx
+ create mode 100644 artifacts/photo-desktop/src/components/ThemeLab.tsx
+ create mode 100644 artifacts/photo-desktop/src/components/WikiBrowser.tsx
+ create mode 100644 artifacts/photo-desktop/src/components/theme-lab.css
+ create mode 100644 artifacts/photo-desktop/src/lib/chat-gif.ts
+ create mode 100644 artifacts/photo-desktop/src/lib/eaglercraft-config.ts
+ create mode 100644 artifacts/photo-desktop/src/lib/feature-catalog.ts
+ create mode 100644 artifacts/photo-desktop/src/lib/personal-playlists-api.ts
+ create mode 100644 artifacts/photo-desktop/src/lib/planner-api.ts
+ create mode 100644 artifacts/photo-desktop/tests/backup-ui.tsx
+ create mode 100644 lib/db/src/schema/personal-playlists.ts
+ create mode 100644 lib/db/src/schema/planner.ts
+ create mode 100644 lib/db/src/schema/storage-cleanup.ts
+ create mode 100644 lib/feature-registry/README.md
+ create mode 100644 lib/feature-registry/package.json
+ create mode 100644 lib/feature-registry/src/index.ts
+ create mode 100644 lib/feature-registry/tsconfig.json
+ create mode 100644 scripts/tests/feature-registry.test.mjs
+ create mode 100644 selfhost/STORAGE-REPORT.md
+ create mode 100644 selfhost/backup.conf.example
+ create mode 100644 selfhost/backup.sh
+[2026-10-08 22:16:05] Updated: 724a641 → 5499891
+5499891 Update gitignore patterns
+bc87041 Update self-hosting script logic
+f1ea35b Use lightweight archive-state polling with ETag validation on desktop and mobile web
+99ce56c Share browser-safe feature archive registry and enforce launcher drift checks
+578e417 Implement Theme Lab component and integrate into desktop shell
+edfb566 Update project documentation and implement site settings and UI components
+f24bf3a Add opt-in private scheduled v2 backups with retention and age encryption
+a5aa43c Git commit prior to merge
+c3891c9 Implement Eaglercraft launch configuration and component integration
+6929709 Add opt-in read-only legacy wiki and hosted-site storage report with conservative exclusions and self-hosted support
+3d2bf93 Implement GIF preview support and refactor chat components
+16bed07 Preserve wiki and mini-site records and bytes in file-inclusive backups with inventories, conflict-safe atomic restore and transactional sequence resets; document storage migration and verify disposable recovery
+7a60433 Implement DM and notification system updates with UI enhancements
+7083a86 Serialize wiki and hosted-site mutations and durably retry storage cleanup with isolated fault/concurrency tests
+afdcf0e Enable wiki and mini-site uploads with self-hosted disk storage and safe username namespaces
+ac21bd8 Preserve iOS release preparation and close work at user request
+41ea4dd Implement native storage and update site configuration documentation
+9d0962f Implement push notification support and update routing configuration
+251355c Update dependency lockfile
+[2026-10-08 22:16:05] Stopping services...
+  API server — no PID file
+Done.
+[2026-10-08 22:16:05] Installing / updating dependencies...
+(node:878878) [DEP0169] DeprecationWarning: `url.parse()` behavior is not standardized and prone to errors that have security implications. Use the WHATWG URL API instead. CVEs are not issued for `url.parse()` vulnerabilities.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+Scope: all 11 workspace projects
+ ERR_PNPM_LOCKFILE_CONFIG_MISMATCH  Cannot proceed with the frozen installation. The current "overrides" configuration doesn't match the value found in the lockfile
+
+Update your lockfile using "pnpm install --no-frozen-lockfile"
+sam@moonbat:~/MaxNet$ 
+
