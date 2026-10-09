@@ -5,6 +5,8 @@ import { logger } from "./logger";
 
 type Transaction = Parameters<Parameters<typeof db.transaction>[0]>[0];
 type Executor = Pick<Transaction, "execute">;
+// A separate two-key advisory namespace avoids collisions with per-owner locks.
+export const BACKUP_LOCK = 782349123;
 
 export const cleanupSchema = `
   CREATE TABLE IF NOT EXISTS storage_cleanup (
@@ -19,6 +21,7 @@ export const cleanupSchema = `
 `;
 
 export async function lockStorage(tx: Transaction, lockKey: string) {
+  await tx.execute(sql`SELECT pg_advisory_xact_lock_shared(${BACKUP_LOCK}, 0)`);
   // Retain the existing hosted upload lock's namespace.
   await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${lockKey}))`);
 }
@@ -50,6 +53,7 @@ export async function drainStorageCleanup(keys?: string[]) {
   `);
   for (const row of pending.rows) {
     await db.transaction(async tx => {
+      await tx.execute(sql`SELECT pg_advisory_xact_lock_shared(${BACKUP_LOCK}, 0)`);
       const claimed = await tx.execute<{ lock_key: string; attempts: number }>(sql`
         SELECT lock_key, attempts FROM storage_cleanup
         WHERE scope = ${scope} AND object_key = ${row.object_key}

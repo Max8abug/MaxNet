@@ -34,15 +34,27 @@ import {
   blackjackTablesTable,
   flappyPlayersTable,
   flappyScoresTable,
+  wikiPagesTable,
+  wikiAssetsTable,
+  hostedSitesTable,
+  hostedSiteFilesTable,
 } from "@workspace/db";
+import { mkdtemp, appendFile, rm } from "node:fs/promises";
+import { createReadStream } from "node:fs";
+import { createInterface } from "node:readline";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import { sql } from "drizzle-orm";
 import { requireAdmin } from "../lib/auth";
 import { ensureSchema } from "../lib/ensure-schema";
 import { logger } from "../lib/logger";
+import { storageScope } from "../lib/app-storage";
+import { acceptFileChunk, materializeFiles, prepareFiles, readBackupFile } from "../lib/backup-files";
+import { BACKUP_LOCK } from "../lib/storage-mutations";
 
 const router: IRouter = Router();
 
-// Centralized list of every table the backup tool understands. Order matters:
+// Explicit list of site-content tables the backup tool understands. Order matters:
 // when restoring we insert parents before children so foreign-key constraints
 // stay happy. The session table is intentionally omitted — restoring it would
 // log out whichever admin is performing the restore (and stale sessions across
@@ -82,7 +94,26 @@ const TABLES: Entry[] = [
   { name: "flappy_scores", pgName: "flappy_scores", table: flappyScoresTable },
   { name: "visit_counter", pgName: "visit_counter", table: visitCounterTable },
   { name: "chat_audit_log", pgName: "chat_audit_log", table: chatAuditTable },
+  { name: "wiki_pages", pgName: "wiki_pages", table: wikiPagesTable },
+  { name: "wiki_assets", pgName: "wiki_assets", table: wikiAssetsTable },
+  { name: "hosted_sites", pgName: "hosted_sites", table: hostedSitesTable },
+  { name: "hosted_site_files", pgName: "hosted_site_files", table: hostedSiteFilesTable },
 ];
+const FILE_TABLES = new Set(["wiki_pages", "wiki_assets", "hosted_sites", "hosted_site_files"]);
+const EXCLUDED = [
+  "login sessions", "unreferenced storage objects", "storage cleanup queue",
+  "server configuration and secrets", "external URL resources",
+  "unlisted database tables (including push subscriptions and Expo push tokens)",
+];
+
+router.get("/admin/backup/contents", requireAdmin, (_req, res) => {
+  res.json({
+    version: 2, tables: TABLES.map(t => t.name),
+    storageBackend: storageScope().startsWith("local:") ? "local" : "replit",
+    files: "Every object referenced by wiki_assets and hosted_site_files, with byte size and SHA-256.",
+    excluded: EXCLUDED,
+  });
+});
 
 router.get("/admin/export", requireAdmin, async (_req, res) => {
   // Self-heal first: if the live DB is missing a column the Drizzle table
@@ -128,7 +159,6 @@ router.get("/admin/export", requireAdmin, async (_req, res) => {
   res.setHeader("X-Accel-Buffering", "no");
   res.setHeader("Cache-Control", "no-store");
 
-  const tableErrors: Record<string, string> = {};
   let aborted = false;
   // If the client disconnects mid-stream there's no point continuing to
   // pull rows out of Postgres — we'd just heat up the DB for nothing.
@@ -143,11 +173,23 @@ router.get("/admin/export", requireAdmin, async (_req, res) => {
     if (aborted) throw new Error("client disconnected");
     const ok = res.write(chunk);
     if (ok) return;
-    await new Promise<void>((resolve) => res.once("drain", () => resolve()));
+    await new Promise<void>((resolve, reject) => {
+      const cleanup = () => { res.off("drain", drained); res.off("close", closed); };
+      const drained = () => { cleanup(); resolve(); };
+      const closed = () => { cleanup(); reject(new Error("client disconnected")); };
+      res.once("drain", drained);
+      res.once("close", closed);
+    });
   };
 
   try {
-    await write(`{"version":1,"exportedAt":${JSON.stringify(new Date().toISOString())},"tables":{`);
+    await db.transaction(async tx => {
+    // Block storage mutations/cleanup, then freeze the exported tables so all
+    // records and bytes describe one point in time.
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(${BACKUP_LOCK}, 0)`);
+    await tx.execute(sql.raw(`LOCK TABLE ${TABLES.map(t => `"${t.pgName}"`).join(", ")} IN SHARE MODE`));
+    const fileRefs = new Map<string, number>();
+    await write(`{"version":2,"exportedAt":${JSON.stringify(new Date().toISOString())},"storageBackend":${JSON.stringify(storageScope().startsWith("local:") ? "local" : "replit")},"tables":{`);
 
     let firstTable = true;
     for (const t of TABLES) {
@@ -162,28 +204,19 @@ router.get("/admin/export", requireAdmin, async (_req, res) => {
         // cursor API on the high-level builder. For pathological tables we
         // could swap in a paged SELECT later, but in practice the per-row
         // streaming below is what saves us, not the read itself.
-        rows = await db.select().from(t.table);
+        rows = await tx.select().from(t.table);
       } catch (e: any) {
-        tableErrors[t.name] = e?.message || "select failed";
-        rows = [];
+        throw new Error(`Cannot back up ${t.name}: ${e?.message || "select failed"}`);
       }
 
       let firstRow = true;
       for (const row of rows) {
-        if (aborted) break;
-        let serialised: string;
-        try {
-          serialised = JSON.stringify(row);
-        } catch (e: any) {
-          // One bad row (e.g. a circular structure that somehow snuck in)
-          // shouldn't sink the whole export. Skip it and surface the
-          // problem in tableErrors so the operator sees something went
-          // wrong rather than getting a silently-incomplete backup.
-          tableErrors[t.name] =
-            (tableErrors[t.name] ? tableErrors[t.name] + "; " : "") +
-            `row serialise failed: ${e?.message || "unknown"}`;
-          continue;
+        if (t.name === "wiki_assets" || t.name === "hosted_site_files") {
+          if (fileRefs.has(row.objectKey) && fileRefs.get(row.objectKey) !== row.size) throw new Error("Conflicting storage sizes.");
+          fileRefs.set(row.objectKey, row.size);
         }
+        if (aborted) break;
+        const serialised = JSON.stringify(row);
         if (!firstRow) await write(",");
         firstRow = false;
         await write(serialised);
@@ -191,14 +224,17 @@ router.get("/admin/export", requireAdmin, async (_req, res) => {
       await write("]");
     }
 
-    await write("}");
-    if (Object.keys(tableErrors).length > 0) {
-      // Emit per-table read errors as a sibling field so the diagnostics UI
-      // can warn the operator that some tables came back empty due to
-      // schema drift rather than because they were genuinely empty.
-      await write(`,"tableErrors":${JSON.stringify(tableErrors)}`);
+    await write('},"files":[');
+    let firstFile = true;
+    for (const [key, size] of fileRefs) {
+      const file = await readBackupFile(key, size);
+      if (!firstFile) await write(",");
+      firstFile = false;
+      await write(JSON.stringify(file));
     }
+    await write(`],"complete":true,"excluded":${JSON.stringify(EXCLUDED)}`);
     await write("}");
+    });
     res.end();
   } catch (e: any) {
     // We've already sent headers (Content-Type: application/json + 200), so
@@ -238,12 +274,9 @@ router.get("/admin/export", requireAdmin, async (_req, res) => {
 // is well under any plausible proxy limit, so the upload always lands.
 // State is kept in-memory in a session map keyed by sessionId.
 //
-// Tradeoff: unlike the old monolithic route, each chunk is its own
-// transaction, so if the network drops mid-import the live DB is left
-// partially restored (the truncate from /begin still applies). This is
-// acceptable because (a) the user always has the backup file to retry,
-// and (b) the alternative was that the import never succeeded at all for
-// any non-trivially-sized backup.
+// Version 2 stages rows on disk and replaces the database atomically at commit.
+// Legacy version 1 still truncates at begin and inserts each chunk separately;
+// interruption can leave those older restores partially applied.
 //
 // Caveat: in-memory sessions don't survive process restart and don't
 // federate across autoscale instances. For one user driving a sequential
@@ -252,6 +285,12 @@ router.get("/admin/export", requireAdmin, async (_req, res) => {
 // re-run the import from the beginning.
 
 interface ImportSession {
+  directory?: string;
+  expectedCounts?: Record<string, number>;
+  fileMapping: Map<string, string>;
+  fileSizes: Map<string, number>;
+  usedFileKeys: Set<string>;
+  scope: string;
   id: string;
   startedAt: number;
   lastTouchedAt: number;
@@ -267,18 +306,24 @@ interface ImportSession {
   errors: { table: string; error: string }[];
   totalRows: number;
   healWarning: string | null;
-  status: "active" | "committed" | "failed";
+  status: "active" | "committing" | "committed" | "failed";
 }
 
 const sessions = new Map<string, ImportSession>();
+let beginningImport = false;
 const SESSION_IDLE_TIMEOUT_MS = 30 * 60 * 1000; // 30 minutes
 
 function sweepExpiredSessions(): void {
   const now = Date.now();
   for (const [id, s] of sessions) {
-    if (now - s.lastTouchedAt > SESSION_IDLE_TIMEOUT_MS) sessions.delete(id);
+    if (s.status !== "committing" && now - s.lastTouchedAt > SESSION_IDLE_TIMEOUT_MS) {
+      sessions.delete(id);
+      if (s.directory) void rm(s.directory, { recursive: true, force: true });
+    }
   }
 }
+const importSweep = setInterval(sweepExpiredSessions, 60_000);
+importSweep.unref();
 
 function newSessionId(): string {
   // Crypto-strong random: avoids any chance of an attacker guessing an
@@ -320,6 +365,22 @@ function rehydrateDates(row: Record<string, any>): Record<string, any> {
 // process.
 const chunkJson = expressJson({ limit: "16mb" });
 
+router.post("/admin/import/files/begin", requireAdmin, chunkJson, async (req, res) => {
+  try {
+    res.json({ fileSessionId: await prepareFiles(req.session.username!, req.body?.manifest) });
+  } catch (error: any) {
+    res.status(400).json({ error: error.message });
+  }
+});
+router.post("/admin/import/files/chunk", requireAdmin, chunkJson, async (req, res) => {
+  try {
+    const { fileSessionId, objectKey, offset, dataBase64 } = req.body ?? {};
+    res.json({ received: await acceptFileChunk(fileSessionId, req.session.username!, objectKey, offset, dataBase64) });
+  } catch (error: any) {
+    res.status(400).json({ error: error.message });
+  }
+});
+
 router.post("/admin/import/begin", requireAdmin, chunkJson, async (req, res) => {
   sweepExpiredSessions();
   const payload = req.body ?? {};
@@ -331,7 +392,7 @@ router.post("/admin/import/begin", requireAdmin, chunkJson, async (req, res) => 
   // Refuse to start a second import while one is already in progress —
   // concurrent TRUNCATEs from two operators would interleave catastrophically.
   for (const s of sessions.values()) {
-    if (s.status === "active") {
+    if (s.status === "active" || s.status === "committing") {
       res.status(409).json({
         error: `Another import session is already active (started by ${s.username} at ${new Date(s.startedAt).toISOString()}). Wait for it to finish or expire (idle timeout 30min).`,
       });
@@ -350,19 +411,50 @@ router.post("/admin/import/begin", requireAdmin, chunkJson, async (req, res) => 
   const truncatedTables: string[] = [];
   const liveColsByTable = new Map<string, Set<string>>();
   const jsToPgByTable = new Map<string, Map<string, string>>();
+  const isFull = payload.version === 2;
+  let directory: string | undefined;
+  let fileMapping = new Map<string, string>();
+  let fileSizes = new Map<string, number>();
+  if (isFull) {
+    const counts = payload.tableCounts;
+    if (!counts || Object.keys(counts).length !== TABLES.length ||
+      TABLES.some(t => !Number.isSafeInteger(counts[t.name]) || counts[t.name] < 0)) {
+      res.status(400).json({ error: "A complete version 2 table manifest is required." });
+      return;
+    }
+  }
+  if (beginningImport) {
+    res.status(409).json({ error: "Another restore is being prepared." });
+    return;
+  }
+  beginningImport = true;
 
   try {
+    // Recheck after async schema bootstrap: another begin may have completed
+    // while this request was waiting.
+    if ([...sessions.values()].some(s => s.status === "active" || s.status === "committing")) {
+      res.status(409).json({ error: "Another restore is already active." });
+      return;
+    }
+    if (isFull) {
+      const files = await materializeFiles(payload.fileSessionId, req.session.username!);
+      fileMapping = files.mapping;
+      fileSizes = files.sizes;
+      directory = await mkdtemp(path.join(tmpdir(), "site-restore-"));
+    }
     await db.transaction(async (tx) => {
+      await tx.execute(sql`SELECT pg_advisory_xact_lock(${BACKUP_LOCK}, 0)`);
       const existing = await tx.execute<{ table_name: string }>(sql.raw(
         `SELECT table_name FROM information_schema.tables
           WHERE table_schema = 'public'
             AND table_name = ANY(ARRAY[${TABLES.map((t) => `'${t.pgName}'`).join(", ")}])`,
       ));
       const existingNames = new Set<string>(existing.rows.map((r: any) => r.table_name));
-      const truncatable = TABLES.filter((t) => existingNames.has(t.pgName));
+      const truncatable = TABLES.filter((t) => existingNames.has(t.pgName) && (isFull || !FILE_TABLES.has(t.name)));
+      if (isFull && truncatable.length !== TABLES.length) throw new Error("Restore schema is incomplete; database not changed.");
       if (truncatable.length > 0) {
         const tableList = truncatable.map((t) => `"${t.pgName}"`).join(", ");
-        await tx.execute(sql.raw(`TRUNCATE TABLE ${tableList} RESTART IDENTITY CASCADE`));
+        if (!isFull) await tx.execute(sql.raw(`TRUNCATE TABLE ${tableList} RESTART IDENTITY`));
         for (const t of truncatable) truncatedTables.push(t.name);
       }
 
@@ -377,12 +469,21 @@ router.post("/admin/import/begin", requireAdmin, chunkJson, async (req, res) => 
       }
     });
   } catch (e: any) {
+    if (directory) await rm(directory, { recursive: true, force: true });
     logger.error({ err: e }, "Backup import begin failed");
     res.status(500).json({ ok: false, error: e?.message || "begin failed", healWarning });
     return;
+  } finally {
+    beginningImport = false;
   }
 
   const session: ImportSession = {
+    directory,
+    expectedCounts: isFull ? payload.tableCounts : undefined,
+    fileMapping,
+    fileSizes,
+    usedFileKeys: new Set(),
+    scope: storageScope(),
     id: newSessionId(),
     startedAt: Date.now(),
     lastTouchedAt: Date.now(),
@@ -413,6 +514,10 @@ router.post("/admin/import/rows", requireAdmin, chunkJson, async (req, res) => {
   const session = typeof sessionId === "string" ? sessions.get(sessionId) : null;
   if (!session) {
     res.status(404).json({ error: "Import session not found or expired. Re-run the import from the beginning." });
+    return;
+  }
+  if (session.username !== req.session.username || session.scope !== storageScope()) {
+    res.status(403).json({ error: "Import owner or storage configuration changed." });
     return;
   }
   if (session.status !== "active") {
@@ -449,23 +554,47 @@ router.post("/admin/import/rows", requireAdmin, chunkJson, async (req, res) => {
   const jsToPg = session.jsToPgByTable.get(table) ?? new Map<string, string>();
   const fixed: Record<string, any>[] = [];
   for (const r of rows) {
-    if (!r || typeof r !== "object") continue;
+    if (!r || typeof r !== "object" || Array.isArray(r)) {
+      res.status(400).json({ error: "Invalid backup row." });
+      return;
+    }
     const filtered: Record<string, any> = {};
     for (const [k, v] of Object.entries(r)) {
       const pg = jsToPg.get(k) || k;
-      if (!liveCols.has(pg)) continue; // drop unknown column
+      if (!liveCols.has(pg) || !jsToPg.has(k)) {
+        if (session.directory) {
+          res.status(400).json({ error: `Unknown backup column ${table}.${k}; database unchanged.` });
+          return;
+        }
+        continue;
+      }
       filtered[k] = v;
+    }
+    if (table === "wiki_assets" || table === "hosted_site_files") {
+      const key = session.fileMapping.get(filtered.objectKey);
+      if (!key || filtered.size !== session.fileSizes.get(filtered.objectKey)) {
+        res.status(400).json({ error: "File bytes missing from prepared backup." });
+        return;
+      }
+      session.usedFileKeys.add(filtered.objectKey);
+      filtered.objectKey = key;
     }
     fixed.push(rehydrateDates(filtered));
   }
 
   try {
+    if (session.directory) {
+      const count = (session.tableRowCounts[table] ?? 0) + fixed.length;
+      if (count > (session.expectedCounts?.[table] ?? 0)) throw new Error("More rows than declared in table manifest.");
+      await appendFile(path.join(session.directory, `${table}.jsonl`), fixed.map(r => JSON.stringify(r)).join("\n") + "\n");
+    } else {
     // Postgres caps bound parameters at ~65k per statement; 500 rows is a
     // safe per-statement chunk for any reasonable column count.
     const SUBCHUNK = 500;
     for (let i = 0; i < fixed.length; i += SUBCHUNK) {
       const slice = fixed.slice(i, i + SUBCHUNK);
       await db.insert(tableEntry.table).values(slice as any);
+    }
     }
     session.importedTables.add(table);
     session.tableRowCounts[table] = (session.tableRowCounts[table] ?? 0) + rows.length;
@@ -485,6 +614,17 @@ router.post("/admin/import/rows", requireAdmin, chunkJson, async (req, res) => {
   }
 });
 
+router.post("/admin/import/abort", requireAdmin, chunkJson, async (req, res) => {
+  const session = sessions.get(req.body?.sessionId);
+  if (!session || session.username !== req.session.username || session.status !== "active") {
+    res.status(409).json({ error: "No active import owned by this administrator." });
+    return;
+  }
+  session.status = "failed";
+  if (session.directory) await rm(session.directory, { recursive: true, force: true });
+  res.json({ ok: true, databaseChanged: !session.directory });
+});
+
 router.post("/admin/import/commit", requireAdmin, chunkJson, async (req, res) => {
   const { sessionId } = req.body ?? {};
   const session = typeof sessionId === "string" ? sessions.get(sessionId) : null;
@@ -492,43 +632,44 @@ router.post("/admin/import/commit", requireAdmin, chunkJson, async (req, res) =>
     res.status(404).json({ error: "Import session not found or expired." });
     return;
   }
+  if (session.username !== req.session.username || session.scope !== storageScope()) {
+    res.status(403).json({ error: "Import owner or storage configuration changed." });
+    return;
+  }
   if (session.status !== "active") {
     res.status(409).json({ error: `Session is already ${session.status}.` });
     return;
   }
   session.lastTouchedAt = Date.now();
+  if (session.directory && (session.errors.length || session.usedFileKeys.size !== session.fileMapping.size || TABLES.some(t =>
+    (session.tableRowCounts[t.name] ?? 0) !== session.expectedCounts?.[t.name]))) {
+    res.status(400).json({ error: "Restore staging is incomplete or has errors; database not changed." });
+    return;
+  }
+  session.status = "committing";
 
-  // Reset serial sequences so the next inserted row doesn't collide with
-  // an id we just imported.
-  //
-  // *** This block previously wrapped every setval in a single transaction.
-  // That was a bug. Postgres's behaviour is: once any statement in a
-  // transaction raises, the WHOLE transaction is poisoned and every
-  // subsequent statement silently returns "current transaction is aborted,
-  // commands ignored until end of transaction block". The JS-side try/catch
-  // around each setval is useless against that — by the time the catch
-  // fires, the transaction is already dead. ***
-  //
-  // The TABLES list contains several tables whose primary key is text
-  // (`user_pages.username`, `cafe_presence.username`, `flappy_players.username`)
-  // — for those, `pg_get_serial_sequence(..., 'id')` returns NULL and
-  // `setval(NULL, ...)` raises. Hitting the first such table (user_pages
-  // is 4th in the list) was poisoning the txn and silently skipping every
-  // subsequent setval. Result: drawings, photos, news, dms, polls, chat,
-  // cafe rooms/objects/chat, forums, blackjack, flappy_scores, ip_bans,
-  // banned_users, guestbook all kept their post-TRUNCATE sequence value of
-  // 1, so the very next user-driven INSERT collided with an imported
-  // row's primary key. That broke most of the site after a restore.
-  //
-  // The fix:
-  //   1. Run each setval as its OWN statement (no outer transaction wrapper)
-  //      so a failure on one table cannot cascade to the others.
-  //   2. Pre-check that the table actually has an `id` column AND a non-null
-  //      serial sequence BEFORE attempting setval — that turns the
-  //      "NULL sequence" case into a clean skip instead of an exception.
-  //   3. Record per-table failures so the operator can see exactly which
-  //      sequences (if any) couldn't be reset.
+  // Precheck ID/sequence ownership so text primary keys never poison a
+  // transaction. Version 2 rolls back on any sequence error; legacy restores
+  // report independent per-table warnings.
   const sequenceWarnings: { table: string; error: string }[] = [];
+  const finish = async (executor: typeof db | Parameters<Parameters<typeof db.transaction>[0]>[0]) => {
+  if (session.directory) {
+    await executor.execute(sql`SELECT pg_advisory_xact_lock(${BACKUP_LOCK}, 0)`);
+    await executor.execute(sql.raw(`TRUNCATE TABLE ${TABLES.map(t => `"${t.pgName}"`).join(", ")} RESTART IDENTITY`));
+    for (const t of TABLES) {
+      if (!session.tableRowCounts[t.name]) continue;
+      const input = createInterface({ input: createReadStream(path.join(session.directory, `${t.name}.jsonl`)), crlfDelay: Infinity });
+      let rows: any[] = [];
+      for await (const line of input) {
+        rows.push(rehydrateDates(JSON.parse(line)));
+        if (rows.length >= 500) {
+          await executor.insert(t.table).values(rows);
+          rows = [];
+        }
+      }
+      if (rows.length) await executor.insert(t.table).values(rows);
+    }
+  }
   for (const t of TABLES) {
     if (!session.liveColsByTable.has(t.name)) continue;
     const liveCols = session.liveColsByTable.get(t.name)!;
@@ -539,11 +680,23 @@ router.post("/admin/import/commit", requireAdmin, chunkJson, async (req, res) =>
       // owned sequence (e.g. an integer PK without DEFAULT nextval()).
       // We resolve it first so we can SKIP, not fail, when there's no
       // sequence to reset.
-      const seqRes = await db.execute<{ seq: string | null }>(sql.raw(
+      const seqRes = await executor.execute<{ seq: string | null }>(sql.raw(
         `SELECT pg_get_serial_sequence('"${t.pgName}"', 'id') AS seq`,
       ));
       const seq = (seqRes.rows[0] as any)?.seq ?? null;
       if (!seq) continue;
+
+      if (session.directory) {
+        const maximum = await executor.execute<{ maximum: number }>(sql.raw(
+          `SELECT COALESCE(MAX(id), 0) AS maximum FROM "${t.pgName}"`,
+        ));
+        const nextId = Number(maximum.rows[0]?.maximum ?? 0) + 1;
+        // setval is NOT transactional. ALTER SEQUENCE RESTART is, so a
+        // later reset/commit failure preserves the live sequence as well as
+        // the live rows. seq is a qualified identifier produced by PostgreSQL.
+        await executor.execute(sql.raw(`ALTER SEQUENCE ${seq} RESTART WITH ${nextId}`));
+        continue;
+      }
 
       // GREATEST(MAX(id), 1) so even an empty table leaves the sequence
       // in a usable state (setval to 0 would raise; to 1 means the next
@@ -553,7 +706,7 @@ router.post("/admin/import/commit", requireAdmin, chunkJson, async (req, res) =>
       // For non-empty tables we want is_called=true so the next nextval()
       // returns MAX(id)+1. For empty tables we want is_called=false so the
       // next nextval() returns 1.
-      await db.execute(sql.raw(`
+      await executor.execute(sql.raw(`
         SELECT
           CASE
             WHEN (SELECT COALESCE(MAX(id), 0) FROM "${t.pgName}") = 0
@@ -562,6 +715,7 @@ router.post("/admin/import/commit", requireAdmin, chunkJson, async (req, res) =>
           END
       `));
     } catch (e: any) {
+      if (session.directory) throw e; // Roll back the complete restore, not just a sequence.
       sequenceWarnings.push({
         table: t.name,
         error: `sequence reset failed: ${e?.message || "unknown"}`,
@@ -569,11 +723,22 @@ router.post("/admin/import/commit", requireAdmin, chunkJson, async (req, res) =>
       logger.warn({ err: e, table: t.name }, "sequence reset failed for table");
     }
   }
+  };
+  try {
+    if (session.directory) await db.transaction(finish);
+    else await finish(db);
+  } catch (error: any) {
+    session.status = "failed";
+    if (session.directory) await rm(session.directory, { recursive: true, force: true });
+    res.status(500).json({ error: `Restore failed; database transaction rolled back: ${error.message}` });
+    return;
+  }
   if (sequenceWarnings.length > 0) {
     session.errors.push(...sequenceWarnings);
   }
 
   session.status = "committed";
+  if (session.directory) await rm(session.directory, { recursive: true, force: true });
   const result = {
     ok: true,
     sessionId: session.id,
@@ -583,6 +748,7 @@ router.post("/admin/import/commit", requireAdmin, chunkJson, async (req, res) =>
     skipped: session.errors,
     healWarning: session.healWarning,
     truncatedTables: session.truncatedTables,
+    restoredFiles: session.fileMapping.size,
   };
   // Hold the session a bit longer so the client can poll status if needed,
   // but most callers will just take this response and discard.
@@ -605,6 +771,10 @@ router.post("/admin/import", requireAdmin, expressJson({ limit: "1024mb" }), asy
   const tables = (payload.data && payload.data.tables) || payload.tables;
   if (!tables || typeof tables !== "object") {
     res.status(400).json({ error: "Backup payload missing `tables` object" });
+    return;
+  }
+  if (payload.version === 2 || [...FILE_TABLES].some(t => t in tables)) {
+    res.status(400).json({ error: "File-inclusive backups require the prepared, chunked restore flow; use the Site Backup tool." });
     return;
   }
 
@@ -650,13 +820,13 @@ router.post("/admin/import", requireAdmin, expressJson({ limit: "1024mb" }), asy
             AND table_name = ANY(ARRAY[${TABLES.map((t) => `'${t.pgName}'`).join(", ")}])`,
       ));
       const existingNames = new Set<string>(existing.rows.map((r: any) => r.table_name));
-      const truncatable = TABLES.filter((t) => existingNames.has(t.pgName));
+      const truncatable = TABLES.filter((t) => existingNames.has(t.pgName) && !FILE_TABLES.has(t.name));
       if (truncatable.length > 0) {
         stage = "TRUNCATE";
         const tableList = truncatable.map((t) => `"${t.pgName}"`).join(", ");
         // CASCADE handles cross-table dependencies; RESTART IDENTITY zeroes the
         // serial sequences so re-inserted ids don't clash with future inserts.
-        await tx.execute(sql.raw(`TRUNCATE TABLE ${tableList} RESTART IDENTITY CASCADE`));
+        await tx.execute(sql.raw(`TRUNCATE TABLE ${tableList} RESTART IDENTITY`));
       }
 
       for (const t of TABLES) {

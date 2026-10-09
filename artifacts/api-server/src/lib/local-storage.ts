@@ -1,6 +1,6 @@
 import type { Client, RequestError, Result } from "@replit/object-storage";
 import { createReadStream } from "node:fs";
-import { mkdir, readdir, rename, rm, unlink, writeFile } from "node:fs/promises";
+import { link, mkdir, readdir, rename, rm, unlink, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
@@ -24,6 +24,22 @@ function failed(error: unknown): Result<null, RequestError> {
 }
 
 export const localStorage = {
+  async createFromBytes(key: string, bytes: Buffer): Promise<Result<null, RequestError>> {
+    let temporary: string | undefined;
+    try {
+      const destination = objectPath(key);
+      await mkdir(path.dirname(destination), { recursive: true, mode: 0o700 });
+      temporary = `${destination}.${randomUUID()}.tmp`;
+      await writeFile(temporary, bytes, { flag: "wx", mode: 0o600 });
+      // link is atomic and refuses an existing destination (unlike rename).
+      await link(temporary, destination);
+      return { ok: true, value: null };
+    } catch (error) {
+      return failed(error);
+    } finally {
+      if (temporary) await rm(temporary, { force: true }).catch(() => {});
+    }
+  },
   async uploadFromBytes(...[key, bytes]: Parameters<Client["uploadFromBytes"]>): Promise<Result<null, RequestError>> {
     let temporary: string | undefined;
     try {

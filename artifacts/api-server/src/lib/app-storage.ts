@@ -47,6 +47,20 @@ function unavailable(error: unknown): Result<null, RequestError> {
 }
 
 export const appStorage = {
+  async createFromBytes(objectKey: string, bytes: Buffer) {
+    try {
+      if (backend() === "local") return await localStorage.createFromBytes(objectKey, bytes);
+      const client = await getClient();
+      const exists = await client.exists(objectKey);
+      if (!exists.ok) return exists;
+      if (exists.value) throw new Error("Restore destination already exists; refusing to overwrite.");
+      // Callers use an unpredictable, restore-exclusive UUID namespace. The
+      // SDK has no conditional create; never call this on a source/live key.
+      return await client.uploadFromBytes(objectKey, bytes, { compress: false });
+    } catch (error) {
+      return unavailable(error);
+    }
+  },
   async uploadFromBytes(...args: Parameters<Client["uploadFromBytes"]>) {
     try {
       if (backend() === "local") return await localStorage.uploadFromBytes(...args);

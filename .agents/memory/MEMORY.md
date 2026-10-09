@@ -7,3 +7,4 @@
 - [Self-hosted uploads](self-hosted-uploads.md) — production runs on the owner's server; Replit storage checks do not establish production readiness.
 - [File mutation safety](file-mutation-safety.md) — logical deletion can succeed during storage outages; durable cleanup must not sacrifice live content.
 - [Personal playlist scope](personal-playlists.md) — personal playback must stay separate from shared rooms; YouTube uses a visible official player, not extracted audio.
+- [Backup restore isolation](backup-restore-safety.md) — full-site restore tests need a disposable database, not merely generated test records.

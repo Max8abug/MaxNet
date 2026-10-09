@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useAuth } from "../lib/auth-store";
 import { formatLocalDate } from "../lib/dates";
 import { getServerNow } from "../lib/server-clock";
@@ -51,7 +51,8 @@ export function SiteBackup() {
   const [busy, setBusy] = useState<string | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
-  const [summary, setSummary] = useState<{ tableCount: number; rowCount: number; exportedAt?: string } | null>(null);
+  const [summary, setSummary] = useState<{ tableCount: number; rowCount: number; exportedAt?: string; fileCount: number; fileBytes: number; full: boolean; tableCounts: Record<string, number> } | null>(null);
+  const [contents, setContents] = useState<{ tables: string[]; storageBackend: string; excluded: string[] } | null>(null);
   const [pendingPayload, setPendingPayload] = useState<any>(null);
   // Live progress text shown during a chunked import so the user can see
   // the upload is actually advancing instead of staring at a frozen button.
@@ -66,6 +67,15 @@ export function SiteBackup() {
     stage?: string;
   } | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    if (!me?.isAdmin) return;
+    void fetch(`${BASE}/admin/backup/contents`, { credentials: "include" })
+      .then(async r => {
+        if (!r.ok) throw new Error("Could not load the backup inventory.");
+        setContents(await r.json());
+      })
+      .catch(e => setErr(e.message));
+  }, [me?.isAdmin]);
 
   if (!me?.isAdmin) {
     return <div className="p-3 text-sm text-red-700">Only the site owner can use the backup tool.</div>;
@@ -86,13 +96,17 @@ export function SiteBackup() {
         throw new Error(j?.error ? `Export failed (${r.status}): ${j.error}` : `Export failed: ${r.status}`);
       }
       const blob = await r.blob();
+      const backup = JSON.parse(await blob.text());
+      if (backup.version !== 2 || backup.complete !== true || Object.keys(backup.tableErrors ?? {}).length) {
+        throw new Error("Export is incomplete. No recovery backup was downloaded.");
+      }
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
       a.download = `site-backup-${getServerNow().toISOString().slice(0, 19).replace(/[:T]/g, "-")}.json`;
       document.body.appendChild(a); a.click(); document.body.removeChild(a);
       setTimeout(() => URL.revokeObjectURL(url), 5_000);
-      setMsg("Backup downloaded. Save it somewhere safe — keep multiple copies for important sites.");
+      setMsg(`Backup downloaded: ${Object.keys(backup.tables).length} tables, ${backup.files.length} uploaded files (${backup.files.reduce((sum: number, f: any) => sum + f.size, 0).toLocaleString()} bytes). Keep it private and save multiple copies.`);
     } catch (e: any) {
       setErr(e?.message || "Failed to export");
     } finally {
@@ -110,9 +124,33 @@ export function SiteBackup() {
       if (!tables || typeof tables !== "object") {
         throw new Error("This file doesn't look like a site backup (missing `tables`).");
       }
+      if (Array.isArray(tables) || Object.values(tables).some(rows => !Array.isArray(rows))) throw new Error("Invalid backup tables.");
+      if (Object.keys(parsed.tableErrors ?? {}).length) throw new Error("This export reports missing tables. Refusing an incomplete backup.");
+      const full = parsed.version === 2;
+      if (parsed.version != null && parsed.version !== 1 && !full) throw new Error("Unsupported backup version.");
+      if (full && (parsed.complete !== true || !Array.isArray(parsed.files))) throw new Error("Incomplete file-inclusive backup.");
+      const files = full ? parsed.files : [];
+      const keys = new Map<string, any>();
+      for (const file of files) {
+        if (!file || typeof file.objectKey !== "string" || !Number.isSafeInteger(file.size) ||
+          file.size < 0 || typeof file.dataBase64 !== "string" ||
+          typeof file.sha256 !== "string" || !/^[a-f0-9]{64}$/.test(file.sha256) || keys.has(file.objectKey)) {
+          throw new Error("Invalid or duplicate file entry.");
+        }
+        keys.set(file.objectKey, file);
+      }
+      for (const row of [...(tables.wiki_assets ?? []), ...(tables.hosted_site_files ?? [])]) {
+        if (!full || keys.get(row.objectKey)?.size !== row.size) throw new Error("Backup metadata references missing file bytes.");
+      }
+      if (!full && ["wiki_pages", "wiki_assets", "hosted_sites", "hosted_site_files"].some(t => t in tables)) {
+        throw new Error("Wiki/mini-site records require a version 2 backup with file bytes.");
+      }
       const tableCount = Object.keys(tables).length;
       const rowCount = (Object.values(tables) as unknown[]).reduce<number>((s, rows) => s + (Array.isArray(rows) ? rows.length : 0), 0);
-      setSummary({ tableCount, rowCount, exportedAt: (parsed as any).exportedAt });
+      setSummary({ tableCount, rowCount, exportedAt: parsed.exportedAt, full,
+        fileCount: files.length, fileBytes: files.reduce((sum: number, f: any) => sum + f.size, 0),
+        tableCounts: Object.fromEntries(Object.entries(tables).map(([name, rows]) => [name, (rows as any[]).length])),
+      });
       setPendingPayload(parsed);
     } catch (e: any) {
       setErr(e?.message || "Could not read backup file");
@@ -121,7 +159,8 @@ export function SiteBackup() {
 
   async function importNow() {
     if (!pendingPayload) return;
-    if (!confirm("Restore from backup?\n\nThis ERASES the current site database and replaces it with the backup contents. Sessions stay valid (you won't be logged out), but everything else — users, posts, photos, drawings, ranks, settings — is overwritten.\n\nIf the upload is interrupted partway through, your site will be left in a partial state — keep this backup file and re-run the import to recover. This cannot be undone unless you exported a backup first.")) return;
+    const full = pendingPayload.version === 2;
+    if (!confirm(`Restore from backup?\n\nThis replaces ${full ? "the backed-up site tables, including wiki pages and mini-sites" : "the legacy database tables (wiki pages and mini-sites are preserved)"}. Login sessions are not restored or erased.\n\n${full ? "Files are checksum-checked and written under new keys; existing storage is not overwritten or deleted. Database changes are applied together at the end. Put the site in maintenance mode first so new activity is not lost." : "This older backup contains no uploaded file bytes. An interrupted import leaves partial database data."}\n\nExport a fresh backup first. Continue?`)) return;
     clearMessages();
     setBusy("import");
     setProgress("Starting…");
@@ -129,15 +168,44 @@ export function SiteBackup() {
     // Pull the tables map out of the parsed file. Old exports nested it
     // under `.data`; the streaming exporter writes it at the top level.
     const tables: Record<string, any[]> = (pendingPayload?.tables) || (pendingPayload?.data?.tables) || {};
+    let activeSessionId: string | undefined;
 
     try {
+      let fileSessionId: string | undefined;
+      if (full) {
+        setProgress("Preparing uploaded files (database unchanged)…");
+        const prepareR = await fetch(`${BASE}/admin/import/files/begin`, {
+          method: "POST", credentials: "include", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ manifest: pendingPayload.files.map(({ objectKey, size, sha256 }: any) => ({ objectKey, size, sha256 })) }),
+        });
+        const prepareJ = await readResponse(prepareR);
+        if (!prepareR.ok || !prepareJ.fileSessionId) throw new Error(prepareJ.error || "Could not prepare file restore.");
+        fileSessionId = prepareJ.fileSessionId;
+        let index = 0;
+        for (const file of pendingPayload.files) {
+          index++;
+          let offset = 0;
+          for (let i = 0; i < file.dataBase64.length; i += 1024 * 1024) {
+            const dataBase64 = file.dataBase64.slice(i, i + 1024 * 1024);
+            setProgress(`Preparing file ${index}/${pendingPayload.files.length}: ${file.objectKey} (${offset}/${file.size} bytes)…`);
+            const chunkR = await fetch(`${BASE}/admin/import/files/chunk`, {
+              method: "POST", credentials: "include", headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ fileSessionId, objectKey: file.objectKey, offset, dataBase64 }),
+            });
+            const chunkJ = await readResponse(chunkR);
+            if (!chunkR.ok) throw new Error(chunkJ.error || "File preparation failed.");
+            offset = chunkJ.received;
+          }
+        }
+      }
       // ---- Phase 1: BEGIN — server truncates and creates a session ----
-      setProgress("Preparing database (TRUNCATE)…");
+      setProgress(full ? "Checking checksums and creating new storage objects (database unchanged)…" : "Preparing database (TRUNCATE)…");
       const beginR = await fetch(`${BASE}/admin/import/begin`, {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ confirm: true }),
+        body: JSON.stringify({ confirm: true, version: full ? 2 : 1, fileSessionId,
+          tableCounts: full ? summary?.tableCounts : undefined }),
       });
       const beginJ = await readResponse(beginR);
       if (!beginR.ok || !beginJ?.sessionId) {
@@ -145,6 +213,7 @@ export function SiteBackup() {
         throw new Error(beginJ?.error || `Could not begin import (HTTP ${beginR.status}).`);
       }
       const sessionId: string = beginJ.sessionId;
+      activeSessionId = sessionId;
       const initialHealWarning: string | null = beginJ?.healWarning ?? null;
 
       // ---- Phase 2: ROWS — upload each table in size-bounded chunks ----
@@ -159,6 +228,8 @@ export function SiteBackup() {
         "cafe_objects", "cafe_presence", "cafe_chat", "forum_threads",
         "forum_posts", "youtube_sync", "blackjack_tables",
         "flappy_players", "flappy_scores", "visit_counter", "chat_audit_log",
+        "device_tokens", "device_associations", "device_appeals", "news_comments",
+        "wiki_pages", "wiki_assets", "hosted_sites", "hosted_site_files",
       ];
       const seen = new Set(ORDER);
       const remaining = Object.keys(tables).filter((t) => !seen.has(t));
@@ -236,6 +307,7 @@ export function SiteBackup() {
           await flush();
         } catch (e: any) {
           if (e instanceof ChunkRejected) {
+            if (full) throw new Error(`Restore stopped at ${tableName}; database unchanged. Prepare the backup again.`);
             // Table-level failure: continue with the next table.
             continue;
           }
@@ -244,7 +316,7 @@ export function SiteBackup() {
       }
 
       // ---- Phase 3: COMMIT — server resets sequences and finalises ----
-      setProgress("Finalising (resetting sequences)…");
+      setProgress(full ? "Applying database restore atomically and resetting sequences…" : "Finalising (resetting sequences)…");
       const commitR = await fetch(`${BASE}/admin/import/commit`, {
         method: "POST",
         credentials: "include",
@@ -260,6 +332,7 @@ export function SiteBackup() {
         });
         throw new Error(commitJ?.error || `Commit failed (HTTP ${commitR.status}).`);
       }
+      activeSessionId = undefined;
 
       const allSkipped = [
         ...perTableSkipped,
@@ -268,7 +341,7 @@ export function SiteBackup() {
       ];
       const importedCount = (commitJ?.imported ?? Object.keys(perTableUploaded)).length;
       const totalRows = commitJ?.totalRows ?? totalUploaded;
-      setMsg(`Restore complete. Imported ${totalRows} rows across ${importedCount} tables. The site may need a refresh to show the new data.`);
+      setMsg(`${allSkipped.length ? "Restore finished with warnings." : "Restore complete."} Imported ${totalRows} rows across ${importedCount} tables${full ? ` and recovered ${commitJ.restoredFiles} uploaded files under new keys` : " (database-only legacy backup)"}. Refresh the site to show the new data.`);
       setImportReport({
         healWarning: initialHealWarning ?? commitJ?.healWarning,
         skipped: allSkipped,
@@ -278,6 +351,12 @@ export function SiteBackup() {
     } catch (e: any) {
       setErr(e?.message || "Failed to import");
     } finally {
+      if (activeSessionId) {
+        await fetch(`${BASE}/admin/import/abort`, {
+          method: "POST", credentials: "include", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ sessionId: activeSessionId }),
+        }).catch(() => {});
+      }
       setBusy(null);
       setProgress(null);
     }
@@ -286,11 +365,17 @@ export function SiteBackup() {
   return (
     <div className="w-full h-full flex flex-col gap-2 p-3 text-sm overflow-auto">
       <section className="win98-inset bg-[#f4f4f4] p-2">
-        <div className="font-bold mb-1">Export Database</div>
+        <div className="font-bold mb-1">Export Site Backup</div>
         <div className="text-[11px] text-gray-700 mb-2">
-          Downloads the entire site database as a single JSON file. This includes users, ranks, chat history, drawings, the cafe, the forum, photos, news, settings — everything except active login sessions.
+          Downloads a version 2 JSON backup: site records, wiki pages, wiki assets, mini-sites and every file referenced by their metadata. File bytes include sizes and SHA-256 checksums. Current storage: <b>{contents?.storageBackend ?? "loading…"}</b>.
         </div>
-        <button className="win98-button px-3 py-0.5 font-bold" disabled={busy === "export"} onClick={exportNow}>
+        {contents && <details className="text-[11px] mb-2"><summary>Exact backup contents and exclusions</summary>
+          <div className="break-words mt-1"><b>Tables:</b> {contents.tables.join(", ")}</div>
+          <div><b>Files:</b> objects referenced by wiki_assets and hosted_site_files, not the entire upload directory or bucket.</div>
+          <div><b>Excluded:</b> {contents.excluded.join(", ")}.</div>
+          <div>External links are not copied. Configuration must be transferred separately. Keep backups private: they include account hashes and private messages.</div>
+        </details>}
+        <button className="win98-button px-3 py-0.5 font-bold" disabled={busy !== null} onClick={exportNow}>
           {busy === "export" ? "Exporting…" : "Export & Download Backup"}
         </button>
       </section>
@@ -298,7 +383,7 @@ export function SiteBackup() {
       <section className="win98-inset bg-[#f4f4f4] p-2">
         <div className="font-bold mb-1">Import / Restore</div>
         <div className="text-[11px] text-gray-700 mb-2">
-          Replaces all current site data with the contents of a backup file. Make a fresh export first if you want to be able to undo this.
+          Make a fresh export first and pause site activity. Version 2 restores validate files before replacing database tables in one transaction. Files receive new storage keys; existing bytes and login sessions remain untouched. Legacy database-only backups preserve wiki and mini-site tables but cannot recover uploaded files.
         </div>
         <input
           ref={fileRef}
@@ -308,9 +393,9 @@ export function SiteBackup() {
           onChange={(e) => { const f = e.target.files?.[0]; if (f) void pickFile(f); e.target.value = ""; }}
         />
         <div className="flex gap-1 items-center flex-wrap">
-          <button className="win98-button px-2 py-0.5" disabled={busy === "import"} onClick={() => fileRef.current?.click()}>Choose Backup File…</button>
+          <button className="win98-button px-2 py-0.5" disabled={busy !== null} onClick={() => fileRef.current?.click()}>Choose Backup File…</button>
           {summary && (
-            <button className="win98-button px-3 py-0.5 font-bold text-red-700" disabled={busy === "import"} onClick={importNow}>
+            <button className="win98-button px-3 py-0.5 font-bold text-red-700" disabled={busy !== null} onClick={importNow}>
               {busy === "import" ? "Restoring…" : `Restore ${summary.rowCount} rows`}
             </button>
           )}
@@ -320,9 +405,11 @@ export function SiteBackup() {
         </div>
         {summary && (
           <div className="mt-2 text-[11px] text-gray-800 win98-inset bg-white p-1">
-            Loaded backup with <b>{summary.tableCount}</b> tables and <b>{summary.rowCount}</b> total rows
+            Loaded {summary.full ? "file-inclusive" : "legacy database-only"} backup with <b>{summary.tableCount}</b> tables, <b>{summary.rowCount}</b> rows, <b>{summary.fileCount}</b> files and <b>{summary.fileBytes.toLocaleString()}</b> file bytes
             {summary.exportedAt ? <> (exported {formatLocalDate(summary.exportedAt)})</> : null}.
             Click <b>Restore</b> to apply, or pick a different file.
+            {!summary.full && <div className="text-red-700 font-bold">No uploaded file bytes. Wiki/mini-site data is not restored from this file.</div>}
+            <details><summary>Inventory</summary>{Object.entries(summary.tableCounts).map(([name, count]) => <div key={name}>{name}: {count} rows</div>)}</details>
           </div>
         )}
       </section>

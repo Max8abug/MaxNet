@@ -79,9 +79,11 @@ other users. Do not expose it as an nginx static directory: the API enforces
 publish/offline status and rank permissions when serving files. Keep the same
 directory when restarting or changing launch methods.
 
-**Back up both PostgreSQL and the upload directory.** The in-app database export
-does not include the uploaded file bytes. If moving servers or changing this
-directory, copy the files with their folder structure intact before restarting.
+**Back up both PostgreSQL and the upload directory**, or use the in-app
+**Site Backup** tool's version 2 export, which contains the explicitly listed
+site tables plus all referenced wiki/mini-site file bytes. Older version 1
+exports are database-only and cannot recover uploads. A raw PostgreSQL dump
+still needs a matching copy of the upload directory.
 
 Replit previews use their App Storage bucket instead. Creating a bucket in
 Replit does not provision storage on your own server or transfer files there.
@@ -98,6 +100,122 @@ node tests/run-storage-tests.mjs --disposable-data
 
 Run these only with a development database and a configured Replit bucket,
 never against your live self-hosted database.
+
+### Site Backup contents and recovery
+
+Version 2 is a JSON file with `version`, `exportedAt`, `storageBackend`,
+`tables`, `files`, `complete: true`, and `excluded`. Each file entry contains
+its original `objectKey`, byte `size`, SHA-256 `sha256`, and `dataBase64`.
+The tool displays the current table list and exclusions before export, and
+per-table row counts, file count and total file bytes when selecting a backup.
+
+Included tables:
+
+```
+users, ranks, site_settings, user_pages, banned_users, user_ips, ip_bans,
+device_tokens, device_associations, device_appeals, drawings, chat_messages,
+guestbook_entries, photos, news_posts, news_comments, polls, tracks, dms,
+chess_lobbies, cafe_settings, cafe_rooms, cafe_objects, cafe_presence, cafe_chat,
+forum_threads, forum_posts, youtube_sync, blackjack_tables, flappy_players,
+flappy_scores, visit_counter, chat_audit_log, wiki_pages, wiki_assets,
+hosted_sites, hosted_site_files
+```
+
+Included bytes: every distinct object referenced by `wiki_assets` or
+`hosted_site_files`, from whichever backend is currently configured. Inline
+data URLs remain part of their database rows. Missing files, size mismatches
+or unreadable tables make an export fail rather than producing a complete
+recovery file. Exports briefly block writes to the included tables and storage
+cleanup so records and files remain consistent during the download.
+The per-object backup limit matches the current 6 MiB upload limit; larger
+historical objects cause export to fail explicitly. Use the raw database/disk
+backup method for such installations.
+
+Not included: login sessions, unreferenced/orphaned objects, the storage cleanup
+queue, server configuration/secrets, external URL contents, or database tables
+not explicitly listed above (for example push subscriptions and Expo push
+tokens). This is a site-content backup, not a complete server/PostgreSQL dump.
+`site_settings` may itself contain private service settings. Keep backups
+private: they also contain account password hashes and private messages.
+
+To restore:
+
+1. Pause user activity (maintenance window) and make a fresh recovery backup.
+2. Configure the destination backend and writable storage directory, then
+   restart the app. Ensure both that destination and the server's temporary
+   directory have sufficient free disk space. Export JSON/base64 is larger
+   than the underlying bytes, and the browser loads the selected JSON file
+   into memory; use a PostgreSQL dump plus upload-directory copy for sites
+   too large for the browser.
+3. Choose the version 2 JSON file in Site Backup; review its inventory.
+4. Restore. The server stages small requests in its temporary directory,
+   verifies all file checksums and sizes, creates files in a fresh
+   `restores/<random-id>/` namespace, and verifies destination readback.
+   Database rows are staged without changing the live tables.
+5. Only after every expected row arrives does commit replace the listed
+   tables and reset serial sequences in **one database transaction**.
+   Storage-key references are remapped to the new files. Login-session rows
+   are neither exported, truncated, nor imported.
+6. Refresh and check wiki media and published mini-sites, then resume activity.
+
+Existing destination objects are never overwritten or deleted by restore,
+even if their original keys match a backup. Restoring repeatedly consumes
+additional storage. An interrupted/failed preparation can leave new
+unreferenced restore objects; retain them until an operator reviews them.
+Do not automatically delete the old upload tree after recovery. Database
+commit failures roll back the version 2 restore; restart preparations after
+a server restart or a 30-minute idle expiry. Temporary staging directories
+are removed on commit or when expired sessions are swept; a process crash may
+leave temporary directories for the operator/OS to remove after checking that
+no restore is running. Chunked restore requires one server process, not
+requests distributed across multiple instances.
+
+Legacy version 1 restores still use the older non-atomic database import:
+interruption can leave partial data. They preserve the four wiki/mini-site
+tables because those tables were not backed up, and they do not recover file
+bytes. Avoid version 1 for migration.
+
+### Moving storage or migrating between Replit and self-hosting
+
+**Version 2 backup migration (recommended for referenced site content):**
+
+1. On the source, export while its original backend is configured. Validate
+   the export succeeded and keep an independent copy.
+2. On the destination, select `STORAGE_BACKEND=local` with a persistent
+   `UPLOAD_STORAGE_DIR`, or `STORAGE_BACKEND=replit` in a Replit environment
+   with its App Storage bucket configured. A self-hosted server does not
+   acquire a Replit bucket merely by setting that variable.
+3. Restore the JSON file. Its `storageBackend` field is informational;
+   restore writes to the currently configured destination backend, remaps
+   metadata, and does not reuse source absolute paths or bucket credentials.
+4. Verify recovery before retiring the source. Configuration and secrets
+   must be transferred separately; never put them in a public backup.
+
+**Raw local-storage migration (full directory, including unreferenced files):**
+Stop the source site, take a PostgreSQL dump and copy its upload directory
+to a **new, empty** destination directory, preserving relative paths and
+ownership. Do not merge into an existing directory or overwrite its files.
+Restore the matching database dump, set `UPLOAD_STORAGE_DIR` to the copied
+directory and restart. A raw database dump may include sessions; exclude
+them if you need the same session-preservation behavior as the in-app tool.
+Keep the source directory and dump until destination checks pass.
+
+The backup regression suite launches and removes its own private PostgreSQL
+cluster and temporary upload directory. It never reads or connects to your
+configured database:
+
+```bash
+cd artifacts/api-server
+node tests/run-backup-tests.mjs
+# Optional: also migrate the disposable backup into the configured Replit
+# bucket. Only generated test restore objects are removed afterward.
+node tests/run-backup-tests.mjs --with-replit
+```
+
+Requires PostgreSQL tools (`initdb`, `pg_ctl`) on PATH. Checks include wiki
+and mini-site records, exact object bytes/checksums, missing/corrupt file
+rejection, non-destructive staging, preserved sessions and original files,
+serial-ID recovery, and rollback of sequence state after a late reset failure.
 
 When using nginx, add `client_max_body_size 10m;` inside the `server` block to
 permit the app's 6 MB per-file uploads (JSON base64 encoding increases the request
