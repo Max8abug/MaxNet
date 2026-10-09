@@ -460,15 +460,19 @@ regenerate database settings; updates do not rewrite `.env`. The launcher writes
 the file atomically with owner-only permissions, and the updater has a
 regression test that checks the values remain unchanged.
 
-The game frames load from `games.<current-site-host>` on the same server port.
-For `localhost`, browsers resolve `games.localhost` automatically. For a public
-domain, add a `games` DNS record pointing to the same server, add
-`games.yourdomain.com` to the existing nginx `server_name`, and include it on
-the HTTPS certificate. Use the same proxy port and preserve the `Host` header;
-no second app or port is needed. A ready-to-edit nginx example is below. The
-game hostname serves only static game files and does not create login sessions
-or expose the site's API. The updater also rewrites each port's CDN base URL to
-its local asset folder, so the game does not depend on a moving third-party CDN.
+Game frames load from `/ported-games/` on the main site origin. This uses the
+main site's existing HTTPS certificate, so no separate game DNS record or
+certificate is needed. The existing reverse proxy must forward this path to the
+same API server as the rest of the site; the supplied Apache and nginx examples
+proxy all paths to that server.
+
+Game pages are sandboxed without same-origin access, including when opened in a
+new tab. This keeps game scripts from reading the account site's DOM, storage,
+or authenticated APIs. Some ports may therefore be unable to save progress if
+they depend on browser storage. The game asset endpoint is public and static;
+it does not create login sessions. The updater also rewrites each port's CDN
+base URL to its local asset folder, so the game does not depend on a moving
+third-party CDN.
 
 Use the exact pnpm version in the root `package.json` `packageManager` field.
 Setup installs that version even if a different pnpm is already installed; the
@@ -494,7 +498,7 @@ For HTTPS and a real domain, put nginx in front:
 ```nginx
 server {
     listen 80;
-    server_name yourdomain.com games.yourdomain.com;
+    server_name yourdomain.com;
     location / {
         proxy_pass http://localhost:3000;
         proxy_http_version 1.1;
@@ -507,7 +511,7 @@ server {
 ```
 
 Then use Certbot for free HTTPS:
-`sudo certbot --nginx -d yourdomain.com -d games.yourdomain.com`
+`sudo certbot --nginx -d yourdomain.com`
 
 ---
 

@@ -36,23 +36,16 @@ type AssetManifest = {
 
 type AssetStatus = "checking" | "ready" | "missing" | "unavailable";
 
-function getGameOrigin() {
-  const hostname = window.location.hostname;
-  const gameHostname = hostname.startsWith("games.") ? hostname : `games.${hostname}`;
-  const origin = new URL(window.location.origin);
-  origin.hostname = gameHostname;
-  return origin.origin;
-}
-
 export function PortedGame({ game }: { game: PortedGameId }) {
   const [assetStatus, setAssetStatus] = useState<AssetStatus>("checking");
   const port = PORTS[game];
-  const gameOrigin = getGameOrigin();
-  const gameUrl = `${gameOrigin}/ported-games/${port.assetId}/index.html`;
+  const gameOrigin = window.location.origin;
+  const gameAssetsPath = `${gameOrigin}/ported-games`;
+  const gameUrl = `${gameAssetsPath}/${port.assetId}/index.html`;
 
   useEffect(() => {
     const controller = new AbortController();
-    fetch(`${gameOrigin}/ported-games/asset-manifest.json`, {
+    fetch(`${gameAssetsPath}/asset-manifest.json`, {
       cache: "no-store",
       signal: controller.signal,
     })
@@ -84,14 +77,14 @@ export function PortedGame({ game }: { game: PortedGameId }) {
       });
 
     return () => controller.abort();
-  }, [gameOrigin, port.assetId]);
+  }, [gameAssetsPath, port.assetId]);
 
   return (
     <div className="flex h-full min-h-0 flex-col bg-[#101b18] text-[#e9f4ec]">
       <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-[#38554a] bg-[#1b3028] px-2 py-1.5">
         <Info className="h-4 w-4 shrink-0 text-[#b9d3c3]" aria-hidden="true" />
         <p className="min-w-0 flex-1 text-[10px] leading-snug">
-          Self-hosted game port · source files are installed by the site updater.
+          Sandboxed game port · progress may not save in games that require browser storage.
         </p>
         {assetStatus === "ready" && (
           <a
@@ -123,19 +116,18 @@ export function PortedGame({ game }: { game: PortedGameId }) {
           src={gameUrl}
           title={`${port.title} game`}
           allow="autoplay; fullscreen; gamepad; pointer-lock"
-          sandbox="allow-forms allow-modals allow-pointer-lock allow-downloads allow-scripts allow-same-origin"
+          sandbox="allow-forms allow-modals allow-pointer-lock allow-downloads allow-scripts"
           allowFullScreen
-          referrerPolicy="strict-origin-when-cross-origin"
+          referrerPolicy="no-referrer"
         />
       ) : assetStatus === "unavailable" ? (
         <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-3 p-6 text-center">
-          <p className="text-base font-semibold">Can’t reach the game files host.</p>
+          <p className="text-base font-semibold">Can’t reach the game files.</p>
           <p className="max-w-lg text-xs leading-relaxed text-[#c2d2c8]">
             The site could not read the game manifest at{" "}
-            <code>{`${gameOrigin}/ported-games/asset-manifest.json`}</code>. Check that the
-            games hostname routes to the same self-hosted API server and port, and that
-            HTTPS has a valid certificate for that hostname. A proxy 404 or certificate
-            warning means the game files have not been checked yet.
+            <code>{`${gameAssetsPath}/asset-manifest.json`}</code>. Check that the main
+            site has a valid HTTPS certificate and that its proxy forwards this path to
+            the self-hosted API server.
           </p>
         </div>
       ) : (
@@ -164,7 +156,7 @@ export function PortedGame({ game }: { game: PortedGameId }) {
       )}
       <div className="flex shrink-0 items-center justify-between gap-2 border-t border-[#38554a] bg-[#1b3028] px-2 py-1 text-[10px]">
         <span>{port.title}</span>
-        <span>Self-hosted game files</span>
+        <span>Sandboxed game files</span>
       </div>
     </div>
   );

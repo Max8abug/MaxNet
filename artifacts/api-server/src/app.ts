@@ -8,6 +8,10 @@ import { logger } from "./lib/logger";
 import { sessionMiddleware, trackPresence } from "./lib/auth";
 import { ensureDeviceCookie } from "./lib/device-tracking";
 import { recordError, describeError } from "./lib/error-buffer";
+import {
+  createPortedGameAssetsRouter,
+  shouldServePortedGameRequest,
+} from "./lib/ported-game-assets";
 
 const app: Express = express();
 app.set("trust proxy", 1);
@@ -38,41 +42,22 @@ const repoRoot = path.resolve(appModuleDirectory, "../../..");
 const staticDir = path.resolve(repoRoot, "artifacts/photo-desktop/dist/public");
 
 if (isSelfHostedStatic) {
-  const gameAssetsOnly = express.Router();
-  gameAssetsOnly.use(
-    "/ported-games",
-    express.static(path.join(repoRoot, "selfhost", "data", "ported-games"), {
-      dotfiles: "deny",
-      fallthrough: true,
-      setHeaders(response, filePath) {
-        response.setHeader("X-Content-Type-Options", "nosniff");
-        if (filePath.endsWith("asset-manifest.json")) {
-          response.setHeader("Access-Control-Allow-Origin", "*");
-          response.setHeader("Cache-Control", "no-store");
-        } else if (filePath.endsWith(".html")) {
-          // Ported games are isolated on games.<site-host>. Keep their frames
-          // and network requests on that origin, away from the account app.
-          response.setHeader(
-            "Content-Security-Policy",
-            "default-src 'self' data: blob:; " +
-              "script-src 'self' 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval' blob:; " +
-              "style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; " +
-              "font-src 'self' data: blob:; media-src 'self' data: blob:; " +
-              "connect-src 'self' data: blob:; worker-src 'self' blob:; " +
-              "frame-src 'self' data: blob:; form-action 'self'; object-src 'none'; base-uri 'self'",
-          );
-        }
-      },
-    }),
+  const gameAssetsOnly = createPortedGameAssetsRouter(
+    path.join(repoRoot, "selfhost", "data", "ported-games"),
   );
-  gameAssetsOnly.use((_request, response) => {
-    response.status(404).type("text/plain").send("Game asset not found");
-  });
 
-  // The game hostname serves only static port files. This runs before device
-  // cookies, sessions, API routes, and the main app's SPA fallback.
+  // Public game files are served before device cookies, sessions, API routes,
+  // and the main app's SPA fallback. The path works on the main site origin;
+  // the legacy games hostname remains static-only for existing installations.
   app.use((request, response, next) => {
-    if (!request.hostname.toLowerCase().startsWith("games.")) return next();
+    if (
+      !shouldServePortedGameRequest(
+        request.hostname,
+        request.path,
+      )
+    ) {
+      return next();
+    }
     return gameAssetsOnly(request, response, next);
   });
 }
