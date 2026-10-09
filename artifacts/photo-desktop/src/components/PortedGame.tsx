@@ -115,7 +115,7 @@ export function PortedGame({ game }: { game: PortedGameId }) {
           className="min-h-0 w-full flex-1 border-0 bg-black"
           src={gameUrl}
           title={`${port.title} game`}
-          allow="autoplay; fullscreen; gamepad; pointer-lock"
+          allow="autoplay; fullscreen; gamepad *"
           sandbox="allow-forms allow-modals allow-pointer-lock allow-downloads allow-scripts"
           allowFullScreen
           referrerPolicy="no-referrer"
