@@ -48,3 +48,6 @@ Thumbs.db
 .cache/
 .local/
 /selfhost/backup.conf
+/selfhost/.env
+/selfhost/logs/
+/selfhost/run/
