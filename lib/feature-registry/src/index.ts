@@ -14,6 +14,7 @@ export const ARCHIVABLE_FEATURES = [
   { id: "geometry", name: "Geometry Dash", category: "Games" },
   { id: "poker", name: "Poker", category: "Games" },
   { id: "eaglercraft", name: "Eaglercraft", category: "Games" },
+  { id: "newcp", name: "New Club Penguin", category: "Games" },
   { id: "mypage", name: "My Page", category: "Social" },
   { id: "forum", name: "Forum", category: "Social" },
   { id: "chat", name: "Chatbox", category: "Social" },

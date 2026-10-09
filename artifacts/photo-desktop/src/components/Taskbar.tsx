@@ -328,6 +328,7 @@ export function Taskbar({ page }: { page: string }) {
     { label: "Play Geometry Dash", feature: 'geometry', act: () => open({ type: 'geometry', title: 'Geometry Dash', width: 560, height: 330 }) },
     { label: "Play Poker", feature: 'poker', act: () => open({ type: 'poker', title: 'Poker', width: 560, height: 390 }) },
     { label: "Play Eaglercraft", feature: 'eaglercraft', act: () => open({ type: 'eaglercraft', title: 'Eaglercraft', width: 900, height: 600 }) },
+    { label: "Play New Club Penguin", feature: 'newcp', act: () => open({ type: 'newcp', title: 'New Club Penguin', width: 1000, height: 680 }) },
   ];
 
   const socialItems: StartMenuItem[] = [
