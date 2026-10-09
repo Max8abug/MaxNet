@@ -98,6 +98,7 @@ try {
       BACKUP_TEST_WITH_REPLIT: process.argv.includes("--with-replit")
         ? "1"
         : "0",
+      BACKUP_TEST_SCHEDULED_ONLY: process.argv.includes("--scheduled-only") ? "1" : "0",
       ...(ui
         ? { BACKUP_TEST_UI_DIR: bundleDir, BACKUP_TEST_UI_PORT: "8099" }
         : {}),
@@ -109,6 +110,9 @@ try {
   process.exitCode = await new Promise((resolve) =>
     child.once("exit", (code) => resolve(code ?? 1)),
   );
+  if (process.exitCode !== 0) {
+    console.error((await readFile(path.join(dir, "postgres.log"), "utf8")).slice(-6000));
+  }
   process.off("SIGTERM", stop);
   process.off("SIGINT", stop);
 } catch (error) {

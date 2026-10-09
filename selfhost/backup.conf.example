@@ -1,0 +1,7 @@
+# Copy to selfhost/backup.conf, chmod 600, then edit. Nothing is enabled by default.
+# Absolute private directory, outside uploads, the checkout and ALL public web roots.
+BACKUP_DESTINATION=/home/YOUR_USER/private-backups/portfolio98
+# Keep N most recent completed command-generated copies, regardless of encryption.
+BACKUP_KEEP=14
+# Optional native age public recipient; keep the matching private key OFF the server.
+# BACKUP_AGE_RECIPIENT=age1...

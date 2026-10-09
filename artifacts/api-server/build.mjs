@@ -18,6 +18,7 @@ async function buildAll() {
     entryPoints: [
       path.resolve(artifactDir, "src/index.ts"),
       path.resolve(artifactDir, "src/storage-report-cli.ts"),
+      path.resolve(artifactDir, "src/scheduled-backup-cli.ts"),
     ],
     platform: "node",
     bundle: true,

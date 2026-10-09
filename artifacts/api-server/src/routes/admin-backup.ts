@@ -1,44 +1,5 @@
 import { Router, type IRouter, json as expressJson } from "express";
-import {
-  db,
-  drawingsTable,
-  chatMessagesTable,
-  visitCounterTable,
-  usersTable,
-  ranksTable,
-  tracksTable,
-  pollsTable,
-  dmsTable,
-  chessLobbiesTable,
-  userPagesTable,
-  cafePresenceTable,
-  cafeChatTable,
-  cafeSettingsTable,
-  cafeRoomsTable,
-  cafeObjectsTable,
-  guestbookTable,
-  photosTable,
-  bannedUsersTable,
-  userIpsTable,
-  ipBansTable,
-  deviceTokensTable,
-  deviceAssociationsTable,
-  deviceAppealsTable,
-  newsPostsTable,
-  newsCommentsTable,
-  siteSettingsTable,
-  chatAuditTable,
-  forumThreadsTable,
-  forumPostsTable,
-  youtubeSyncTable,
-  blackjackTablesTable,
-  flappyPlayersTable,
-  flappyScoresTable,
-  wikiPagesTable,
-  wikiAssetsTable,
-  hostedSitesTable,
-  hostedSiteFilesTable,
-} from "@workspace/db";
+import { db } from "@workspace/db";
 import { mkdtemp, appendFile, rm } from "node:fs/promises";
 import { createReadStream } from "node:fs";
 import { createInterface } from "node:readline";
@@ -49,62 +10,13 @@ import { requireAdmin } from "../lib/auth";
 import { ensureSchema } from "../lib/ensure-schema";
 import { logger } from "../lib/logger";
 import { storageScope } from "../lib/app-storage";
-import { acceptFileChunk, materializeFiles, prepareFiles, readBackupFile } from "../lib/backup-files";
+import { acceptFileChunk, materializeFiles, prepareFiles } from "../lib/backup-files";
 import { BACKUP_LOCK } from "../lib/storage-mutations";
+import { TABLES, EXCLUDED, exportSiteBackup } from "../lib/site-backup";
 
 const router: IRouter = Router();
 
-// Explicit list of site-content tables the backup tool understands. Order matters:
-// when restoring we insert parents before children so foreign-key constraints
-// stay happy. The session table is intentionally omitted — restoring it would
-// log out whichever admin is performing the restore (and stale sessions across
-// machines are rarely useful anyway).
-type Entry = { name: string; pgName: string; table: any };
-const TABLES: Entry[] = [
-  { name: "users", pgName: "users", table: usersTable },
-  { name: "ranks", pgName: "ranks", table: ranksTable },
-  { name: "site_settings", pgName: "site_settings", table: siteSettingsTable },
-  { name: "user_pages", pgName: "user_pages", table: userPagesTable },
-  { name: "banned_users", pgName: "banned_users", table: bannedUsersTable },
-  { name: "user_ips", pgName: "user_ips", table: userIpsTable },
-  { name: "ip_bans", pgName: "ip_bans", table: ipBansTable },
-  { name: "device_tokens", pgName: "device_tokens", table: deviceTokensTable },
-  { name: "device_associations", pgName: "device_associations", table: deviceAssociationsTable },
-  { name: "device_appeals", pgName: "device_appeals", table: deviceAppealsTable },
-  { name: "drawings", pgName: "drawings", table: drawingsTable },
-  { name: "chat_messages", pgName: "chat_messages", table: chatMessagesTable },
-  { name: "guestbook_entries", pgName: "guestbook_entries", table: guestbookTable },
-  { name: "photos", pgName: "photos", table: photosTable },
-  { name: "news_posts", pgName: "news_posts", table: newsPostsTable },
-  { name: "news_comments", pgName: "news_comments", table: newsCommentsTable },
-  { name: "polls", pgName: "polls", table: pollsTable },
-  { name: "tracks", pgName: "tracks", table: tracksTable },
-  { name: "dms", pgName: "dms", table: dmsTable },
-  { name: "chess_lobbies", pgName: "chess_lobbies", table: chessLobbiesTable },
-  { name: "cafe_settings", pgName: "cafe_settings", table: cafeSettingsTable },
-  { name: "cafe_rooms", pgName: "cafe_rooms", table: cafeRoomsTable },
-  { name: "cafe_objects", pgName: "cafe_objects", table: cafeObjectsTable },
-  { name: "cafe_presence", pgName: "cafe_presence", table: cafePresenceTable },
-  { name: "cafe_chat", pgName: "cafe_chat", table: cafeChatTable },
-  { name: "forum_threads", pgName: "forum_threads", table: forumThreadsTable },
-  { name: "forum_posts", pgName: "forum_posts", table: forumPostsTable },
-  { name: "youtube_sync", pgName: "youtube_sync", table: youtubeSyncTable },
-  { name: "blackjack_tables", pgName: "blackjack_tables", table: blackjackTablesTable },
-  { name: "flappy_players", pgName: "flappy_players", table: flappyPlayersTable },
-  { name: "flappy_scores", pgName: "flappy_scores", table: flappyScoresTable },
-  { name: "visit_counter", pgName: "visit_counter", table: visitCounterTable },
-  { name: "chat_audit_log", pgName: "chat_audit_log", table: chatAuditTable },
-  { name: "wiki_pages", pgName: "wiki_pages", table: wikiPagesTable },
-  { name: "wiki_assets", pgName: "wiki_assets", table: wikiAssetsTable },
-  { name: "hosted_sites", pgName: "hosted_sites", table: hostedSitesTable },
-  { name: "hosted_site_files", pgName: "hosted_site_files", table: hostedSiteFilesTable },
-];
 const FILE_TABLES = new Set(["wiki_pages", "wiki_assets", "hosted_sites", "hosted_site_files"]);
-const EXCLUDED = [
-  "login sessions", "unreferenced storage objects", "storage cleanup queue",
-  "server configuration and secrets", "external URL resources",
-  "unlisted database tables (including push subscriptions and Expo push tokens)",
-];
 
 router.get("/admin/backup/contents", requireAdmin, (_req, res) => {
   res.json({
@@ -183,58 +95,7 @@ router.get("/admin/export", requireAdmin, async (_req, res) => {
   };
 
   try {
-    await db.transaction(async tx => {
-    // Block storage mutations/cleanup, then freeze the exported tables so all
-    // records and bytes describe one point in time.
-    await tx.execute(sql`SELECT pg_advisory_xact_lock(${BACKUP_LOCK}, 0)`);
-    await tx.execute(sql.raw(`LOCK TABLE ${TABLES.map(t => `"${t.pgName}"`).join(", ")} IN SHARE MODE`));
-    const fileRefs = new Map<string, number>();
-    await write(`{"version":2,"exportedAt":${JSON.stringify(new Date().toISOString())},"storageBackend":${JSON.stringify(storageScope().startsWith("local:") ? "local" : "replit")},"tables":{`);
-
-    let firstTable = true;
-    for (const t of TABLES) {
-      if (aborted) break;
-      if (!firstTable) await write(",");
-      firstTable = false;
-      await write(`${JSON.stringify(t.name)}:[`);
-
-      let rows: any[] = [];
-      try {
-        // We still pull each table in one query — Drizzle doesn't expose a
-        // cursor API on the high-level builder. For pathological tables we
-        // could swap in a paged SELECT later, but in practice the per-row
-        // streaming below is what saves us, not the read itself.
-        rows = await tx.select().from(t.table);
-      } catch (e: any) {
-        throw new Error(`Cannot back up ${t.name}: ${e?.message || "select failed"}`);
-      }
-
-      let firstRow = true;
-      for (const row of rows) {
-        if (t.name === "wiki_assets" || t.name === "hosted_site_files") {
-          if (fileRefs.has(row.objectKey) && fileRefs.get(row.objectKey) !== row.size) throw new Error("Conflicting storage sizes.");
-          fileRefs.set(row.objectKey, row.size);
-        }
-        if (aborted) break;
-        const serialised = JSON.stringify(row);
-        if (!firstRow) await write(",");
-        firstRow = false;
-        await write(serialised);
-      }
-      await write("]");
-    }
-
-    await write('},"files":[');
-    let firstFile = true;
-    for (const [key, size] of fileRefs) {
-      const file = await readBackupFile(key, size);
-      if (!firstFile) await write(",");
-      firstFile = false;
-      await write(JSON.stringify(file));
-    }
-    await write(`],"complete":true,"excluded":${JSON.stringify(EXCLUDED)}`);
-    await write("}");
-    });
+    await exportSiteBackup(write);
     res.end();
   } catch (e: any) {
     // We've already sent headers (Content-Type: application/json + 200), so

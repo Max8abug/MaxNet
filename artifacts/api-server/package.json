@@ -9,6 +9,7 @@
     "start": "node --enable-source-maps ./dist/index.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "storage:report": "node --enable-source-maps ./dist/storage-report-cli.mjs",
+    "backup:scheduled": "node --enable-source-maps ./dist/scheduled-backup-cli.mjs",
     "test:storage-report": "node ./tests/run-storage-report-tests.mjs"
   },
   "dependencies": {

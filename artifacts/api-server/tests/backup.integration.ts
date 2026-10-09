@@ -20,8 +20,10 @@ import backup from "../src/routes/admin-backup";
 import { ensureSchema } from "../src/lib/ensure-schema";
 import { appStorage } from "../src/lib/app-storage";
 import { digest } from "../src/lib/backup-files";
+import { checkScheduledBackups } from "./scheduled-backup.integration";
 
 const disk = await mkdtemp(path.join(tmpdir(), "backup-objects-"));
+const recovery = await mkdtemp(path.join(tmpdir(), "scheduled-recovery-"));
 process.env.STORAGE_BACKEND = "local";
 process.env.UPLOAD_STORAGE_DIR = disk;
 const id = randomUUID();
@@ -180,6 +182,12 @@ try {
     assert.equal(digest(bytes), file.sha256);
   }
   assert(!("session" in payload.tables));
+  await checkScheduledBackups(path.join(recovery, "copies"), sourceKeys[0], png, payload, sessionUnchanged);
+  if (process.env.BACKUP_TEST_SCHEDULED_ONLY === "1") {
+    assert.deepEqual(await readFile(path.join(disk, sourceKeys[0])), png);
+    assert.deepEqual(await readFile(path.join(disk, sourceKeys[1])), html);
+    console.log("PASS: disposable-only scheduled backup checks completed; original uploads and sessions preserved");
+  } else {
   await request("/admin/import", { confirm: true, ...payload }, 400);
 
   // Corruption is rejected before any database replacement.
@@ -294,7 +302,7 @@ try {
   try {
     const failed = await request("/admin/import/commit", { sessionId: lateBegin.sessionId }, 500);
     assert(failed.error.includes("rolled back"));
-    assert.equal(Number((await pool.query("SELECT last_value FROM backup_test_reset_counter")).rows[0].last_value), 2);
+    assert.equal(Number((await pool.query("SELECT last_value FROM backup_test_reset_counter")).rows[0].last_value), 2, failed.error);
     assert.deepEqual((await pool.query("SELECT last_value, is_called FROM users_id_seq")).rows[0], sequenceBefore);
     assert.equal((await db.select().from(usersTable)).length, 2);
     const [probe] = await db.insert(usersTable).values({
@@ -409,6 +417,7 @@ try {
       process.once("SIGINT", () => resolve());
     });
   }
+  }
 } finally {
   for (const [backend, keys] of createdKeys) {
     process.env.STORAGE_BACKEND = backend;
@@ -419,4 +428,5 @@ try {
   await pool.end();
   await storageJournalPool.end();
   await rm(disk, { recursive: true, force: true });
+  await rm(recovery, { recursive: true, force: true });
 }

@@ -175,6 +175,188 @@ interruption can leave partial data. They preserve the four wiki/mini-site
 tables because those tables were not backed up, and they do not recover file
 bytes. Avoid version 1 for migration.
 
+### Opt-in scheduled private backups
+
+Nothing is scheduled or enabled automatically. The one-shot command reuses
+the **same version 2 exporter and table/file coverage** as Site Backup.
+It does not start the server, repair the database schema, change sessions,
+or delete live/orphan upload objects. Keep the server schema up to date first.
+It can run with the site online, but included table writes and upload mutations
+pause while it reads records and referenced bytes. A lock wait over 30 seconds,
+unreadable table, missing file, size mismatch, storage outage, encryption failure
+or output failure makes the command exit nonzero. Each table is currently read
+into memory separately; allow sufficient RAM and disk space for your site's
+largest table and base64-expanded file content.
+
+Run as the **same Linux user and with the same database/storage configuration**
+as the site. Do not run as root or point this at a different upload directory.
+`backup.sh` loads `selfhost/.env` and then `selfhost/backup.conf`, and loads
+the user's nvm installation if present.
+
+```bash
+cd ~/portfolio98
+pnpm --filter @workspace/api-server run build
+cp selfhost/backup.conf.example selfhost/backup.conf
+chmod 600 selfhost/backup.conf selfhost/.env
+# Edit backup.conf: set a real absolute path and BACKUP_KEEP, e.g.:
+# BACKUP_DESTINATION=/home/alice/private-backups/portfolio98
+# BACKUP_KEEP=14
+install -d -m 700 "$HOME/private-backups/portfolio98"
+bash selfhost/backup.sh --enabled
+```
+
+Choose an owner-only destination **outside the checkout, upload directory and
+all public web roots**; never configure nginx to serve it. Existing destination
+directories must be owned by the invoking user with mode `0700`; symlink
+destinations are rejected. New directories use `0700` and backup files use
+`0600`. The command can also be invoked directly from the repository root
+with the owner's configuration already loaded:
+
+```bash
+pnpm --filter @workspace/api-server run backup:scheduled --enabled \
+  --destination=/home/alice/private-backups/portfolio98 --keep=14
+```
+
+Success prints a JSON summary with the saved path, encryption status, table
+row counts, file count/bytes and number pruned. Failures go to stderr and exit
+nonzero; monitor these logs, not just whether a filename exists. Files are
+streamed to hidden `.partial` files; only after the export finishes, encryption
+succeeds and file bytes are synced is a completed `site-backup-...json`
+(or `.json.age`) published without overwriting any existing file.
+
+Retention is **count-based**, not days: after each successful publication,
+keep the newest `BACKUP_KEEP` command-generated completed backups, counting
+both encrypted and unencrypted copies. Only matching regular backup files in
+that private destination are eligible. Manual filenames, symlinks,
+subdirectories, partial files, and uploads are untouched. A failed export
+does not prune existing copies. A post-save retention error still exits nonzero
+and reports that a valid new copy was saved. Store an independent off-machine
+copy too; local retention alone cannot protect against disk loss.
+
+One `.site-backup.lock` directory prevents overlapping runs to the same
+destination. After a crash or power loss, verify no backup process is running,
+then remove that lock manually before retrying. Hidden `.partial` files left
+by a killed process are not recovery copies; remove them manually only after
+checking no backup is running. Do not delete any upload objects during this
+cleanup. Avoid simultaneous commands targeting different destinations:
+the database serializes their snapshots, but each destination has its own
+retention policy.
+
+**Optional public-key encryption with age**
+
+Install `age` on the Linux owner server (`sudo apt install age`). On a
+separate trusted recovery machine:
+
+```bash
+umask 077
+age-keygen -o portfolio98-backup-key.txt
+age-keygen -y portfolio98-backup-key.txt
+# Copy only the displayed age1... PUBLIC recipient to the server.
+```
+
+Set `BACKUP_AGE_RECIPIENT=age1...` in `selfhost/backup.conf`, or pass
+`--recipient=age1...` to the direct command. Only native age public recipients
+are supported. Encryption streams directly to `.json.age`; no plaintext
+backup is written to disk by this command. The server does not need the
+private key or a passphrase. Keep the private key safely **off the server**
+and test recovery; losing it makes encrypted copies unrecoverable.
+Enabling encryption does not convert or immediately delete existing plaintext
+backups; those remain until normal retention or careful owner removal.
+
+On the recovery machine, decrypt before choosing the JSON in Site Backup:
+
+```bash
+umask 077
+age --decrypt --identity portfolio98-backup-key.txt \
+  --output recovered-site.json site-backup-REPLACE-WITH-ACTUAL-NAME.json.age
+```
+
+Restore using the version 2 process above. Sessions remain untouched.
+Configuration/secrets and excluded tables still require separate protection.
+
+**Current recovery limitation:** the newer `planner_entries` table is not in
+the existing version 2 table list and has a foreign key to users. On databases
+with that table, PostgreSQL currently rejects the full-site restore's table
+replacement, even if the planner is empty. Scheduled exports retain the
+existing version 2 coverage; they do not remove that table or its constraints
+to bypass the problem. Until planner-aware recovery is implemented, keep a
+matching **raw PostgreSQL dump plus upload-directory copy** as well. Do not
+manually drop live planner data or add `CASCADE` to the restore.
+
+**Cron (choose this OR systemd, not both)**
+
+Create a private log directory, then edit the site owner's crontab using
+`crontab -e`. Replace `/home/alice` with actual absolute paths. Cron runs
+without your interactive shell configuration; `backup.sh` loads nvm, but
+for other Node installations set an appropriate `PATH` in the crontab.
+
+```bash
+install -d -m 700 "$HOME/private-backups/logs"
+```
+
+```cron
+SHELL=/bin/bash
+PATH=/usr/local/bin:/usr/bin:/bin
+MAILTO=your-monitored-email@example.com
+15 3 * * * umask 077; /bin/bash /home/alice/portfolio98/selfhost/backup.sh --enabled >> /home/alice/private-backups/logs/site-backup.log 2>&1
+```
+
+This runs daily at 03:15 in the server timezone. Because output is redirected,
+`MAILTO` will not report logged command failures; regularly inspect the log,
+or use a separate failure monitor with working mail delivery. Rotate the
+private log to avoid filling disk. Disable by removing the cron entry.
+
+**systemd user timer**
+
+As the site owner, create `~/.config/systemd/user/portfolio98-backup.service`:
+
+```ini
+[Unit]
+Description=Private Portfolio98 recovery backup
+
+[Service]
+Type=oneshot
+UMask=0077
+WorkingDirectory=/home/alice/portfolio98
+ExecStart=/bin/bash /home/alice/portfolio98/selfhost/backup.sh --enabled
+TimeoutStartSec=2h
+```
+
+Create `~/.config/systemd/user/portfolio98-backup.timer`:
+
+```ini
+[Unit]
+Description=Daily Portfolio98 recovery backup
+
+[Timer]
+OnCalendar=*-*-* 03:15:00
+Persistent=true
+RandomizedDelaySec=10m
+Unit=portfolio98-backup.service
+
+[Install]
+WantedBy=timers.target
+```
+
+```bash
+systemctl --user daemon-reload
+systemctl --user start portfolio98-backup.service  # verify once first
+journalctl --user -u portfolio98-backup.service -n 50
+systemctl --user enable --now portfolio98-backup.timer
+systemctl --user list-timers portfolio98-backup.timer
+# To run user timers when logged out (administrator approval may be needed):
+sudo loginctl enable-linger "$USER"
+# Disable scheduled runs:
+systemctl --user disable --now portfolio98-backup.timer
+```
+
+Check failed services with `systemctl --user --failed` and inspect the journal.
+Protect journal access: logs include file paths and error diagnostics.
+`Persistent=true` catches a missed timer after the user manager starts.
+Allow longer than two hours if your site's export requires it; a killed job
+leaves a lock/partial for operator review. A timer is not a substitute for
+checking successful backups and performing disposable restore drills.
+
 ### Moving storage or migrating between Replit and self-hosting
 
 **Version 2 backup migration (recommended for referenced site content):**
@@ -216,6 +398,21 @@ Requires PostgreSQL tools (`initdb`, `pg_ctl`) on PATH. Checks include wiki
 and mini-site records, exact object bytes/checksums, missing/corrupt file
 rejection, non-destructive staging, preserved sessions and original files,
 serial-ID recovery, and rollback of sequence state after a late reset failure.
+To verify only the new command against disposable fixtures:
+
+```bash
+cd artifacts/api-server
+pnpm run build
+node tests/run-backup-tests.mjs --scheduled-only
+```
+
+These disposable-only checks cover scheduled exports, unchanged
+database/session rows, private destination/file permissions, retention,
+overlap protection, output/missing-table/missing-file failures, and real age
+encryption/decryption (requires `age` and `age-keygen` on PATH). It does not
+run `backup.sh` against the owner's `.env` or create any real schedule.
+The full restore suite currently exposes the planner foreign-key limitation
+noted above; `--scheduled-only` validates the export command, not full restore.
 
 When using nginx, add `client_max_body_size 10m;` inside the `server` block to
 permit the app's 6 MB per-file uploads (JSON base64 encoding increases the request
