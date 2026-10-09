@@ -19,6 +19,7 @@ import { Polls } from './Polls';
 import { Chess } from './Chess';
 import { Eaglercraft } from './Eaglercraft';
 import { NewClubPenguin } from './NewClubPenguin';
+import { TerrariaGame } from './TerrariaGame';
 import { DMs } from './DMs';
 import { UserPage } from './UserPage';
 import { RanksAdmin } from './RanksAdmin';
@@ -179,7 +180,7 @@ export function Window({
       : { width: w.width, height: w.height, transform: `translate3d(${w.x}px, ${w.y}px, 0)` };
 
   // Keep embedded game sessions and personal playlist playback alive while minimized.
-  const shouldPreserveState = w.type === 'eaglercraft' || w.type === 'newcp' || w.type === 'personalplaylists';
+  const shouldPreserveState = w.type === 'eaglercraft' || w.type === 'newcp' || w.type === 'terraria' || w.type === 'personalplaylists';
   const windowStyle: React.CSSProperties = isMin && !shouldPreserveState
     ? { top: 0, left: 0, transform: `translate3d(${w.x}px, ${(boundsRef.current?.clientHeight || 600) - 64}px, 0)`, width: 160, zIndex: w.zIndex }
     : { ...maxStyle, zIndex: w.zIndex, top: 0, left: 0, willChange: 'transform', touchAction: mobile ? 'auto' : 'none', visibility: isMin && shouldPreserveState ? 'hidden' : 'visible' };
@@ -340,6 +341,7 @@ export function Window({
         {w.type === 'chess' && !isEditing && <Chess />}
         {w.type === 'eaglercraft' && !isEditing && <Eaglercraft />}
         {w.type === 'newcp' && !isEditing && <NewClubPenguin />}
+        {w.type === 'terraria' && !isEditing && <TerrariaGame />}
         {w.type === 'dms' && !isEditing && <DMs initialPeer={w.dmPeer} />}
         {w.type === 'userpage' && !isEditing && <UserPage username={w.username || ''} />}
         {w.type === 'browser' && !isEditing && <UserBrowser page={page} />}

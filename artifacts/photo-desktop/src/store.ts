@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { isFeatureHiddenFromLaunchers } from '@workspace/feature-registry';
 
-export type WindowType = 'photo' | 'gallery' | 'text' | 'link' | 'youtube' | 'drawing' | 'chat' | 'visits' | 'guestbook' | 'sharedphotos' | 'forum' | 'blackjack' | 'flappy' | 'geometry' | 'poker' | 'music' | 'polls' | 'chess' | 'eaglercraft' | 'newcp' | 'cafe' | 'dms' | 'browser' | 'userpage' | 'ranksadmin' | 'userlist' | 'mypage' | 'settings' | 'sitesettings' | 'iplookup' | 'news' | 'diagnostics' | 'sitebackup' | 'accountadmin' | 'planner' | 'personalplaylists' | 'featurearchive' | 'themelab';
+export type WindowType = 'photo' | 'gallery' | 'text' | 'link' | 'youtube' | 'drawing' | 'chat' | 'visits' | 'guestbook' | 'sharedphotos' | 'forum' | 'blackjack' | 'flappy' | 'geometry' | 'poker' | 'music' | 'polls' | 'chess' | 'eaglercraft' | 'newcp' | 'terraria' | 'cafe' | 'dms' | 'browser' | 'userpage' | 'ranksadmin' | 'userlist' | 'mypage' | 'settings' | 'sitesettings' | 'iplookup' | 'news' | 'diagnostics' | 'sitebackup' | 'accountadmin' | 'planner' | 'personalplaylists' | 'featurearchive' | 'themelab';
 
 export type WindowState = 'normal' | 'min' | 'max';
 

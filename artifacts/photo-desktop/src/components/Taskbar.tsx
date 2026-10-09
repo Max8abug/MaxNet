@@ -312,6 +312,7 @@ export function Taskbar({ page }: { page: string }) {
     { label: "Play Poker", feature: 'poker', act: () => open({ type: 'poker', title: 'Poker', width: 560, height: 390 }) },
     { label: "Play Eaglercraft", feature: 'eaglercraft', act: () => open({ type: 'eaglercraft', title: 'Eaglercraft', width: 900, height: 600 }) },
     { label: "Play New Club Penguin", feature: 'newcp', act: () => open({ type: 'newcp', title: 'New Club Penguin', width: 1000, height: 680 }) },
+    { label: "Play Terraria", feature: 'terraria', act: () => open({ type: 'terraria', title: 'Terraria', width: 1100, height: 680 }) },
   ];
 
   const socialItems: StartMenuItem[] = [
