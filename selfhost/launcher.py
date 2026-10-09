@@ -13,12 +13,14 @@ import subprocess
 import threading
 import webbrowser
 import time
+import tempfile
+import zipfile
 from datetime import datetime
 from pathlib import Path
 
 try:
     import tkinter as tk
-    from tkinter import ttk, scrolledtext, messagebox
+    from tkinter import ttk, scrolledtext, messagebox, filedialog
 except ImportError:
     print("tkinter not found.  Install it with:  sudo apt install python3-tk")
     sys.exit(1)
@@ -104,6 +106,8 @@ class App(tk.Tk):
         self.minsize(700, 520)
         self._crash_alerted = False
         self._last_error_count = 0
+        self._api_state_lock = threading.Lock()
+        self._expected_api_stops: set[int] = set()
         self._build_ui()
         self._poll()
 
@@ -148,6 +152,7 @@ class App(tk.Tk):
         log_bar = tk.Frame(nb_frame)
         log_bar.pack(fill="x", padx=4, pady=(0, 4))
         tk.Button(log_bar, text="Refresh", command=self._refresh_all_logs).pack(side="left", padx=2)
+        tk.Button(log_bar, text="Export logs…", command=self._export_logs).pack(side="left", padx=2)
         tk.Button(log_bar, text="Clear current tab", command=self._clear_current_log).pack(side="left", padx=2)
         self._autoscroll = tk.BooleanVar(value=True)
         tk.Checkbutton(log_bar, text="Auto-scroll", variable=self._autoscroll).pack(side="left")
@@ -343,6 +348,62 @@ class App(tk.Tk):
         except Exception as e:
             messagebox.showerror("Error", str(e))
 
+    def _export_logs(self):
+        """Save the full launcher/API log files to a ZIP archive."""
+        stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+        destination = filedialog.asksaveasfilename(
+            title="Export launcher logs",
+            initialfile=f"portfolio98-logs-{stamp}.zip",
+            defaultextension=".zip",
+            filetypes=[("ZIP archive", "*.zip")],
+        )
+        if not destination:
+            return
+
+        destination_path = Path(destination)
+        if destination_path.suffix.lower() != ".zip":
+            destination_path = destination_path.with_suffix(".zip")
+
+        log_files = [API_LOG_FILE, ERROR_LOG_FILE, UPDATE_LOG_FILE]
+        available = [path for path in log_files if path.is_file()]
+        if not available:
+            messagebox.showerror("Export failed", "No launcher log files are available to export.")
+            return
+
+        missing = [path.name for path in log_files if not path.is_file()]
+        temp_path = None
+        try:
+            with tempfile.NamedTemporaryFile(
+                prefix=f".{destination_path.name}.",
+                suffix=".tmp",
+                dir=destination_path.parent,
+                delete=False,
+            ) as temp_file:
+                temp_path = Path(temp_file.name)
+
+            with zipfile.ZipFile(temp_path, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+                for path in available:
+                    archive.write(path, arcname=path.name)
+                details = [
+                    f"Portfolio98 launcher log export created {ts_now()}",
+                    "Included files:",
+                    *(f"- {path.name}" for path in available),
+                ]
+                if missing:
+                    details.extend(["", "Log files not present at export time:", *(f"- {name}" for name in missing)])
+                archive.writestr("EXPORT_INFO.txt", "\n".join(details) + "\n")
+
+            temp_path.replace(destination_path)
+            messagebox.showinfo(
+                "Logs exported",
+                f"Saved {len(available)} log file(s) to:\n{destination_path}\n\n"
+                "Review the logs for private information before sharing them.",
+            )
+        except Exception as exc:
+            if temp_path is not None:
+                temp_path.unlink(missing_ok=True)
+            messagebox.showerror("Export failed", str(exc))
+
     # ── Service control ────────────────────────────────────────────────────────
     def _start(self, name: str):
         if name == "PostgreSQL (system)":
@@ -401,40 +462,50 @@ class App(tk.Tk):
                 f"[launcher] Started API (PID {proc.pid}) → port {port}\n")
             self._url_var.set(f"http://localhost:{port}")
             # Background crash-watcher
-            threading.Thread(target=self._watch_api, args=(proc.pid,),
+            threading.Thread(target=self._watch_api, args=(proc,),
                              daemon=True).start()
         except Exception as exc:
             messagebox.showerror("Start failed", str(exc))
 
-    def _watch_api(self, expected_pid: int):
+    def _watch_api(self, process: subprocess.Popen):
         """Background thread: detect unexpected exit and surface it in the UI."""
+        pid = process.pid
         try:
-            pid = expected_pid
-            while True:
-                time.sleep(2)
+            return_code = process.wait()
+            with self._api_state_lock:
+                expected_stop = pid in self._expected_api_stops
+                self._expected_api_stops.discard(pid)
+            if expected_stop:
+                return
+
+            if return_code < 0:
+                signal_number = -return_code
                 try:
-                    os.kill(pid, 0)   # still alive?
-                except ProcessLookupError:
-                    # Check if it was a controlled stop
-                    stored = get_pid(API_PID_FILE)
-                    if stored is None:
-                        return   # clean stop
-                    # Unexpected exit
-                    msg = f"[{ts_now()}] [CRASH] API process (PID {pid}) exited unexpectedly"
-                    try:
-                        with open(ERROR_LOG_FILE, "a") as f:
-                            f.write(msg + "\n")
-                        API_PID_FILE.unlink(missing_ok=True)
-                    except Exception:
-                        pass
-                    self.after(0, lambda m=msg: self._show_alert(f"💥 {m}"))
-                    return
-        except Exception:
-            pass
+                    signal_name = signal.Signals(signal_number).name
+                except ValueError:
+                    signal_name = f"signal {signal_number}"
+                exit_detail = f"was terminated by {signal_name} ({signal_number})"
+            else:
+                exit_detail = f"exited with code {return_code}"
+
+            msg = (f"[{ts_now()}] [CRASH] API process (PID {pid}) {exit_detail}; "
+                   f"check {ERROR_LOG_FILE} for process output")
+            with open(ERROR_LOG_FILE, "a") as f:
+                f.write(msg + "\n")
+            self.after(0, lambda m=msg: self._show_alert(f"💥 {m}"))
+        except Exception as exc:
+            try:
+                with open(ERROR_LOG_FILE, "a") as f:
+                    f.write(f"[{ts_now()}] [launcher] API crash watcher failed "
+                            f"for PID {pid}: {exc}\n")
+            except Exception:
+                pass
 
     def _stop_api(self):
         pid = get_pid(API_PID_FILE)
         if pid:
+            with self._api_state_lock:
+                self._expected_api_stops.add(pid)
             try:
                 os.kill(pid, signal.SIGTERM)
                 time.sleep(0.8)
@@ -442,7 +513,11 @@ class App(tk.Tk):
                 except ProcessLookupError: pass
             except ProcessLookupError:
                 pass
-            API_PID_FILE.unlink(missing_ok=True)
+            try:
+                if int(API_PID_FILE.read_text().strip()) == pid:
+                    API_PID_FILE.unlink(missing_ok=True)
+            except (OSError, ValueError):
+                pass
             self._launcher_log(f"[launcher] Stopped API (PID {pid})\n")
         else:
             self._launcher_log("[launcher] API was not running\n")
