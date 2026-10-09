@@ -56,18 +56,12 @@ export function PersonalYouTubePlayer({ videoId, playRequest, onEnded }: {
 }) {
   const holder = useRef<HTMLDivElement>(null);
   const player = useRef<Player | null>(null);
-  const lastAppliedPlayback = useRef<{ videoId: string | null; playRequest: number }>({
-    videoId: null,
-    playRequest: -1,
-  });
-  const manuallyHiddenForRequest = useRef<number | null>(null);
   const latest = useRef({ videoId, playRequest, onEnded });
   latest.current = { videoId, playRequest, onEnded };
   const [ready, setReady] = useState(false);
   const [playing, setPlaying] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [animation, setAnimation] = useState(true);
-  const [videoVisible, setVideoVisible] = useState(true);
   const [videoWidth, setVideoWidth] = useState(100);
   const [retry, setRetry] = useState(0);
   const [frame, setFrame] = useState(0);
@@ -83,7 +77,6 @@ export function PersonalYouTubePlayer({ videoId, playRequest, onEnded }: {
 
   useEffect(() => {
     let alive = true;
-    lastAppliedPlayback.current = { videoId: null, playRequest: -1 };
     setReady(false); setPlaying(false); setError(null);
     if (!hasVideo) return;
     void loadAPI().then((api) => {
@@ -128,21 +121,11 @@ export function PersonalYouTubePlayer({ videoId, playRequest, onEnded }: {
 
   useEffect(() => {
     if (!ready || !player.current) return;
-    if (!videoId) { player.current.pauseVideo(); return; }
-    if (!videoVisible) {
-      player.current.pauseVideo();
-      if (playRequest > 0 && manuallyHiddenForRequest.current !== playRequest) {
-        setVideoVisible(true);
-      }
-      return;
-    }
-    if (lastAppliedPlayback.current.videoId === videoId
-      && lastAppliedPlayback.current.playRequest === playRequest) return;
-    lastAppliedPlayback.current = { videoId, playRequest };
     setPlaying(false); setError(null);
+    if (!videoId) { player.current.pauseVideo(); return; }
     if (playRequest > 0) player.current.loadVideoById(videoId);
     else player.current.cueVideoById(videoId);
-  }, [videoId, playRequest, ready, videoVisible]);
+  }, [videoId, playRequest, ready]);
 
   useEffect(() => {
     if (!playing || !animation || reducedMotion) return;
@@ -153,49 +136,29 @@ export function PersonalYouTubePlayer({ videoId, playRequest, onEnded }: {
   return (
     <section className="min-w-0" aria-label="Personal YouTube player">
       <div className="mb-1">
-        <div className="flex flex-wrap items-center gap-2">
-          <button
-            type="button"
-            className="win98-button px-2 py-1"
-            disabled={!videoId}
-            aria-pressed={videoVisible}
-            onClick={() => {
-              if (videoVisible) {
-                player.current?.pauseVideo();
-                manuallyHiddenForRequest.current = playRequest;
-              }
-              setVideoVisible((visible) => !visible);
-            }}
-            data-testid="button-toggle-youtube-video"
-          >
-            {videoVisible ? "Hide video" : "Show video"}
-          </button>
-          {videoVisible && (
-            <label className="flex min-w-0 flex-1 items-center gap-2">
-              <span className="shrink-0">Video size</span>
-              <input
-                type="range"
-                min={50}
-                max={100}
-                step={10}
-                value={videoWidth}
-                onChange={(event) => setVideoWidth(Number(event.target.value))}
-                aria-label="YouTube video width"
-                aria-valuetext={`${videoWidth}% width`}
-                className="min-w-0 flex-1 accent-blue-700"
-                data-testid="input-youtube-video-size"
-              />
-              <output className="w-9 text-right tabular-nums" data-testid="text-youtube-video-size">
-                {videoWidth}%
-              </output>
-            </label>
-          )}
-        </div>
-        {videoVisible
-          ? <p className="text-[10px] text-gray-600">Only the video changes size; controls and visualizer stay full-width.</p>
-          : <p className="text-[10px] text-gray-600" data-testid="text-youtube-video-hidden">The video is paused while hidden. Show it, then press Play to continue.</p>}
+        <label className="flex items-center gap-2">
+          <span className="shrink-0">Video size</span>
+          <input
+            type="range"
+            min={50}
+            max={100}
+            step={10}
+            value={videoWidth}
+            onChange={(event) => setVideoWidth(Number(event.target.value))}
+            aria-label="YouTube video width"
+            aria-valuetext={`${videoWidth}% width`}
+            className="min-w-0 flex-1 accent-blue-700"
+            data-testid="input-youtube-video-size"
+          />
+          <output className="w-9 text-right tabular-nums" data-testid="text-youtube-video-size">
+            {videoWidth}%
+          </output>
+        </label>
+        <p className="text-[10px] text-gray-600">
+          Only the video changes size; controls and visualizer stay full-width.
+        </p>
       </div>
-      <div className={`flex w-full justify-center ${videoVisible ? "" : "hidden"}`}>
+      <div className="flex w-full justify-center">
         <div
           ref={holder}
           style={{ width: `${videoWidth}%`, minWidth: "min(200px, 100%)" }}
@@ -204,11 +167,9 @@ export function PersonalYouTubePlayer({ videoId, playRequest, onEnded }: {
         />
       </div>
       <div className="flex flex-wrap gap-1 py-1 items-center">
-        {videoVisible && (
-          <button type="button" className="win98-button px-3 py-1" disabled={!ready || !videoId}
-            onClick={() => playing ? player.current?.pauseVideo() : player.current?.playVideo()}>{playing ? "Pause" : "Play"}</button>
-        )}
-        <span className="text-[10px]">{!videoId ? "Choose a track below" : !videoVisible ? "Video hidden and paused" : playing ? "Playing on this device only" : ready ? "Ready" : "Loading YouTube…"}</span>
+        <button type="button" className="win98-button px-3 py-1" disabled={!ready || !videoId}
+          onClick={() => playing ? player.current?.pauseVideo() : player.current?.playVideo()}>{playing ? "Pause" : "Play"}</button>
+        <span className="text-[10px]">{!videoId ? "Choose a track below" : playing ? "Playing on this device only" : ready ? "Ready" : "Loading YouTube…"}</span>
         <button type="button" className="win98-button px-2 py-1 ml-auto text-[10px]" onClick={() => setAnimation(value => !value)}>
           {animation ? "Hide animation" : "Show animation"}
         </button>
