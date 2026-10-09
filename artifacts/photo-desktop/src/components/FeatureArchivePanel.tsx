@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { fetchSiteSettings, setFeatureArchived } from "../lib/api";
+import { fetchFeatureArchiveState, setFeatureArchived } from "../lib/api";
 import { useAuth } from "../lib/auth-store";
 import { FEATURE_CATALOG } from "../lib/feature-catalog";
 
@@ -20,10 +20,8 @@ export function FeatureArchivePanel() {
     setLoading(true);
     setLoadErr(null);
     try {
-      const s = await fetchSiteSettings();
-      useAuth.setState((state) => ({
-        siteSettings: { ...state.siteSettings, archivedFeatures: s.archivedFeatures },
-      }));
+      const s = await fetchFeatureArchiveState();
+      if (s) useAuth.getState().setArchivedFeatures(s.archivedFeatures);
     } catch (e: any) {
       setLoadErr(e?.message || "Could not load feature settings.");
     } finally {
@@ -55,9 +53,7 @@ export function FeatureArchivePanel() {
     setStatus("");
     try {
       const result = await setFeatureArchived(id, next);
-      useAuth.setState((state) => ({
-        siteSettings: { ...state.siteSettings, archivedFeatures: result.archivedFeatures },
-      }));
+      useAuth.getState().setArchivedFeatures(result.archivedFeatures);
       setStatus(`${name} ${next ? "archived" : "restored"}.`);
     } catch (e: any) {
       setErr(e?.message || `Could not ${next ? "archive" : "unarchive"} ${name}.`);

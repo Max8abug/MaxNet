@@ -24,3 +24,14 @@ Administration and settings controls remain unarchivable.
 **Why:** Administrators must always retain a way to restore hidden features and manage site access.
 
 **How to apply:** Keep archive management and other administration launch entries outside the archivable feature catalog and enforce this boundary on the server as well as the UI.
+
+Keep frequent archive visibility refreshes independent from branding refreshes.
+Archive cache validators should depend on visibility, not unrelated theme changes.
+
+**Why:** Uploaded branding images can make the full public settings response very
+large. Building or transferring that response every time menus check visibility
+adds avoidable work per visitor, even with conditional responses.
+
+**How to apply:** Poll only archive state; retain full settings loads for startup,
+focus and settings editing. Do not use a branding change to invalidate an otherwise
+unchanged archive snapshot.

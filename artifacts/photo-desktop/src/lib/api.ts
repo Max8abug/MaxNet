@@ -196,6 +196,18 @@ export interface SiteSettings {
   forumBlockedPhrases: string[];
 }
 export interface CustomSiteButton { label: string; url: string; }
+export async function fetchFeatureArchiveState(etag?: string | null): Promise<{ archivedFeatures: string[]; etag: string | null } | null> {
+  const response = await fetch(`${BASE}/site-settings/feature-archives`, {
+    ...opts,
+    // Keep validation tied to the store's current archive snapshot, not an
+    // unrelated browser cache entry (especially after a local mutation).
+    cache: "no-store",
+    headers: etag ? { "If-None-Match": etag } : {},
+  });
+  if (response.status === 304) return null;
+  const state: { archivedFeatures: string[] } = await jsonOrThrow(response);
+  return { archivedFeatures: state.archivedFeatures, etag: response.headers.get("ETag") };
+}
 export async function setFeatureArchived(featureId: string, archived: boolean): Promise<{ archivedFeatures: string[] }> {
   return jsonOrThrow(await fetch(`${BASE}/site-settings/features/${encodeURIComponent(featureId)}`, {
     ...opts, method: "PUT", headers: { "Content-Type": "application/json" },

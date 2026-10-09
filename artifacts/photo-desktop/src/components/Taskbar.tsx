@@ -26,7 +26,7 @@ export function Taskbar({ page }: { page: string }) {
   const [loginOpen, setLoginOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const [, setLocation] = useLocation();
-  const { user, ranks, refresh, refreshRanks, logout, siteSettings, refreshSiteSettings } = useAuth();
+  const { user, ranks, refresh, refreshRanks, logout, siteSettings, refreshSiteSettings, refreshFeatureArchives } = useAuth();
   const { darkMode } = useThemeMode();
   const serverNow = useServerNow();
   const wins = windows[page] || [];
@@ -38,14 +38,22 @@ export function Taskbar({ page }: { page: string }) {
   // when the window is open; this poll just keeps the taskbar chip warm.
   const [cafeCount, setCafeCount] = useState(0);
 
-  useEffect(() => { void refresh(); void refreshRanks(); void refreshSiteSettings(); }, [refresh, refreshRanks, refreshSiteSettings]);
-  // Keep launch entries in sync with administrator archiving changes.
+  useEffect(() => { void refresh(); void refreshRanks(); }, [refresh, refreshRanks]);
+  // Full branding/settings still load at startup and on focus, independently
+  // of the frequent, archive-only visibility refresh.
   useEffect(() => {
-    const timer = setInterval(() => void refreshSiteSettings(), 15_000);
+    void refreshSiteSettings();
     const onFocus = () => void refreshSiteSettings();
     window.addEventListener("focus", onFocus);
-    return () => { clearInterval(timer); window.removeEventListener("focus", onFocus); };
+    return () => window.removeEventListener("focus", onFocus);
   }, [refreshSiteSettings]);
+  // Keep launch entries in sync with administrator archiving changes.
+  useEffect(() => {
+    const timer = setInterval(() => void refreshFeatureArchives(), 15_000);
+    const onFocus = () => void refreshFeatureArchives();
+    window.addEventListener("focus", onFocus);
+    return () => { clearInterval(timer); window.removeEventListener("focus", onFocus); };
+  }, [refreshFeatureArchives]);
 
   // Poll for DM and chat unread counts. Treat the badge as cleared while a window of that type is open and not minimized.
   const dmsOpen = wins.some(w => w.type === 'dms' && (w.state || 'normal') !== 'min');

@@ -1,4 +1,5 @@
 import { Router, type IRouter } from "express";
+import { createHash } from "node:crypto";
 import { db, siteSettingsTable } from "@workspace/db";
 import { eq, sql } from "drizzle-orm";
 import { requireAdmin } from "../lib/auth";
@@ -8,6 +9,24 @@ import { cleanArchivedFeatures, isArchivableFeatureId } from "@workspace/feature
 const router: IRouter = Router();
 
 type CustomButton = { label: string; url: string };
+
+// This public polling route deliberately does not use ensureRow(): it must
+// neither load uploaded images nor create settings while serving a read.
+router.get("/site-settings/feature-archives", async (req, res) => {
+  const [row] = await db.select({
+    archivedFeatures: siteSettingsTable.archivedFeatures,
+  }).from(siteSettingsTable).limit(1);
+  const archivedFeatures = cleanArchivedFeatures(row?.archivedFeatures).sort();
+  const body = JSON.stringify({ archivedFeatures });
+  const etag = `"archives-${createHash("sha256").update(body).digest("hex")}"`;
+  res.set({ "Cache-Control": "public, no-cache", ETag: etag });
+  const validators = req.get("If-None-Match")?.split(",") ?? [];
+  if (validators.some((value) => value.trim() === "*" || value.trim().replace(/^W\//, "") === etag)) {
+    res.status(304).end();
+    return;
+  }
+  res.type("json").send(body);
+});
 
 router.put("/site-settings/features/:featureId", requireAdmin, async (req, res) => {
   const featureId = String(req.params.featureId);

@@ -123,13 +123,20 @@ export function MobileShell({ page }: { page: string }) {
   const user = useAuth((state) => state.user);
   const siteSettings = useAuth((state) => state.siteSettings);
   const refreshSiteSettings = useAuth((state) => state.refreshSiteSettings);
+  const refreshFeatureArchives = useAuth((state) => state.refreshFeatureArchives);
+  // Preserve startup/focus branding refresh without sending images on each poll.
   useEffect(() => {
     void refreshSiteSettings();
-    const timer = setInterval(() => void refreshSiteSettings(), 15_000);
     const onFocus = () => void refreshSiteSettings();
     window.addEventListener("focus", onFocus);
-    return () => { clearInterval(timer); window.removeEventListener("focus", onFocus); };
+    return () => window.removeEventListener("focus", onFocus);
   }, [refreshSiteSettings]);
+  useEffect(() => {
+    const timer = setInterval(() => void refreshFeatureArchives(), 15_000);
+    const onFocus = () => void refreshFeatureArchives();
+    window.addEventListener("focus", onFocus);
+    return () => { clearInterval(timer); window.removeEventListener("focus", onFocus); };
+  }, [refreshFeatureArchives]);
   const { darkMode } = useThemeMode();
   const serverNow = useServerNow();
   const windows = useDesktopStore(

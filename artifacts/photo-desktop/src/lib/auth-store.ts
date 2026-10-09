@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import { fetchRanks, fetchSiteSettings, getMe, login as apiLogin, signup as apiSignup, logout as apiLogout, updateProfile as apiUpdateProfile, type AuthUser, type Rank, type SiteSettings } from "./api";
+import { fetchFeatureArchiveState, fetchRanks, fetchSiteSettings, getMe, login as apiLogin, signup as apiSignup, logout as apiLogout, updateProfile as apiUpdateProfile, type AuthUser, type Rank, type SiteSettings } from "./api";
 import { setTimeZone } from "./time-settings";
 
 interface AuthState {
@@ -10,13 +10,19 @@ interface AuthState {
   refresh: () => Promise<void>;
   refreshRanks: () => Promise<void>;
   refreshSiteSettings: () => Promise<void>;
+  refreshFeatureArchives: () => Promise<void>;
+  setArchivedFeatures: (features: string[]) => void;
   login: (u: string, p: string) => Promise<void>;
   signup: (u: string, p: string) => Promise<void>;
   logout: () => Promise<void>;
   updateProfile: (data: { avatarUrl?: string | null; backgroundUrl?: string | null; darkBackgroundUrl?: string | null; backgroundColor?: string | null; timeZone?: string | null }) => Promise<void>;
 }
 
-export const useAuth = create<AuthState>((set, get) => ({
+export const useAuth = create<AuthState>((set, get) => {
+  let archiveRevision = 0;
+  let archiveEtag: string | null = null;
+  let archiveRefresh: Promise<void> | null = null;
+  return ({
   user: null,
   loading: true,
   ranks: [],
@@ -49,7 +55,41 @@ export const useAuth = create<AuthState>((set, get) => ({
     try { const r = await fetchRanks(); set({ ranks: r }); } catch {}
   },
   refreshSiteSettings: async () => {
-    try { const s = await fetchSiteSettings(); set({ siteSettings: s }); } catch {}
+    const revision = archiveRevision;
+    try {
+      const s = await fetchSiteSettings();
+      if (revision === archiveRevision) {
+        archiveRevision++;
+        archiveEtag = null;
+        set({ siteSettings: s });
+      } else {
+        set((state) => ({ siteSettings: { ...s, archivedFeatures: state.siteSettings.archivedFeatures } }));
+      }
+    } catch {}
+  },
+  setArchivedFeatures: (archivedFeatures) => {
+    archiveRevision++;
+    archiveEtag = null;
+    set((state) => ({ siteSettings: { ...state.siteSettings, archivedFeatures } }));
+  },
+  refreshFeatureArchives: () => {
+    if (archiveRefresh) return archiveRefresh;
+    const revision = archiveRevision;
+    archiveRefresh = (async () => {
+      try {
+        const result = await fetchFeatureArchiveState(archiveEtag);
+        if (!result || revision !== archiveRevision) return;
+        archiveRevision++;
+        archiveEtag = result.etag;
+        set((state) => ({ siteSettings: { ...state.siteSettings, archivedFeatures: result.archivedFeatures } }));
+      } catch {
+        // Preserve the last known launch visibility on a transient failure.
+        // The next timer/focus event will retry.
+      } finally {
+        archiveRefresh = null;
+      }
+    })();
+    return archiveRefresh;
   },
   login: async (username, password) => { await apiLogin(username, password); await get().refresh(); },
   signup: async (username, password) => { await apiSignup(username, password); await get().refresh(); },
@@ -65,7 +105,8 @@ export const useAuth = create<AuthState>((set, get) => ({
       } catch {}
     }
   },
-}));
+  });
+});
 
 export function getRankInfo(rank: string | null | undefined, ranks: Rank[]): Rank | null {
   if (!rank) return null;
