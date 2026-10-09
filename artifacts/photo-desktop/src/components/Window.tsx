@@ -237,7 +237,7 @@ export function Window({
 
       <div
         className="flex-1 overflow-auto win98-inset bg-white p-2 text-black pointer-events-auto flex flex-col relative group"
-        onDoubleClick={() => setIsEditing(true)}
+        onDoubleClick={w.type === 'flappy' ? undefined : () => setIsEditing(true)}
       >
         {isEditing && (
           <div className="absolute inset-0 bg-[#c0c0c0] z-50 p-2 flex flex-col gap-2 overflow-auto text-sm">

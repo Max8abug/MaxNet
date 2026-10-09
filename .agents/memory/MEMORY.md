@@ -8,5 +8,6 @@
 - [File mutation safety](file-mutation-safety.md) — logical deletion can succeed during storage outages; durable cleanup must not sacrifice live content.
 - [Personal playlist scope](personal-playlists.md) — personal playback must stay separate from shared rooms; YouTube uses a visible official player, not extracted audio.
 - [External GIF previews](external-gif-previews.md) — provider share links must resolve and load as images before attachment, not merely normalize when sending.
+- [Eaglercraft launch configuration](eaglercraft-launch.md) — oversized bundled client exceeds the patch limit; launcher configuration depends on its pre-launch countdown.
 - [Backup restore isolation](backup-restore-safety.md) — full-site restore tests need a disposable database, not merely generated test records.
 - [Storage inventory safety](storage-report-safety.md) — take reference snapshots after locking; unknown object ages must remain uncertain, not cleanup candidates.
