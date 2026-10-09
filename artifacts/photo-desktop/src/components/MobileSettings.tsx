@@ -1,13 +1,13 @@
 import { useState } from 'react';
 import { LogIn, Moon, Palette, UserRound } from 'lucide-react';
 import { useAuth } from '../lib/auth-store';
-import { useThemeMode } from '../lib/theme';
+import { THEME_OPTIONS, useThemeMode } from '../lib/theme';
 import { LoginDialog } from './LoginDialog';
 import { ProfileDialog } from './ProfileDialog';
 
 export function MobileSettings({ onRequestLogin }: { onRequestLogin: () => void }) {
   const user = useAuth((state) => state.user);
-  const { darkMode, setDarkMode } = useThemeMode();
+  const { theme, setTheme } = useThemeMode();
   const [profileOpen, setProfileOpen] = useState(false);
 
   return (
@@ -29,13 +29,18 @@ export function MobileSettings({ onRequestLogin }: { onRequestLogin: () => void 
           <Moon className="h-4 w-4" />
           Appearance
         </div>
-        <label className="flex cursor-pointer items-center gap-2">
-          <input
-            type="checkbox"
-            checked={darkMode}
-            onChange={(event) => setDarkMode(event.target.checked)}
-          />
-          <span>Use dark mode</span>
+        <label className="flex flex-col gap-1">
+          <span>Display theme</span>
+          <select
+            className="win98-inset min-h-9 w-full px-2"
+            value={theme}
+            onChange={(event) => setTheme(event.target.value as Parameters<typeof setTheme>[0])}
+            data-testid="select-mobile-display-theme"
+          >
+            {THEME_OPTIONS.map((option) => (
+              <option key={option.value} value={option.value}>{option.label}</option>
+            ))}
+          </select>
         </label>
         <p className="mt-1 text-xs text-gray-600">
           Applies immediately across the desktop, windows, and launcher.

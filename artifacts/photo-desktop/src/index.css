@@ -1,5 +1,7 @@
 @import "tailwindcss";
 @import "tw-animate-css";
+@import "./components/xp-theme.css";
+@import "./components/vista-gold-theme.css";
 @plugin "@tailwindcss/typography";
 
 @custom-variant dark (&:is(.dark *));

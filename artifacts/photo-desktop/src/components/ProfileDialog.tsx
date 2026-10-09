@@ -1,7 +1,7 @@
 import { useRef, useState } from "react";
 import { useAuth } from "../lib/auth-store";
 import { changePassword, changeUsername } from "../lib/api";
-import { useThemeMode } from "../lib/theme";
+import { THEME_OPTIONS, useThemeMode } from "../lib/theme";
 import { TIME_ZONE_OPTIONS } from "../lib/time-settings";
 
 interface Props { onClose: () => void; mobile?: boolean; }
@@ -39,7 +39,7 @@ function fileToDataUrlRaw(file: File): Promise<string> {
 
 export function ProfileDialog({ onClose, mobile = false }: Props) {
   const { user, updateProfile } = useAuth();
-  const { darkMode, setDarkMode } = useThemeMode();
+  const { theme, setTheme } = useThemeMode();
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [color, setColor] = useState(user?.backgroundColor || "#008080");
@@ -305,16 +305,21 @@ export function ProfileDialog({ onClose, mobile = false }: Props) {
           </div>
           <div className="border-t border-gray-400 pt-2">
             <div className="font-bold mb-1">Display</div>
-            <label className="flex items-center gap-2 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={darkMode}
-                onChange={(e) => setDarkMode(e.target.checked)}
-              />
-              <span>Dark mode</span>
+            <label className="flex flex-col gap-1">
+              <span>Display theme</span>
+              <select
+                className="win98-inset w-full px-1 py-1"
+                value={theme}
+                onChange={(e) => setTheme(e.target.value as Parameters<typeof setTheme>[0])}
+                data-testid="select-profile-display-theme"
+              >
+                {THEME_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>{option.label}</option>
+                ))}
+              </select>
             </label>
             <div className="text-xs text-gray-600 mt-1">
-              Uses softer dark surfaces to reduce bright backgrounds.
+              Applies across the desktop, windows, and launcher.
             </div>
             <label className="flex items-center gap-2 mt-2">
               <span className="shrink-0">Time zone:</span>

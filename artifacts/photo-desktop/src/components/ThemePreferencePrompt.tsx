@@ -1,5 +1,5 @@
 import { Moon, Sun } from 'lucide-react';
-import { useThemeMode } from '../lib/theme';
+import { THEME_OPTIONS, useThemeMode } from '../lib/theme';
 
 export function ThemePreferencePrompt() {
   const { needsInitialChoice, chooseInitialTheme } = useThemeMode();
@@ -28,38 +28,47 @@ export function ThemePreferencePrompt() {
           </div>
 
           <div className="grid grid-cols-2 gap-2">
-            <button
-              type="button"
-              className="theme-choice-card theme-choice-card-light win98-button flex min-h-24 flex-col items-start justify-between gap-2 p-2 text-left"
-              onClick={() => chooseInitialTheme(false)}
-              data-testid="button-theme-light"
-            >
-              <span className="flex h-9 w-9 items-center justify-center bg-[#008080] text-white">
-                <Sun className="h-5 w-5" />
-              </span>
-              <span>
-                <span className="block font-bold">Light mode</span>
-                <span className="block text-[10px] font-normal text-gray-600">
-                  Classic bright desktop
-                </span>
-              </span>
-            </button>
-            <button
-              type="button"
-              className="theme-choice-card theme-choice-card-dark win98-button flex min-h-24 flex-col items-start justify-between gap-2 bg-[#1b222b] p-2 text-left text-white"
-              onClick={() => chooseInitialTheme(true)}
-              data-testid="button-theme-dark"
-            >
-              <span className="flex h-9 w-9 items-center justify-center bg-[#6d185f] text-white">
-                <Moon className="h-5 w-5" />
-              </span>
-              <span>
-                <span className="block font-bold">Dark mode</span>
-                <span className="block text-[10px] font-normal text-white/70">
-                  Softer, low-light surfaces
-                </span>
-              </span>
-            </button>
+            {THEME_OPTIONS.map((option) => {
+              const isDark = option.value.endsWith("dark");
+              const isXp = option.value.startsWith("xp-");
+              const isVista = option.value === "vista";
+              const isGold = option.value === "gold";
+              const Icon = isDark ? Moon : Sun;
+              const description = isXp
+                ? isDark ? "XP blue with dark surfaces" : "Classic XP blue and green"
+                : isVista ? "Translucent glass and Aero blue"
+                  : isGold ? "Ornate carved gold window frames"
+                    : isDark ? "Classic desktop in low-light colors" : "Classic bright desktop";
+              const iconSurface = isXp
+                ? "rounded-md bg-gradient-to-b from-[#3d8cf5] to-[#0640b0]"
+                : isVista ? "rounded-md bg-gradient-to-br from-[#7fe3d4] via-[#4e9ed2] to-[#14385c]"
+                  : isGold ? "bg-gradient-to-br from-[#fff3b0] via-[#c8921e] to-[#5a3b05]"
+                    : isDark ? "bg-[#6d185f]" : "bg-[#008080]";
+              return (
+                <button
+                  key={option.value}
+                  type="button"
+                  className={`theme-choice-card win98-button flex min-h-24 flex-col items-start justify-between gap-2 p-2 text-left ${isDark ? "text-white" : ""}`}
+                  style={isDark ? { backgroundColor: "#1b222b", color: "#fff" } : undefined}
+                  onClick={() => chooseInitialTheme(option.value)}
+                  data-testid={
+                    option.value === "classic-light" ? "button-theme-light"
+                      : option.value === "classic-dark" ? "button-theme-dark"
+                        : `button-theme-${option.value}`
+                  }
+                >
+                  <span className={`flex h-9 w-9 items-center justify-center text-white ${iconSurface}`}>
+                    <Icon className="h-5 w-5" />
+                  </span>
+                  <span>
+                    <span className="block font-bold">{option.label}</span>
+                    <span className={`block text-[10px] font-normal ${isDark ? "text-white/70" : "text-gray-600"}`}>
+                      {description}
+                    </span>
+                  </span>
+                </button>
+              );
+            })}
           </div>
         </div>
       </div>

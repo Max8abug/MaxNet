@@ -1,0 +1,293 @@
+/*
+ * Portfolio Desktop — XP enamel themes
+ * Loaded independently by the app shell; every rule is gated by the selected
+ * data-app-theme attribute. The Theme Lab's .theme-lab subtree is intentionally
+ * excluded so its authored demo remains a faithful, self-contained preview.
+ */
+
+:is(html, body)[data-app-theme="xp-light"] {
+  --xp-page: #5b91df;
+  --xp-page-deep: #286ac0;
+  --xp-window-edge: #0a52d8;
+  --xp-title-top: #3d8cf5;
+  --xp-title-mid: #0b58e0;
+  --xp-title-bottom: #0640b0;
+  --xp-surface: #ece9d8;
+  --xp-surface-raised: #f5f3e9;
+  --xp-paper: #fffef7;
+  --xp-ink: #17202b;
+  --xp-muted-ink: #526174;
+  --xp-border: #8ba9c4;
+  --xp-accent: #1768ce;
+  --xp-accent-soft: #dcecff;
+  --xp-start-top: #5fc24a;
+  --xp-start-mid: #2f8f1f;
+  --xp-start-bottom: #25801a;
+  --xp-frame-shadow: 0 5px 13px rgba(6, 30, 82, .34), inset 0 1px rgba(255,255,255,.82);
+  --xp-font: Tahoma, Verdana, "DejaVu Sans", sans-serif;
+  color-scheme: light;
+  color: var(--xp-ink);
+  font-family: var(--xp-font);
+}
+
+:is(html, body)[data-app-theme="xp-dark"] {
+  --xp-page: #101b2c;
+  --xp-page-deep: #0a1220;
+  --xp-window-edge: #1256bd;
+  --xp-title-top: #3c83df;
+  --xp-title-mid: #1557b9;
+  --xp-title-bottom: #103b83;
+  --xp-surface: #222d3d;
+  --xp-surface-raised: #2c394a;
+  --xp-paper: #182231;
+  --xp-ink: #f0f4fa;
+  --xp-muted-ink: #bac8d9;
+  --xp-border: #536b89;
+  --xp-accent: #83baff;
+  --xp-accent-soft: #263e5d;
+  --xp-start-top: #65bd51;
+  --xp-start-mid: #318d2b;
+  --xp-start-bottom: #246b24;
+  --xp-frame-shadow: 0 6px 16px rgba(0, 0, 0, .48), inset 0 1px rgba(205,226,255,.28);
+  --xp-font: Tahoma, Verdana, "DejaVu Sans", sans-serif;
+  color-scheme: dark;
+  color: var(--xp-ink);
+  font-family: var(--xp-font);
+}
+
+:is(html, body)[data-app-theme="xp-light"] body,
+:is(html, body)[data-app-theme="xp-dark"] body {
+  color: var(--xp-ink);
+  font-family: var(--xp-font);
+}
+
+/* Desktop wallpaper fallback. User-provided images remain untouched. */
+:is(html, body)[data-app-theme="xp-light"] .desktop-surface:not(.dark-solid-background),
+:is(html, body)[data-app-theme="xp-dark"] .desktop-surface:not(.dark-solid-background) {
+  background-color: var(--xp-page) !important;
+}
+:is(html, body)[data-app-theme="xp-light"] .desktop-surface:not(.dark-solid-background):not([style*="background-image"]),
+:is(html, body)[data-app-theme="xp-light"] .mobile-shell:not([style*="background-image"]) {
+  background-image:
+    linear-gradient(180deg, rgba(170, 211, 255, .12) 0 56%, transparent 56%),
+    linear-gradient(180deg, #6fa8ed 0%, #4c8ddb 58%, #75b84d 58%, #438c2d 100%) !important;
+}
+:is(html, body)[data-app-theme="xp-dark"] .desktop-surface.dark-solid-background,
+:is(html, body)[data-app-theme="xp-dark"] .mobile-shell:not([style*="background-image"]) {
+  background-color: var(--xp-page-deep) !important;
+  background-image:
+    radial-gradient(ellipse at 75% 14%, rgba(38, 92, 157, .34), transparent 42%),
+    linear-gradient(160deg, #172b46 0%, #101b2c 57%, #0a1220 100%) !important;
+}
+:is(html, body)[data-app-theme="xp-light"] .desktop-surface.dark-solid-background {
+  background-color: var(--xp-page) !important;
+}
+
+/* Enamel window frame and rounded, glossy XP caption bar. */
+:is(html, body)[data-app-theme="xp-light"] .win98-window:not(:where(.theme-lab, .theme-lab *)),
+:is(html, body)[data-app-theme="xp-dark"] .win98-window:not(:where(.theme-lab, .theme-lab *)) {
+  position: relative;
+  overflow: hidden;
+  padding: 4px;
+  border: 1px solid var(--xp-window-edge);
+  border-radius: 9px 9px 4px 4px;
+  background: var(--xp-window-edge);
+  box-shadow: var(--xp-frame-shadow);
+}
+
+:is(html, body)[data-app-theme="xp-light"] .win98-titlebar:not(:where(.theme-lab, .theme-lab *)),
+:is(html, body)[data-app-theme="xp-dark"] .win98-titlebar:not(:where(.theme-lab, .theme-lab *)) {
+  min-height: 30px;
+  margin: -4px -4px 0;
+  padding: 5px 7px;
+  border-radius: 8px 8px 0 0;
+  background: linear-gradient(180deg, var(--xp-title-top) 0%, var(--xp-title-mid) 42%, #0a4fd0 82%, var(--xp-title-bottom) 100%);
+  color: #fff;
+  font-family: var(--xp-font);
+  font-weight: 700;
+  text-shadow: 1px 1px 1px rgba(4, 34, 102, .8);
+}
+:is(html, body)[data-app-theme="xp-dark"] .win98-titlebar:not(:where(.theme-lab, .theme-lab *)) {
+  background: linear-gradient(180deg, #4b91e9 0%, #1b62c4 42%, #174fa2 82%, #103b83 100%);
+}
+:is(html, body)[data-app-theme="xp-light"] .win98-titlebar.inactive:not(:where(.theme-lab, .theme-lab *)),
+:is(html, body)[data-app-theme="xp-dark"] .win98-titlebar.inactive:not(:where(.theme-lab, .theme-lab *)) {
+  background: linear-gradient(180deg, #9bb5d4 0%, #6d87a7 48%, #526b8b 100%);
+  color: rgba(255,255,255,.9);
+}
+
+/* Window controls and the familiar softly beveled button face. */
+:is(html, body)[data-app-theme="xp-light"] .win98-button:not(:where(.theme-lab, .theme-lab *)),
+:is(html, body)[data-app-theme="xp-dark"] .win98-button:not(:where(.theme-lab, .theme-lab *)) {
+  min-height: 24px;
+  border: 1px solid var(--xp-border);
+  border-radius: 4px;
+  background: linear-gradient(180deg, var(--xp-surface-raised), var(--xp-surface) 72%, #d8d4c6);
+  box-shadow: inset 0 1px rgba(255,255,255,.85), 0 1px 1px rgba(0,0,0,.18);
+  color: var(--xp-ink);
+  font-family: var(--xp-font);
+  font-weight: 700;
+}
+:is(html, body)[data-app-theme="xp-dark"] .win98-button:not(:where(.theme-lab, .theme-lab *)) {
+  background: linear-gradient(180deg, #46576b, #303e50 72%, #293646);
+  border-color: #687f9b;
+  box-shadow: inset 0 1px rgba(255,255,255,.16), 0 1px 2px rgba(0,0,0,.35);
+}
+:is(html, body)[data-app-theme="xp-light"] .win98-button:not(:where(.theme-lab, .theme-lab *)):active,
+:is(html, body)[data-app-theme="xp-dark"] .win98-button:not(:where(.theme-lab, .theme-lab *)):active {
+  background: linear-gradient(180deg, #c9d9ec, #e9eef5);
+  box-shadow: inset 1px 1px 3px rgba(24, 65, 113, .32);
+}
+:is(html, body)[data-app-theme="xp-dark"] .win98-button:not(:where(.theme-lab, .theme-lab *)):active {
+  background: linear-gradient(180deg, #24364c, #34475d);
+}
+
+:is(html, body)[data-app-theme="xp-light"] .win98-inset:not(:where(.theme-lab, .theme-lab *)),
+:is(html, body)[data-app-theme="xp-dark"] .win98-inset:not(:where(.theme-lab, .theme-lab *)) {
+  border: 1px solid var(--xp-border);
+  background: var(--xp-paper);
+  box-shadow: inset 0 1px 3px rgba(29, 53, 82, .17);
+  color: var(--xp-ink);
+}
+
+/* Shared taskbar and its popup menus; the green start control is the signature. */
+:is(html, body)[data-app-theme="xp-light"] [class*="bottom-0"][class*="left-0"][class*="right-0"][class*="h-10"]:not(:where(.theme-lab, .theme-lab *)),
+:is(html, body)[data-app-theme="xp-dark"] [class*="bottom-0"][class*="left-0"][class*="right-0"][class*="h-10"]:not(:where(.theme-lab, .theme-lab *)) {
+  min-height: 40px;
+  border-top: 1px solid #8db4e0;
+  background: linear-gradient(180deg, #3b82d2 0%, #2163b2 48%, #174b91 100%);
+  box-shadow: inset 0 1px rgba(255,255,255,.42), 0 -2px 8px rgba(8,33,69,.2);
+}
+:is(html, body)[data-app-theme="xp-dark"] [class*="bottom-0"][class*="left-0"][class*="right-0"][class*="h-10"]:not(:where(.theme-lab, .theme-lab *)) {
+  border-top-color: #517caf;
+  background: linear-gradient(180deg, #203b5b 0%, #172d49 48%, #10223a 100%);
+}
+:is(html, body)[data-app-theme="xp-light"] [class~="bg-[#c0c0c0]"]:not(:where(.theme-lab, .theme-lab *)),
+:is(html, body)[data-app-theme="xp-dark"] [class~="bg-[#c0c0c0]"]:not(:where(.theme-lab, .theme-lab *)) {
+  background-color: var(--xp-surface);
+  color: var(--xp-ink);
+}
+:is(html, body)[data-app-theme="xp-light"] .win98-button:has(img, .bg-gradient-to-br):not(:where(.theme-lab, .theme-lab *)),
+:is(html, body)[data-app-theme="xp-dark"] .win98-button:has(img, .bg-gradient-to-br):not(:where(.theme-lab, .theme-lab *)) {
+  min-height: 31px;
+  padding-inline: 10px;
+  border: 1px solid #1c5c12;
+  border-radius: 12px;
+  background: linear-gradient(180deg, var(--xp-start-top), var(--xp-start-mid) 60%, var(--xp-start-bottom));
+  box-shadow: inset 0 1px rgba(255,255,255,.42), 0 1px 2px rgba(0,0,0,.3);
+  color: #fff;
+  text-shadow: 0 1px rgba(0,0,0,.28);
+}
+:is(html, body)[data-app-theme="xp-light"] .win98-button:has(img, .bg-gradient-to-br):hover:not(:where(.theme-lab, .theme-lab *)),
+:is(html, body)[data-app-theme="xp-dark"] .win98-button:has(img, .bg-gradient-to-br):hover:not(:where(.theme-lab, .theme-lab *)) {
+  filter: brightness(1.08);
+}
+
+/* Menus, form fields, and the legacy utility-class surfaces in app windows. */
+:is(html, body)[data-app-theme="xp-light"] [class~="bg-white"]:not(:where(.theme-lab, .theme-lab *)),
+:is(html, body)[data-app-theme="xp-light"] [class~="bg-gray-50"]:not(:where(.theme-lab, .theme-lab *)),
+:is(html, body)[data-app-theme="xp-light"] [class~="bg-gray-100"]:not(:where(.theme-lab, .theme-lab *)),
+:is(html, body)[data-app-theme="xp-light"] [class~="bg-gray-200"]:not(:where(.theme-lab, .theme-lab *)),
+:is(html, body)[data-app-theme="xp-light"] [class~="bg-gray-300"]:not(:where(.theme-lab, .theme-lab *)),
+:is(html, body)[data-app-theme="xp-dark"] [class~="bg-white"]:not(:where(.theme-lab, .theme-lab *)),
+:is(html, body)[data-app-theme="xp-dark"] [class~="bg-gray-50"]:not(:where(.theme-lab, .theme-lab *)),
+:is(html, body)[data-app-theme="xp-dark"] [class~="bg-gray-100"]:not(:where(.theme-lab, .theme-lab *)),
+:is(html, body)[data-app-theme="xp-dark"] [class~="bg-gray-200"]:not(:where(.theme-lab, .theme-lab *)),
+:is(html, body)[data-app-theme="xp-dark"] [class~="bg-gray-300"]:not(:where(.theme-lab, .theme-lab *)) {
+  background-color: var(--xp-paper);
+  color: var(--xp-ink);
+}
+:is(html, body)[data-app-theme="xp-dark"] [class~="text-black"]:not(:where(.theme-lab, .theme-lab *)) {
+  color: var(--xp-ink) !important;
+}
+:is(html, body)[data-app-theme="xp-dark"] [class~="text-gray-500"]:not(:where(.theme-lab, .theme-lab *)),
+:is(html, body)[data-app-theme="xp-dark"] [class~="text-gray-600"]:not(:where(.theme-lab, .theme-lab *)),
+:is(html, body)[data-app-theme="xp-dark"] [class~="text-gray-700"]:not(:where(.theme-lab, .theme-lab *)),
+:is(html, body)[data-app-theme="xp-dark"] [class~="text-gray-800"]:not(:where(.theme-lab, .theme-lab *)) {
+  color: var(--xp-muted-ink) !important;
+}
+:is(html, body)[data-app-theme="xp-light"] input:not([type="color"]):not(:where(.theme-lab, .theme-lab *)),
+:is(html, body)[data-app-theme="xp-light"] textarea:not(:where(.theme-lab, .theme-lab *)),
+:is(html, body)[data-app-theme="xp-light"] select:not(:where(.theme-lab, .theme-lab *)),
+:is(html, body)[data-app-theme="xp-dark"] input:not([type="color"]):not(:where(.theme-lab, .theme-lab *)),
+:is(html, body)[data-app-theme="xp-dark"] textarea:not(:where(.theme-lab, .theme-lab *)),
+:is(html, body)[data-app-theme="xp-dark"] select:not(:where(.theme-lab, .theme-lab *)) {
+  border-color: var(--xp-border);
+  background-color: var(--xp-paper);
+  color: var(--xp-ink);
+  accent-color: var(--xp-accent);
+}
+:is(html, body)[data-app-theme="xp-light"] [class*="hover:bg-[#000080]"]:hover:not(:where(.theme-lab, .theme-lab *)),
+:is(html, body)[data-app-theme="xp-dark"] [class*="hover:bg-[#000080]"]:hover:not(:where(.theme-lab, .theme-lab *)) {
+  background-color: #2369c2;
+  color: #fff;
+}
+
+/* Mobile launcher stays tile-forward, with XP blue framing and readable controls. */
+:is(html, body)[data-app-theme="xp-light"] .mobile-shell:not(:where(.theme-lab, .theme-lab *)),
+:is(html, body)[data-app-theme="xp-dark"] .mobile-shell:not(:where(.theme-lab, .theme-lab *)) {
+  font-family: var(--xp-font);
+}
+:is(html, body)[data-app-theme="xp-light"] .mobile-phone-status:not(:where(.theme-lab, .theme-lab *)) {
+  background: linear-gradient(180deg, rgba(13,65,132,.88), rgba(15,56,112,.77));
+  color: #fff;
+}
+:is(html, body)[data-app-theme="xp-dark"] .mobile-phone-status:not(:where(.theme-lab, .theme-lab *)) {
+  background: rgba(5, 12, 23, .78);
+  color: #f3f7ff;
+}
+:is(html, body)[data-app-theme="xp-light"] .mobile-phone-heading:not(:where(.theme-lab, .theme-lab *)) {
+  background: linear-gradient(180deg, rgba(24,83,157,.25), transparent);
+}
+:is(html, body)[data-app-theme="xp-dark"] .mobile-phone-heading:not(:where(.theme-lab, .theme-lab *)) {
+  background: linear-gradient(180deg, rgba(46,100,164,.2), transparent);
+}
+:is(html, body)[data-app-theme="xp-light"] .mobile-section-label:not(:where(.theme-lab, .theme-lab *)),
+:is(html, body)[data-app-theme="xp-dark"] .mobile-section-label:not(:where(.theme-lab, .theme-lab *)) {
+  color: rgba(255,255,255,.88);
+  text-shadow: 0 1px 2px rgba(0,0,0,.35);
+}
+:is(html, body)[data-app-theme="xp-light"] .mobile-tile:not(:where(.theme-lab, .theme-lab *)),
+:is(html, body)[data-app-theme="xp-dark"] .mobile-tile:not(:where(.theme-lab, .theme-lab *)) {
+  border: 1px solid rgba(255,255,255,.72);
+  border-radius: 3px;
+  box-shadow: 0 2px 5px rgba(0,0,0,.25), inset 0 1px rgba(255,255,255,.36);
+}
+:is(html, body)[data-app-theme="xp-light"] .mobile-window-stage > .win98-window:not(:where(.theme-lab, .theme-lab *)),
+:is(html, body)[data-app-theme="xp-dark"] .mobile-window-stage > .win98-window:not(:where(.theme-lab, .theme-lab *)) {
+  border-radius: 8px 8px 3px 3px;
+}
+:is(html, body)[data-app-theme="xp-light"] .mobile-all-apps-footer:not(:where(.theme-lab, .theme-lab *)) {
+  background: linear-gradient(to top, rgba(18,63,121,.86), rgba(28,86,157,.2));
+}
+:is(html, body)[data-app-theme="xp-dark"] .mobile-all-apps-footer:not(:where(.theme-lab, .theme-lab *)) {
+  background: linear-gradient(to top, rgba(4,10,20,.94), rgba(18,43,73,.26));
+}
+
+/* Keyboard navigation always gets a visible, theme-appropriate focus ring. */
+:is(html, body)[data-app-theme="xp-light"] :where(button, a, input, textarea, select, [tabindex]):focus-visible:not(:where(.theme-lab, .theme-lab *)),
+:is(html, body)[data-app-theme="xp-dark"] :where(button, a, input, textarea, select, [tabindex]):focus-visible:not(:where(.theme-lab, .theme-lab *)) {
+  outline: 2px solid #f2b632;
+  outline-offset: 2px;
+  box-shadow: 0 0 0 1px rgba(21, 51, 91, .72);
+}
+:is(html, body)[data-app-theme="xp-dark"] :where(button, a, input, textarea, select, [tabindex]):focus-visible:not(:where(.theme-lab, .theme-lab *)) {
+  outline-color: #ffd66d;
+  box-shadow: 0 0 0 1px #091321;
+}
+
+@media (max-width: 640px) {
+  :is(html, body)[data-app-theme="xp-light"] .win98-window:not(:where(.theme-lab, .theme-lab *)),
+  :is(html, body)[data-app-theme="xp-dark"] .win98-window:not(:where(.theme-lab, .theme-lab *)) {
+    padding: 3px;
+    border-radius: 8px 8px 3px 3px;
+  }
+  :is(html, body)[data-app-theme="xp-light"] .win98-titlebar:not(:where(.theme-lab, .theme-lab *)),
+  :is(html, body)[data-app-theme="xp-dark"] .win98-titlebar:not(:where(.theme-lab, .theme-lab *)) {
+    min-height: 34px;
+  }
+  :is(html, body)[data-app-theme="xp-light"] .mobile-app-header:not(:where(.theme-lab, .theme-lab *)),
+  :is(html, body)[data-app-theme="xp-dark"] .mobile-app-header:not(:where(.theme-lab, .theme-lab *)) {
+    padding-inline: 10px;
+  }
+}

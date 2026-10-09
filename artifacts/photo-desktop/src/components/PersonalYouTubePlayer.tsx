@@ -62,6 +62,7 @@ export function PersonalYouTubePlayer({ videoId, playRequest, onEnded }: {
   const [playing, setPlaying] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [animation, setAnimation] = useState(true);
+  const [videoWidth, setVideoWidth] = useState(100);
   const [retry, setRetry] = useState(0);
   const [frame, setFrame] = useState(0);
   const [reducedMotion, setReducedMotion] = useState(() => window.matchMedia("(prefers-reduced-motion: reduce)").matches);
@@ -134,7 +135,37 @@ export function PersonalYouTubePlayer({ videoId, playRequest, onEnded }: {
 
   return (
     <section className="min-w-0" aria-label="Personal YouTube player">
-      <div ref={holder} className="w-full min-w-[200px] min-h-[200px] aspect-video bg-black [&>iframe]:h-full [&>iframe]:w-full" data-testid="personal-youtube-player" />
+      <div className="mb-1">
+        <label className="flex items-center gap-2">
+          <span className="shrink-0">Video size</span>
+          <input
+            type="range"
+            min={50}
+            max={100}
+            step={10}
+            value={videoWidth}
+            onChange={(event) => setVideoWidth(Number(event.target.value))}
+            aria-label="YouTube video width"
+            aria-valuetext={`${videoWidth}% width`}
+            className="min-w-0 flex-1 accent-blue-700"
+            data-testid="input-youtube-video-size"
+          />
+          <output className="w-9 text-right tabular-nums" data-testid="text-youtube-video-size">
+            {videoWidth}%
+          </output>
+        </label>
+        <p className="text-[10px] text-gray-600">
+          Only the video changes size; controls and visualizer stay full-width.
+        </p>
+      </div>
+      <div className="flex w-full justify-center">
+        <div
+          ref={holder}
+          style={{ width: `${videoWidth}%`, minWidth: "min(200px, 100%)" }}
+          className="min-h-[200px] max-w-full aspect-video overflow-hidden bg-black [&>iframe]:h-full [&>iframe]:w-full"
+          data-testid="personal-youtube-player"
+        />
+      </div>
       <div className="flex flex-wrap gap-1 py-1 items-center">
         <button type="button" className="win98-button px-3 py-1" disabled={!ready || !videoId}
           onClick={() => playing ? player.current?.pauseVideo() : player.current?.playVideo()}>{playing ? "Pause" : "Play"}</button>
