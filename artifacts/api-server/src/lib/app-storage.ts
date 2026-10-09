@@ -1,8 +1,7 @@
 import { Client, type Result, type RequestError } from "@replit/object-storage";
 import { PassThrough } from "node:stream";
-import { localStorage } from "./local-storage";
-import path from "node:path";
-import { homedir } from "node:os";
+import { localStorage, localStorageRoot } from "./local-storage";
+import { listBucketObjects } from "./storage-inventory";
 
 function backend(): "local" | "replit" {
   const value = process.env.STORAGE_BACKEND || (process.env.SERVE_STATIC === "1" ? "local" : "replit");
@@ -13,7 +12,7 @@ function backend(): "local" | "replit" {
 // Cleanup must never switch buckets/directories when a server's configuration changes.
 export function storageScope(): string {
   return backend() === "local"
-    ? `local:${path.resolve(process.env.UPLOAD_STORAGE_DIR || path.join(homedir(), ".local/share/photo-desktop/uploads"))}`
+    ? `local:${localStorageRoot()}`
     : "replit";
 }
 
@@ -47,6 +46,14 @@ function unavailable(error: unknown): Result<null, RequestError> {
 }
 
 export const appStorage = {
+  async *listObjects() {
+    if (backend() === "local") {
+      yield* localStorage.listObjects();
+    } else {
+      const client = await getClient();
+      yield* listBucketObjects(options => client.list(options));
+    }
+  },
   async createFromBytes(objectKey: string, bytes: Buffer) {
     try {
       if (backend() === "local") return await localStorage.createFromBytes(objectKey, bytes);

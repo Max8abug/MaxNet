@@ -4,11 +4,16 @@ import { link, mkdir, readdir, rename, rm, unlink, writeFile } from "node:fs/pro
 import { homedir } from "node:os";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
+import { listLocalObjects } from "./storage-inventory";
 
 // Independent of the launch directory and Git checkout. Back this directory
 // up alongside the database; database exports contain metadata, not file bytes.
+export function localStorageRoot(): string {
+  return path.resolve(process.env.UPLOAD_STORAGE_DIR || path.join(homedir(), ".local/share/photo-desktop/uploads"));
+}
+
 function objectPath(key: string): string {
-  const root = path.resolve(process.env.UPLOAD_STORAGE_DIR || path.join(homedir(), ".local/share/photo-desktop/uploads"));
+  const root = localStorageRoot();
   if (!key || key.includes("\\") || key.split("/").some((part) =>
     !part || part === "." || part === ".." || !/^[a-zA-Z0-9._%+-]+$/.test(part))) {
     throw new Error("Invalid storage object key.");
@@ -24,6 +29,9 @@ function failed(error: unknown): Result<null, RequestError> {
 }
 
 export const localStorage = {
+  listObjects() {
+    return listLocalObjects(localStorageRoot());
+  },
   async createFromBytes(key: string, bytes: Buffer): Promise<Result<null, RequestError>> {
     let temporary: string | undefined;
     try {

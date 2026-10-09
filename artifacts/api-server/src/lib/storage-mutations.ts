@@ -2,12 +2,11 @@ import { db, storageJournalPool } from "@workspace/db";
 import { sql } from "drizzle-orm";
 import { appStorage, storageScope } from "./app-storage";
 import { logger } from "./logger";
+import { BACKUP_LOCK } from "./storage-lock";
+export { BACKUP_LOCK } from "./storage-lock";
 
 type Transaction = Parameters<Parameters<typeof db.transaction>[0]>[0];
 type Executor = Pick<Transaction, "execute">;
-// A separate two-key advisory namespace avoids collisions with per-owner locks.
-export const BACKUP_LOCK = 782349123;
-
 export const cleanupSchema = `
   CREATE TABLE IF NOT EXISTS storage_cleanup (
     scope text NOT NULL,

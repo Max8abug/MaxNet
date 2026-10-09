@@ -7,7 +7,9 @@
     "dev": "export NODE_ENV=development && pnpm run build && pnpm run start",
     "build": "node ./build.mjs",
     "start": "node --enable-source-maps ./dist/index.mjs",
-    "typecheck": "tsc -p tsconfig.json --noEmit"
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "storage:report": "node --enable-source-maps ./dist/storage-report-cli.mjs",
+    "test:storage-report": "node ./tests/run-storage-report-tests.mjs"
   },
   "dependencies": {
     "@replit/object-storage": "^1.0.0",
