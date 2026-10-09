@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { CalendarDays } from "lucide-react";
 import {
   createPlannerEntry,
   deletePlannerEntry,
@@ -12,6 +13,7 @@ import {
 import { useAuth } from "../lib/auth-store";
 import { enablePushNotifications } from "../lib/notifications";
 import { useTimeZone } from "../lib/time-settings";
+import { PlannerView } from "./PlannerView";
 
 const pad = (n: number) => String(n).padStart(2, "0");
 const dayStr = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
@@ -23,9 +25,6 @@ const toLocalInput = (iso: string | null) => {
   return `${dayStr(d)}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 };
 const toIso = (v: string) => new Date(v).toISOString();
-const fmtTime = (iso: string | null) => (iso ? new Date(iso).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }) : "");
-const fmtFull = (iso: string | null) => (iso ? new Date(iso).toLocaleString([], { dateStyle: "medium", timeStyle: "short" }) : "");
-const WEEK = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const POLL_MS = 30_000;
 
 interface Form {
@@ -251,9 +250,10 @@ export function Planner() {
 
   if (!username) {
     return (
-      <div className="flex h-full items-center justify-center bg-[#c0c0c0] p-4 text-xs text-black" data-testid="planner-signed-out">
-        <div className="win98-inset max-w-xs bg-white p-4 text-center">
-          <div className="mb-1 text-base font-bold text-[#000080]">Planner</div>
+      <div className="planner-root planner-signed-out" data-testid="planner-signed-out">
+        <div className="planner-signed-out-card">
+          <CalendarDays className="planner-signed-out-icon" aria-hidden="true" />
+          <h2>Planner</h2>
           <p>Your planner is private. Sign in to keep notes, events, and reminders.</p>
         </div>
       </div>
@@ -263,151 +263,39 @@ export function Planner() {
   const [sy, sm, sd] = selected.split("-").map(Number);
   const selectedLabel = new Date(sy, sm - 1, sd).toLocaleDateString([], { weekday: "long", month: "long", day: "numeric" });
   const monthLabel = new Date(cursor.y, cursor.m, 1).toLocaleDateString([], { month: "long", year: "numeric" });
-  const field = "win98-inset w-full bg-white px-1 py-1 text-xs font-normal text-black";
+  const localTimeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
 
   return (
-    <div className="flex h-full min-h-0 flex-col overflow-auto bg-[#c0c0c0] text-xs text-black" data-testid="planner">
-      {due.length > 0 && (
-        <div role="alert" className="m-1 border border-[#800000] bg-[#ffffe1] p-2" data-testid="planner-due">
-          <div className="mb-1 font-bold text-[#800000]">Due reminders ({due.length})</div>
-          {due.map((e) => (
-            <div key={e.id} className="flex flex-wrap items-center gap-1 border-t border-[#ccc] py-1">
-              <span className="min-w-0 flex-1 break-words"><b>{e.title || "Note"}</b> · {fmtFull(e.remindAt)}</span>
-              <button type="button" className="win98-button px-2" onClick={() => edit(e)}>Open</button>
-              <button type="button" className="win98-button px-2" onClick={() => void dismiss(e)} data-testid={`button-dismiss-${e.id}`}>Dismiss</button>
-            </div>
-          ))}
-        </div>
-      )}
-
-      <div className="flex min-h-0 flex-1 flex-col gap-1 p-1 md:flex-row">
-        <section className="flex min-w-0 flex-col md:w-[55%]">
-          <div className="mb-1 flex items-center gap-1">
-            <button type="button" className="win98-button px-2 py-1" onClick={() => go(-1)} aria-label="Previous month" data-testid="button-prev-month">&lt;</button>
-            <div className="min-w-0 flex-1 truncate text-center text-sm font-bold text-[#000080]" data-testid="text-month">{monthLabel}</div>
-            <button type="button" className="win98-button px-2 py-1" onClick={() => go(1)} aria-label="Next month" data-testid="button-next-month">&gt;</button>
-            <button type="button" className="win98-button px-2 py-1" onClick={goToday} data-testid="button-today">Today</button>
-          </div>
-          <div className="win98-inset bg-white p-1">
-            <div className="grid grid-cols-7 text-center font-bold text-[#000080]">
-              {WEEK.map((w) => <div key={w} className="py-0.5 text-[10px]">{w}</div>)}
-            </div>
-            <div className="grid grid-cols-7 gap-px">
-              {cells.map((day, i) => {
-                if (!day) return <div key={i} className="min-h-[34px] bg-[#eee]" />;
-                const list = byDay.get(day) ?? [];
-                const isToday = day === today;
-                const isSel = day === selected;
-                return (
-                  <button
-                    key={day}
-                    type="button"
-                    onClick={() => pickDay(day)}
-                    aria-pressed={isSel}
-                    aria-label={`${day}${isToday ? " today" : ""}, ${list.length} entries`}
-                    data-testid={`day-${day}`}
-                    className={`relative flex min-h-[34px] flex-col items-start border p-0.5 text-left sm:min-h-[44px] ${isSel ? "border-[#000080] bg-[#000080] text-white" : isToday ? "border-[#cc0000] bg-[#ffffe1] text-black" : "border-[#ccc] bg-white text-black hover:bg-[#eef3ff]"}`}
-                    style={isToday ? { outline: "2px solid #cc0000", outlineOffset: "-2px" } : undefined}
-                  >
-                    <span className={`text-[11px] ${isToday ? "font-bold" : ""}`}>{Number(day.slice(8))}</span>
-                    {list.length > 0 && (
-                      <span className="mt-auto flex gap-0.5">
-                        {list.slice(0, 4).map((e) => (
-                          <span key={e.id} className="inline-block h-1.5 w-1.5" style={{ background: e.kind === "event" ? "#1084d0" : e.kind === "reminder" ? "#cc6600" : "#008000", outline: isSel ? "1px solid #fff" : undefined }} />
-                        ))}
-                        {list.length > 4 && <span className="text-[8px] leading-none">+</span>}
-                      </span>
-                    )}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-          <div className="mt-1 flex flex-wrap gap-2 text-[10px] text-gray-700">
-            <span><i className="inline-block h-2 w-2 bg-[#008000]" /> Note</span>
-            <span><i className="inline-block h-2 w-2 bg-[#1084d0]" /> Event</span>
-            <span><i className="inline-block h-2 w-2 bg-[#cc6600]" /> Reminder</span>
-            <span>Red outline = today</span>
-            {loading && <span role="status">Loading...</span>}
-          </div>
-        </section>
-
-        <section className="flex min-w-0 flex-1 flex-col gap-1">
-          <div className="text-sm font-bold text-[#000080]" data-testid="text-selected-day">{selectedLabel}</div>
-          <div className="win98-inset max-h-40 min-h-[48px] overflow-auto bg-white p-1">
-            {dayEntries.length === 0 ? (
-              <div className="p-1 text-gray-600">{loading ? "Loading..." : "Nothing here yet. Add a note, event, or reminder below."}</div>
-            ) : dayEntries.map((e) => (
-              <div key={e.id} className={`flex items-start gap-1 border-b border-[#ddd] py-1 ${form.id === e.id ? "bg-[#dcecff]" : ""}`} data-testid={`entry-${e.id}`}>
-                <div className="min-w-0 flex-1">
-                  <div className="break-words font-bold">
-                    <span className="mr-1 text-[10px] uppercase text-[#000080]">{e.kind}</span>
-                    {e.startsAt && <span className="mr-1">{dayStr(new Date(e.startsAt)) === e.day ? fmtTime(e.startsAt) : fmtFull(e.startsAt)}</span>}
-                    {e.title || "(untitled note)"}
-                  </div>
-                  {e.notes && <div className="line-clamp-2 whitespace-pre-wrap break-words text-[10px] text-gray-700">{e.notes}</div>}
-                  {e.remindAt && <div className="text-[10px] text-gray-600">Remind {fmtFull(e.remindAt)}{e.dismissed ? " (dismissed)" : e.notifiedAt ? " (alert attempted)" : ""}</div>}
-                </div>
-                <button type="button" className="win98-button px-1" onClick={() => edit(e)}>Edit</button>
-                <button type="button" className="win98-button px-1 text-[#800000]" onClick={() => void remove(e)} aria-label={`Delete ${e.title || "note"}`}>Delete</button>
-              </div>
-            ))}
-          </div>
-
-          <form className="flex flex-col gap-1 border border-[#808080] bg-[#d8d8d8] p-2" onSubmit={(ev) => { ev.preventDefault(); void save(); }} data-testid="planner-form">
-            <div className="flex items-center justify-between gap-1">
-              <b>{form.id === null ? "New entry" : "Editing entry"}</b>
-              <select className={`${field} !w-auto`} value={form.kind} onChange={(e) => setKind(e.target.value as Form["kind"])} aria-label="Entry type" data-testid="select-kind">
-                <option value="note">Note</option>
-                <option value="event">Timed event</option>
-                <option value="reminder">Reminder</option>
-              </select>
-            </div>
-            <input className={field} placeholder={form.kind === "note" ? "Title (optional)" : "Title"} maxLength={120} value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} aria-label="Title" data-testid="input-title" />
-            <textarea className={`${field} min-h-[60px] resize-y`} placeholder="Notes" maxLength={5000} value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} aria-label="Notes" data-testid="input-notes" />
-            {form.kind === "event" && (
-              <label className="flex flex-col gap-0.5 font-bold">Starts
-                <input type="datetime-local" className={field} value={form.startsAt} onChange={(e) => setForm({ ...form, startsAt: e.target.value })} data-testid="input-starts" />
-              </label>
-            )}
-            {form.kind !== "reminder" && (
-              <label className="flex items-center gap-1">
-                <input type="checkbox" checked={form.remindOn} onChange={(e) => setForm({ ...form, remindOn: e.target.checked, remindAt: e.target.checked && !form.remindAt ? form.startsAt || `${selected}T09:00` : form.remindAt })} data-testid="check-remind" />
-                Remind me
-              </label>
-            )}
-            {(form.kind === "reminder" || form.remindOn) && (
-              <label className="flex flex-col gap-0.5 font-bold">Remind at
-                <input type="datetime-local" className={field} value={form.remindAt} onChange={(e) => setForm({ ...form, remindAt: e.target.value })} data-testid="input-remind" />
-              </label>
-            )}
-            <div className="flex justify-end gap-1">
-              {(form.id !== null || form.title || form.notes) && (
-                <button type="button" className="win98-button px-3 py-1" onClick={() => setForm(blankForm(selected, form.kind))} disabled={saving}>{form.id !== null ? "Cancel edit" : "Clear"}</button>
-              )}
-              <button type="submit" className="win98-button px-3 py-1" disabled={saving} data-testid="button-save-entry">{saving ? "Saving..." : form.id === null ? "Save entry" : "Save changes"}</button>
-            </div>
-          </form>
-
-          {error && (
-            <div role="alert" className="flex items-center gap-1 border border-[#800000] bg-[#ffffe1] p-2 text-[#800000]">
-              <span className="flex-1">{error}</span>
-              <button type="button" className="win98-button px-2" onClick={() => void load(true)}>Retry</button>
-            </div>
-          )}
-          {status && <div role="status" className="text-[10px] text-[#006000]" data-testid="text-planner-status">{status}</div>}
-
-          <div className="border border-[#808080] bg-[#e2e2e2] p-2 text-[10px] leading-snug text-gray-700">
-            <p>Times use this device's timezone ({Intl.DateTimeFormat().resolvedOptions().timeZone}). Due reminders always stay at the top of the planner until dismissed.</p>
-            {siteTimeZone !== Intl.DateTimeFormat().resolvedOptions().timeZone && <p className="mt-1">The site's clock is set to {siteTimeZone}; Planner dates and times use your device's timezone instead.</p>}
-            <p className="mt-1">Push alerts need browser permission and a subscription on this device, and the server must be running. Delivery is best-effort; reminders are normally checked within 30 seconds.</p>
-            <div className="mt-1 flex flex-wrap items-center gap-2">
-              <button type="button" className="win98-button px-2 py-1 text-xs" onClick={() => void enablePush()} disabled={pushBusy} data-testid="button-enable-push">{pushBusy ? "Enabling..." : "Enable push notifications"}</button>
-              {pushMsg && <span role="status" className={pushMsg.ok ? "text-[#006000]" : "text-[#800000]"} data-testid="text-push-status">{pushMsg.text}</span>}
-            </div>
-          </div>
-        </section>
-      </div>
-    </div>
+    <PlannerView
+      today={today}
+      selected={selected}
+      selectedLabel={selectedLabel}
+      monthLabel={monthLabel}
+      localTimeZone={localTimeZone}
+      siteTimeZone={siteTimeZone}
+      cells={cells}
+      byDay={byDay}
+      dayEntries={dayEntries}
+      due={due}
+      loading={loading}
+      saving={saving}
+      error={error}
+      status={status}
+      pushMsg={pushMsg}
+      pushBusy={pushBusy}
+      form={form}
+      onGo={(delta) => go(delta)}
+      onGoToday={goToday}
+      onPickDay={pickDay}
+      onEdit={edit}
+      onDelete={(entry) => void remove(entry)}
+      onDismiss={(entry) => void dismiss(entry)}
+      onSetKind={setKind}
+      onFormChange={(changes) => setForm((current) => ({ ...current, ...changes }))}
+      onClear={() => setForm(blankForm(selected, form.kind))}
+      onSave={() => void save()}
+      onRetry={() => void load(true)}
+      onEnablePush={() => void enablePush()}
+    />
   );
 }

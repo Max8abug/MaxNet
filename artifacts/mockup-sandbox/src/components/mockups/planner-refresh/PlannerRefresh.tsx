@@ -337,14 +337,11 @@ export function PlannerRefresh() {
   if (!username) {
     return (
       <div className="planner-refresh min-h-screen p-4" data-testid="planner-signed-out">
-        <div className="planner-window mx-auto flex min-h-[calc(100vh-2rem)] max-w-3xl flex-col">
-          <div className="planner-titlebar">Portfolio98 <span>Planner</span></div>
-          <div className="flex flex-1 items-center justify-center p-8 text-center">
-            <div className="max-w-sm rounded-2xl bg-[#fbf8ef] p-8 shadow-sm">
-              <CalendarDays className="mx-auto mb-4 h-9 w-9 text-[#50796f]" />
-              <h1 className="font-['Fraunces'] text-3xl text-[#29484a]">A space of your own</h1>
-              <p className="mt-3 text-sm leading-6 text-[#697b73]">Your planner is private. Sign in to keep notes, events, and reminders.</p>
-            </div>
+        <div className="flex min-h-[calc(100dvh-2rem)] items-center justify-center">
+          <div className="max-w-sm rounded-2xl bg-[#fbf8ef] p-8 text-center shadow-sm">
+            <CalendarDays className="mx-auto mb-4 h-9 w-9 text-[#50796f]" />
+            <h1 className="font-['Fraunces'] text-3xl text-[#29484a]">A space of your own</h1>
+            <p className="mt-3 text-sm leading-6 text-[#697b73]">Your planner is private. Sign in to keep notes, events, and reminders.</p>
           </div>
         </div>
       </div>
@@ -364,22 +361,17 @@ export function PlannerRefresh() {
             #0c7876;
         }
         .planner-window {
-          overflow: hidden; max-width: 1160px; min-height: calc(100dvh - 2.5rem);
-          border: 1px solid rgba(22,46,47,.62); border-radius: 14px;
-          background: #e8e4d8; box-shadow: 0 18px 52px rgba(14,39,40,.27), inset 0 1px rgba(255,255,255,.9);
+          max-width: 1160px; height: calc(100dvh - 2.5rem); min-height: 0;
         }
-        .planner-titlebar {
-          display:flex; align-items:center; gap:9px; min-height:37px; padding:0 13px;
-          color:#f5f8f1; background:linear-gradient(100deg,#315d61,#4f817e);
-          font-size:12px; letter-spacing:.025em; font-weight:700;
-        }
-        .planner-titlebar:before { content:""; width:9px; height:9px; border:2px solid #e9d7a3; border-radius:2px; }
-        .planner-titlebar span { color:rgba(244,248,237,.72); font-weight:400; }
         .planner-surface {
+          min-height:0; overflow-y:auto; overscroll-behavior:contain;
           background-color:var(--paper);
           background-image:radial-gradient(rgba(100,111,90,.07) .65px, transparent .65px);
           background-size:7px 7px;
         }
+        .planner-main { grid-template-columns:minmax(0, 1fr); }
+        .planner-day { min-height:39px; }
+        .planner-blank { min-height:39px; }
         .planner-field { color:#30494a; border-color:#d8d6c9; background:#fffef9; }
         .planner-field:focus { border-color:#648f81; box-shadow:0 0 0 3px rgba(91,139,122,.14); }
         .planner-action { transition:transform 140ms ease, background-color 140ms ease, box-shadow 140ms ease, opacity 140ms ease; }
@@ -390,25 +382,30 @@ export function PlannerRefresh() {
         .planner-refresh input:focus-visible, .planner-refresh textarea:focus-visible {
           outline:2px solid #b77258; outline-offset:2px;
         }
-        @media (max-width: 640px) {
-          .planner-window { min-height:calc(100dvh - 1.5rem); border-radius:10px; }
+        @media (min-width: 700px) {
+          .planner-main { grid-template-columns:minmax(250px, .92fr) minmax(300px, 1.08fr); gap:16px; }
+          .planner-day, .planner-blank { min-height:35px; }
+          .planner-surface { padding:16px 19px; }
+          .planner-intro { margin-bottom:13px; padding-bottom:12px; }
+        }
+        @media (min-width: 700px) and (max-width: 820px) {
+          .planner-refresh { padding:10px !important; }
+          .planner-surface { padding:13px 15px; }
+          .planner-main { grid-template-columns:minmax(245px, .92fr) minmax(290px, 1.08fr); gap:13px; }
+          .planner-day, .planner-blank { min-height:33px; }
+          .planner-calendar-shell { padding:8px; }
+          .planner-detail-form { padding:13px; }
+        }
+        @media (max-width: 699px) {
+          .planner-window { height:auto; min-height:calc(100dvh - 1.5rem); }
+          .planner-main { grid-template-columns:minmax(0, 1fr); }
+          .planner-day, .planner-blank { min-height:42px; }
         }
       `}</style>
 
       <section className="planner-window mx-auto flex w-full flex-col">
-        <header className="planner-titlebar">
-          <span className="!text-[#f5f8f1]">Portfolio98</span>
-          <span> / </span>
-          <span>Planner</span>
-          <div className="ml-auto flex items-center gap-1.5" aria-hidden="true">
-            <span className="h-2.5 w-2.5 rounded-full bg-[#a7c7a6]" />
-            <span className="h-2.5 w-2.5 rounded-full bg-[#e9d7a3]" />
-            <span className="h-2.5 w-2.5 rounded-full bg-[#dc9b83]" />
-          </div>
-        </header>
-
-        <div className="planner-surface flex-1 px-4 py-5 sm:px-7 sm:py-6">
-          <div className="mb-5 flex flex-wrap items-end justify-between gap-3 border-b border-[#e7e1d3] pb-4">
+        <div className="planner-surface flex-1 px-4 py-4 sm:px-6 sm:py-5">
+          <div className="planner-intro mb-4 flex flex-wrap items-end justify-between gap-3 border-b border-[#e7e1d3] pb-3">
             <div>
               <div className="mb-1 flex items-center gap-2 text-[10px] font-bold uppercase tracking-[.19em] text-[#698579]">
                 <Sparkles className="h-3.5 w-3.5" strokeWidth={1.8} />
@@ -451,7 +448,7 @@ export function PlannerRefresh() {
             </section>
           )}
 
-          <main className="grid gap-5 lg:grid-cols-[minmax(0,0.94fr)_minmax(340px,1.06fr)] lg:gap-6">
+          <main className="planner-main grid gap-4">
             <section className="min-w-0">
               <div className="mb-3 flex items-center justify-between gap-2">
                 <div>
@@ -469,7 +466,7 @@ export function PlannerRefresh() {
                 </div>
               </div>
 
-              <div className="rounded-2xl border border-[#e6dfd0] bg-[#fffdf7] p-2.5 shadow-[0_5px_18px_rgba(66,77,60,.05)] sm:p-3.5">
+              <div className="planner-calendar-shell rounded-2xl border border-[#e6dfd0] bg-[#fffdf7] p-2 shadow-[0_5px_18px_rgba(66,77,60,.05)] sm:p-2.5">
                 <div className="mb-1 grid grid-cols-7">
                   {WEEK.map((weekday) => (
                     <div key={weekday} className="py-2 text-center text-[10px] font-bold uppercase tracking-[.08em] text-[#9a9c8d]">{weekday}</div>
@@ -477,7 +474,7 @@ export function PlannerRefresh() {
                 </div>
                 <div className="grid grid-cols-7 gap-1 sm:gap-1.5">
                   {cells.map((day, index) => {
-                    if (!day) return <div key={`blank-${index}`} className="min-h-[43px] rounded-lg sm:min-h-[52px]" />;
+                    if (!day) return <div key={`blank-${index}`} className="planner-blank rounded-lg" />;
                     const list = byDay.get(day) ?? [];
                     const isToday = day === today;
                     const isSelected = day === selected;
@@ -489,7 +486,7 @@ export function PlannerRefresh() {
                         aria-pressed={isSelected}
                         aria-label={`${day}${isToday ? " today" : ""}, ${list.length} entries`}
                         data-testid={`day-${day}`}
-                        className={`planner-day relative flex min-h-[43px] flex-col items-center justify-center rounded-lg border text-xs sm:min-h-[52px] ${
+                        className={`planner-day relative flex flex-col items-center justify-center rounded-lg border text-xs ${
                           isSelected
                             ? "border-[#4c7169] bg-[#4c7169] text-[#fffdf5] shadow-[0_3px_8px_rgba(57,94,84,.18)]"
                             : isToday
@@ -605,7 +602,7 @@ export function PlannerRefresh() {
               </div>
 
               <form
-                className="rounded-2xl border border-[#dfe2d4] bg-[#f0f2e8] p-4 shadow-[0_5px_16px_rgba(61,78,62,.045)] sm:p-5"
+                className="planner-detail-form rounded-2xl border border-[#dfe2d4] bg-[#f0f2e8] p-3.5 shadow-[0_5px_16px_rgba(61,78,62,.045)] sm:p-4"
                 onSubmit={(event) => { event.preventDefault(); void save(); }}
                 data-testid="planner-form"
               >
