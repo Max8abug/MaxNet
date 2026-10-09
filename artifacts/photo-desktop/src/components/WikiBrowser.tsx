@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import "./WikiBrowser.css";
 import {
   createWikiPage,
   deleteWikiAsset,
@@ -38,6 +39,7 @@ export function WikiBrowser() {
   const [isCreating, setIsCreating] = useState(false);
   const [editing, setEditing] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [opening, setOpening] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [status, setStatus] = useState<string | null>(null);
@@ -70,6 +72,7 @@ export function WikiBrowser() {
     setSelectedSlug(slug);
     setIsCreating(false);
     setEditing(false);
+    setOpening(true);
     setError(null);
     setStatus(null);
     try {
@@ -82,6 +85,8 @@ export function WikiBrowser() {
       setPage(null);
       setAssets([]);
       setError(loadError instanceof Error ? loadError.message : "That wiki page could not be opened.");
+    } finally {
+      setOpening(false);
     }
   }
 
@@ -195,134 +200,207 @@ export function WikiBrowser() {
   }
 
   return (
-    <div className="flex h-full min-h-0 flex-col bg-[#c0c0c0] text-xs text-black" data-testid="wiki-browser">
-      <div className="flex shrink-0 items-center justify-between border-b border-[#808080] bg-[#d8d8d8] p-2">
-        <div className="min-w-0">
-          <div className="text-base font-bold text-[#000080]">Site Wiki</div>
-          <div className="text-[10px] text-gray-700">Community pages, guides, and references.</div>
+    <div className="wiki-browser flex h-full min-h-0 flex-col text-xs" data-testid="wiki-browser">
+      <header className="wiki-header shrink-0">
+        <div className="wiki-brand">
+          <div className="wiki-mark" aria-hidden="true"><span>W</span></div>
+          <div className="min-w-0">
+            <div className="wiki-kicker">Community reference desk</div>
+            <div className="wiki-title">Site Wiki</div>
+            <p className="wiki-subtitle">Guides, shared knowledge, and notes from the community.</p>
+          </div>
         </div>
-        {canEdit && (
-          <button type="button" className="win98-button shrink-0 px-2 py-1" onClick={startNewPage} data-testid="button-wiki-new-page">
-            New page
-          </button>
-        )}
-      </div>
+        <div className="wiki-header-actions">
+          <span className="wiki-page-total" aria-live="polite">{pages.length} {pages.length === 1 ? "article" : "articles"}</span>
+          {canEdit && (
+            <button type="button" className="win98-button wiki-primary-action" onClick={startNewPage} data-testid="button-wiki-new-page">
+              <span aria-hidden="true">+</span> New page
+            </button>
+          )}
+        </div>
+      </header>
 
-      {error && <div role="alert" className="m-2 border border-[#800000] bg-[#ffffe1] p-2 text-[#800000]">{error}</div>}
-      {status && <div role="status" className="mx-2 mt-1 text-[10px] text-[#006000]">{status}</div>}
+      {(error || status) && (
+        <div className="wiki-notices" aria-live="polite">
+          {error && <div role="alert" className="wiki-alert"><span className="wiki-notice-mark" aria-hidden="true">!</span><span>{error}</span></div>}
+          {status && <div role="status" className="wiki-status"><span className="wiki-notice-mark" aria-hidden="true">OK</span><span>{status}</span></div>}
+        </div>
+      )}
 
-      <div className="flex min-h-0 flex-1">
-        <aside className="flex w-[34%] min-w-[140px] shrink-0 flex-col border-r border-[#808080] bg-[#e2e2e2]">
-          <div className="border-b border-[#aaa] px-2 py-1 font-bold text-[#000080]">Pages ({pages.length})</div>
-          <div className="min-h-0 flex-1 overflow-auto p-1">
+      <div className="wiki-workspace">
+        <aside className="wiki-index" aria-label="Wiki page index">
+          <div className="wiki-index-heading">
+            <div>
+              <div className="wiki-eyebrow">Browse the shelf</div>
+              <h2>Page index</h2>
+            </div>
+            <span className="wiki-index-count">{pages.length.toString().padStart(2, "0")}</span>
+          </div>
+          <div className="wiki-page-list" aria-label="Pages">
             {loading ? (
-              <div className="p-2 text-gray-600">Loading pages...</div>
+              <div className="wiki-loading-list" aria-label="Loading wiki pages">
+                {[0, 1, 2, 3].map((item) => <div className="wiki-skeleton" key={item}><i /><b /><span /></div>)}
+              </div>
             ) : pages.length === 0 ? (
-              <div className="p-2 text-gray-600">No pages yet.{canEdit ? " Create the first page." : ""}</div>
-            ) : pages.map((item) => (
+              <div className="wiki-index-empty">
+                <span className="wiki-empty-symbol" aria-hidden="true">—</span>
+                <strong>No pages on the shelf yet</strong>
+                <span>{canEdit ? "Start a reference the whole community can use." : "Check back when a community guide is ready."}</span>
+              </div>
+            ) : pages.map((item, index) => (
               <button
                 key={item.slug}
                 type="button"
                 onClick={() => void openPage(item.slug)}
-                className={`mb-1 block w-full border px-2 py-1.5 text-left ${selectedSlug === item.slug ? "border-[#000080] bg-[#dcecff]" : "border-transparent bg-white hover:bg-[#f3f7ff]"}`}
+                className={`wiki-page-link ${selectedSlug === item.slug ? "is-selected" : ""}`}
+                aria-current={selectedSlug === item.slug ? "page" : undefined}
                 data-testid={`wiki-page-${item.slug}`}
               >
-                <span className="block truncate font-bold text-[#000080]">{item.title}</span>
-                <span className="mt-0.5 block line-clamp-2 text-[10px] text-gray-600">{item.excerpt || "No description yet."}</span>
+                <span className="wiki-page-number">{String(index + 1).padStart(2, "0")}</span>
+                <span className="wiki-page-link-copy">
+                  <span className="wiki-page-name">{item.title}</span>
+                  <span className="wiki-page-excerpt">{item.excerpt || "No description yet."}</span>
+                </span>
+                <span className="wiki-page-arrow" aria-hidden="true">›</span>
               </button>
             ))}
           </div>
-          <button type="button" className="win98-button m-1 px-2 py-1" onClick={() => void loadIndex()} disabled={loading}>Refresh index</button>
+          <div className="wiki-index-foot">
+            <span className="wiki-index-note">Shared by members, kept for everyone.</span>
+            <button type="button" className="win98-button wiki-refresh" onClick={() => void loadIndex()} disabled={loading} aria-label="Refresh page index">
+              <span aria-hidden="true">↻</span> Refresh index
+            </button>
+          </div>
         </aside>
 
-        <main className="min-w-0 flex-1 overflow-auto bg-white">
+        <main className="wiki-reading-pane" aria-label="Wiki article">
           {editing ? (
-            <div className="flex min-h-full flex-col gap-2 p-3">
-              <label className="flex flex-col gap-1 font-bold">
-                Page title
-                <input className="win98-inset w-full bg-white px-2 py-1 font-normal" value={title} maxLength={100} onChange={(event) => setTitle(event.target.value)} />
+            <section className="wiki-editor" aria-labelledby="wiki-editor-heading">
+              <div className="wiki-editor-head">
+                <div>
+                  <div className="wiki-eyebrow">{isCreating ? "Add to the collection" : "Contributor tools"}</div>
+                  <h1 id="wiki-editor-heading">{isCreating ? "Write a new page" : "Edit this page"}</h1>
+                  <p>Clear titles and useful details make a good reference.</p>
+                </div>
+                <span className="wiki-editor-tag">Markdown</span>
+              </div>
+              <label className="wiki-field">
+                <span>Page title</span>
+                <input aria-label="Page title" className="wiki-title-input" value={title} maxLength={100} onChange={(event) => setTitle(event.target.value)} />
+                <small>{title.length}/100 characters</small>
               </label>
-              <label className="flex min-h-[220px] flex-1 flex-col gap-1 font-bold">
-                Wiki text (Markdown)
+              <label className="wiki-field wiki-content-field">
+                <span>Article text <em>Markdown supported</em></span>
                 <textarea
-                  className="win98-inset min-h-[200px] flex-1 resize-y bg-white p-2 font-mono text-[11px] font-normal"
+                  aria-label="Wiki text (Markdown)"
+                  className="wiki-content-input"
                   value={content}
                   maxLength={100_000}
                   onChange={(event) => setContent(event.target.value)}
                   placeholder={"# Overview\n\nWrite a guide or reference here. Use Markdown for headings, links, lists, and tables."}
                 />
+                <small>{content.length.toLocaleString()} / 100,000 characters</small>
               </label>
               {page && (
-                <div className="win98-inset bg-[#f2f2f2] p-2">
-                  <div className="mb-1 flex flex-wrap items-center justify-between gap-1">
-                    <strong>Page media</strong>
-                    <button type="button" className="win98-button px-2 py-0.5" onClick={() => fileInput.current?.click()} data-testid="button-wiki-upload-media">
+                <section className="wiki-media-manage" aria-labelledby="wiki-media-manage-heading">
+                  <div className="wiki-media-manage-head">
+                    <div>
+                      <h2 id="wiki-media-manage-heading">Page media</h2>
+                      <p>Attach images or video to this reference.</p>
+                    </div>
+                    <button type="button" className="win98-button wiki-secondary-action" onClick={() => fileInput.current?.click()} data-testid="button-wiki-upload-media">
                       Add images/videos
                     </button>
                     <input ref={fileInput} className="hidden" type="file" accept="image/png,image/jpeg,image/gif,image/webp,video/mp4,video/webm" multiple onChange={(event) => void uploadFiles(event.target.files)} />
                   </div>
-                  <div className="text-[10px] text-gray-600">PNG, JPEG, GIF, WebP, MP4, or WebM; 6 MB per file.</div>
-                  {assets.map((asset) => (
-                    <div key={asset.id} className="mt-1 flex items-center gap-1 border-t border-[#ccc] pt-1">
-                      <span className="min-w-0 flex-1 truncate">{asset.fileName} · {formatBytes(asset.size)}</span>
-                      <button type="button" className="win98-button px-1" onClick={() => void removeAsset(asset)} aria-label={`Remove ${asset.fileName}`}>Remove</button>
-                    </div>
-                  ))}
-                </div>
+                  <div className="wiki-upload-help">PNG, JPEG, GIF, WebP, MP4, or WebM. Maximum 6 MB per file.</div>
+                  {assets.length > 0 ? (
+                    <ul className="wiki-asset-list">
+                      {assets.map((asset) => (
+                        <li key={asset.id}>
+                          <span className="wiki-file-type" aria-hidden="true">{asset.contentType.startsWith("video/") ? "VID" : "IMG"}</span>
+                          <span className="wiki-asset-name">{asset.fileName}<small>{formatBytes(asset.size)}</small></span>
+                          <button type="button" className="wiki-remove-asset" onClick={() => void removeAsset(asset)} aria-label={`Remove ${asset.fileName}`}>Remove</button>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : <div className="wiki-no-assets">No media attached to this page.</div>}
+                </section>
               )}
-              {!page && <div className="text-[10px] text-gray-600">Save this page before attaching media.</div>}
-              <div className="flex justify-end gap-1">
-                <button type="button" className="win98-button px-3 py-1" onClick={() => { setEditing(false); setIsCreating(false); if (selectedSlug) void openPage(selectedSlug); }} disabled={saving}>Cancel</button>
-                <button type="button" className="win98-button px-3 py-1 font-bold" onClick={() => void savePage()} disabled={saving || !title.trim()} data-testid="button-wiki-save">
+              {!page && <p className="wiki-save-first">Save this page before attaching media.</p>}
+              <div className="wiki-editor-actions">
+                <button type="button" className="win98-button wiki-cancel-action" onClick={() => { setEditing(false); setIsCreating(false); if (selectedSlug) void openPage(selectedSlug); }} disabled={saving}>Cancel</button>
+                <button type="button" className="win98-button wiki-save-action" onClick={() => void savePage()} disabled={saving || !title.trim()} data-testid="button-wiki-save">
                   {saving ? "Saving..." : "Save page"}
                 </button>
               </div>
-            </div>
+            </section>
           ) : page ? (
-            <article className="p-4">
-              <div className="flex flex-wrap items-start justify-between gap-2 border-b border-[#ccc] pb-2">
-                <div>
-                  <h1 className="text-xl font-bold text-[#000080]">{page.title}</h1>
-                  <div className="mt-1 text-[10px] text-gray-500">Updated by {page.updatedBy} · {new Date(page.updatedAt).toLocaleString()}</div>
+            <article className="wiki-article">
+              <div className="wiki-article-heading">
+                <div className="wiki-article-title-group">
+                  <div className="wiki-eyebrow">Community guide</div>
+                  <h1>{page.title}</h1>
+                  <div className="wiki-byline"><span className="wiki-byline-dot" /> Updated by <strong>{page.updatedBy}</strong><span className="wiki-byline-sep">/</span>{new Date(page.updatedAt).toLocaleString()}</div>
                 </div>
                 {canEdit && (
-                  <div className="flex gap-1">
-                    <button type="button" className="win98-button px-2 py-1" onClick={() => { setTitle(page.title); setContent(page.content); setEditing(true); }}>Edit</button>
-                    <button type="button" className="win98-button px-2 py-1 text-[#800000]" onClick={() => void removePage()}>Delete</button>
+                  <div className="wiki-article-actions">
+                    <button type="button" className="win98-button wiki-secondary-action" onClick={() => { setTitle(page.title); setContent(page.content); setEditing(true); }}>Edit page</button>
+                    <button type="button" className="win98-button wiki-delete-action" onClick={() => void removePage()}>Delete</button>
                   </div>
                 )}
               </div>
-              <div className="wiki-markdown mt-3 break-words text-sm leading-6">
+              <div className="wiki-markdown break-words">
                 <ReactMarkdown remarkPlugins={[remarkGfm]}>{page.content || "_This page is empty._"}</ReactMarkdown>
               </div>
               {assets.length > 0 && (
-                <section className="mt-5 border-t border-[#ccc] pt-3">
-                  <h2 className="mb-2 text-sm font-bold text-[#000080]">Media ({assets.length})</h2>
-                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                <section className="wiki-article-media" aria-labelledby="wiki-media-heading">
+                  <div className="wiki-section-heading">
+                    <div>
+                      <div className="wiki-eyebrow">Attachments</div>
+                      <h2 id="wiki-media-heading">Media <span>{assets.length}</span></h2>
+                    </div>
+                  </div>
+                  <div className="wiki-media-grid">
                     {assets.map((asset) => (
-                      <div key={asset.id} className="win98-inset bg-[#f2f2f2] p-1">
+                      <figure key={asset.id} className="wiki-media-item">
                         {asset.contentType.startsWith("image/") ? (
-                          <img src={mediaUrl(asset)} alt={asset.fileName} className="max-h-72 w-full bg-black object-contain" />
+                          <img src={mediaUrl(asset)} alt={asset.fileName} />
                         ) : (
-                          <video src={mediaUrl(asset)} controls preload="metadata" className="max-h-72 w-full bg-black" />
+                          <video src={mediaUrl(asset)} controls preload="metadata" aria-label={asset.fileName} />
                         )}
-                        <div className="px-1 py-1 text-[10px] text-gray-700">{asset.fileName} · {formatBytes(asset.size)}</div>
-                      </div>
+                        <figcaption><span>{asset.fileName}</span><small>{formatBytes(asset.size)}</small></figcaption>
+                      </figure>
                     ))}
                   </div>
                 </section>
               )}
-              <div className="mt-4 border-t border-[#ddd] pt-2 text-[10px] text-gray-500">
-                Last updated {new Date(page.updatedAt).toLocaleString()} by {page.updatedBy}
-              </div>
+              <footer className="wiki-article-foot">Last updated {new Date(page.updatedAt).toLocaleString()} by {page.updatedBy}</footer>
             </article>
-          ) : selectedSummary ? (
-            <div className="p-4 text-gray-600">Opening {selectedSummary.title}…</div>
+          ) : opening && selectedSummary ? (
+            <div className="wiki-opening" role="status" aria-live="polite">
+              <div className="wiki-opening-rule" />
+              <span className="wiki-eyebrow">Opening article</span>
+              <h1>{selectedSummary.title}</h1>
+              <div className="wiki-opening-lines"><i /><i /><i /></div>
+            </div>
+          ) : error ? (
+            <div className="wiki-welcome wiki-error-state">
+              <div className="wiki-welcome-mark" aria-hidden="true">!</div>
+              <div className="wiki-eyebrow">Something went wrong</div>
+              <h1>The shelf is still here.</h1>
+              <p>Try loading the page index again, or choose an article to reopen it.</p>
+              <button type="button" className="win98-button wiki-secondary-action" onClick={() => void loadIndex()} disabled={loading}>Try again</button>
+            </div>
           ) : (
-            <div className="flex h-full min-h-[220px] flex-col items-center justify-center p-6 text-center">
-              <div className="text-lg font-bold text-[#000080]">Welcome to the site wiki</div>
-              <p className="mt-2 max-w-sm text-gray-600">Choose a page from the index to read community guides and references.</p>
-              {pages.length === 0 && canEdit && <button type="button" className="win98-button mt-3 px-3 py-1" onClick={startNewPage}>Create the first page</button>}
+            <div className="wiki-welcome">
+              <div className="wiki-welcome-mark" aria-hidden="true">W</div>
+              <div className="wiki-eyebrow">{pages.length ? "A little knowledge goes a long way" : "A shared shelf for the community"}</div>
+              <h1>{pages.length ? <>Find your<br /><span>next answer.</span></> : "Welcome to the site wiki."}</h1>
+              <p>{pages.length ? "Choose an article from the index to read member-written guides, practical tips, and community references." : "This is the community’s home for helpful guides and shared know-how. When someone adds a page, it will be waiting here."}</p>
+              <div className="wiki-welcome-rule" />
+              {pages.length === 0 && canEdit && <button type="button" className="win98-button wiki-save-action" onClick={startNewPage}>Create the first page</button>}
+              {pages.length > 0 && <span className="wiki-welcome-hint">Select a page from the index to begin <span aria-hidden="true">→</span></span>}
             </div>
           )}
         </main>

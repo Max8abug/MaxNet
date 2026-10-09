@@ -1,0 +1,38 @@
+@import "tailwindcss";
+@plugin "@tailwindcss/typography";
+
+:root {
+  --background: 180 100% 25%;
+  --foreground: 0 0% 0%;
+  --border: 0 0% 50%;
+  --card: 0 0% 75%;
+  --card-foreground: 0 0% 0%;
+  --card-border: 0 0% 100%;
+  --primary: 240 100% 50%;
+  --primary-foreground: 0 0% 100%;
+  --secondary: 0 0% 100%;
+  --secondary-foreground: 0 0% 0%;
+  --muted: 0 0% 50%;
+  --muted-foreground: 0 0% 100%;
+  --accent: 0 100% 50%;
+  --accent-foreground: 0 0% 100%;
+  --destructive: 0 100% 50%;
+  --destructive-foreground: 0 0% 100%;
+  --input: 0 0% 100%;
+  --ring: 0 0% 0%;
+  --app-font-sans: "Pixelated MS Sans Serif", "MS Sans Serif", Tahoma, sans-serif;
+  --app-font-mono: "Courier New", Courier, monospace;
+}
+
+@font-face {
+  font-family: "Pixelated MS Sans Serif";
+  src: url("https://fonts.cdnfonts.com/s/15011/MS-Sans-Serif.woff") format("woff");
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+html, body, #root { min-width: 320px; min-height: 100%; margin: 0; }
+body { font-family: var(--app-font-sans); background: #008080; color: #000; overflow: auto; }
+.win98-window { background: #c0c0c0; border: 2px solid; border-color: #fff #404040 #404040 #fff; box-shadow: inset 1px 1px #dfdfdf, inset -1px -1px #808080, 1px 1px #000; padding: 2px; }
+.win98-titlebar { background: linear-gradient(90deg, #000080, #1084d0); color: white; padding: 2px 4px; font-weight: bold; display: flex; align-items: center; justify-content: space-between; }
+.win98-button { background: #c0c0c0; border: 1px solid; border-color: #fff #000 #000 #fff; box-shadow: inset 1px 1px #dfdfdf, inset -1px -1px #808080; color: #000; font-weight: bold; display: inline-flex; align-items: center; justify-content: center; padding: 2px 6px; }
+.win98-inset { background: white; border: 2px solid; border-color: #808080 #fff #fff #808080; box-shadow: inset 1px 1px #000, inset -1px -1px #dfdfdf; }
