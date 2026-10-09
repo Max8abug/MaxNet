@@ -421,11 +421,27 @@ size). The default nginx limit is too small for these uploads.
 ### Pulling updates
 
 ```bash
-git pull
-bash selfhost/rebuild.sh
+bash selfhost/update.sh
 ```
 
-Or click **Rebuild** in the launcher GUI.
+The updater pulls a fast-forward update, validates dependencies, then stops,
+installs, builds and restarts the services. If code is already up to date but a
+previous build/install failed, answer **yes** when asked to force a rebuild.
+
+Use the exact pnpm version in the root `package.json` `packageManager` field.
+Setup installs that version even if a different pnpm is already installed; the
+updater checks it and validates the frozen lockfile **before stopping services**.
+Older pnpm versions can ignore settings in `pnpm-workspace.yaml`, producing
+`ERR_PNPM_LOCKFILE_CONFIG_MISMATCH` or removing the override section from the
+lockfile. Upgrade to the required pnpm version rather than using
+`--no-frozen-lockfile` to bypass this error.
+
+Updates require a clean Git working tree. Preserve intentional local edits in
+a commit or selective stash first. The local `.env`, logs, runtime files, and
+private backup configuration are ignored and must never be committed or removed
+to make an update pass.
+
+Or click **Update** in the launcher GUI.
 
 ---
 

@@ -1,4 +1,4 @@
-- [Workspace dependency state](development-environment.md) — workspace package links and composite type declarations can be stale independently of source.
+- [Workspace dependency state](development-environment.md) — pnpm compatibility, workspace links, and stale composite declarations can differ from source.
 - [Device appeal cookie association](device-appeals.md) — newly issued browser cookies must be visible to same-request auth association.
 - [Moderation enforcement](moderation-enforcement.md) — account and device moderation must be enforced at login and on active-session refresh, not only in chat.
 - [Shifted hover submenus](shifted-hover-submenus.md) — upward-repositioned cascading menus must guard sibling hover transitions so item activation is not interrupted.

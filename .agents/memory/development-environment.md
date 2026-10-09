@@ -34,3 +34,16 @@ Rebuild a composite shared library's declarations after changing its exports or 
 **Why:** An API-only no-emit check continued reporting that a newly added database field did not exist, despite correct source and runtime exports. Rebuilding the shared database project resolved the stale declaration errors without application changes.
 
 **How to apply:** When source and consuming types disagree, check referenced-library build state before editing the application to work around the error. An isolated app type check does not rebuild its project references.
+
+Self-hosted installs must use the repository's pinned pnpm version and validate
+the frozen lockfile before stopping services. A lockfile configuration mismatch
+does not necessarily mean the canonical lockfile is broken.
+
+**Why:** Older pnpm versions can ignore override settings in
+`pnpm-workspace.yaml`, even when the same frozen lock validates with the supported
+installer. Regenerating the lock with incompatible tooling can remove platform
+and security overrides and create another dirty-worktree update conflict.
+
+**How to apply:** Check the client's actual pnpm version against `packageManager`
+first. Do not use `--no-frozen-lockfile` as a compatibility workaround. Keep a
+config/manifest-only preflight ahead of service shutdown.

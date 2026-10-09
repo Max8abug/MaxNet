@@ -34,12 +34,19 @@ else
 fi
 
 # ---- pnpm ----
-if ! command -v pnpm &>/dev/null; then
-  echo "[2/6] Installing pnpm..."
-  npm install -g pnpm@10
+PNPM_PACKAGE="$(node -p 'require(process.argv[1]).packageManager' "$REPO_DIR/package.json")"
+if [[ ! "$PNPM_PACKAGE" =~ ^pnpm@[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+  echo "ERROR: package.json must specify an exact pnpm packageManager version."
+  exit 1
+fi
+PNPM_VERSION="${PNPM_PACKAGE#pnpm@}"
+CURRENT_PNPM_VERSION="$(pnpm --version 2>/dev/null || true)"
+if [[ "$CURRENT_PNPM_VERSION" != "$PNPM_VERSION" ]]; then
+  echo "[2/6] Installing the required $PNPM_PACKAGE (current: ${CURRENT_PNPM_VERSION:-not installed})..."
+  npm install -g "$PNPM_PACKAGE"
   echo "  ✓ pnpm $(pnpm --version)"
 else
-  echo "[2/6] pnpm already installed: $(pnpm --version)"
+  echo "[2/6] Required pnpm already installed: $PNPM_VERSION"
 fi
 
 # ---- PostgreSQL ----

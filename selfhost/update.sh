@@ -70,6 +70,32 @@ fi
 log "Updated: $BEFORE_SHA → $AFTER_SHA"
 git log --oneline "$BEFORE_SHA..$AFTER_SHA" | tee -a "$LOG_DIR/update.log" || true
 
+# ── Dependency preflight: do not stop services for an incompatible installer ──
+PNPM_PACKAGE="$(node -p 'require(process.argv[1]).packageManager' "$REPO_DIR/package.json")"
+if [[ ! "$PNPM_PACKAGE" =~ ^pnpm@[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+  log "ERROR: package.json must specify an exact pnpm packageManager version."
+  log "Services have not been stopped."
+  exit 1
+fi
+PNPM_VERSION="${PNPM_PACKAGE#pnpm@}"
+CURRENT_PNPM_VERSION="$(pnpm --version 2>>"$LOG_DIR/update.log" || true)"
+if [[ "$CURRENT_PNPM_VERSION" != "$PNPM_VERSION" ]]; then
+  log "ERROR: This update requires $PNPM_PACKAGE (current: ${CURRENT_PNPM_VERSION:-not available})."
+  log "Run: npm install -g $PNPM_PACKAGE"
+  log "Then retry this updater; choose yes if it asks to force a rebuild."
+  log "Services have not been stopped."
+  exit 1
+fi
+
+log "Checking the frozen lockfile with pnpm $PNPM_VERSION before stopping services..."
+# Frozen + lockfile-only validates config/manifests without replacing installed
+# dependencies, running lifecycle scripts, fetching packages, or rewriting the lock.
+if ! pnpm install --frozen-lockfile --lockfile-only --ignore-scripts --offline 2>&1 | tee -a "$LOG_DIR/update.log"; then
+  log "ERROR: Dependency preflight failed. Services have not been stopped."
+  log "Do not bypass an overrides mismatch by regenerating the lockfile; check the required pnpm version."
+  exit 1
+fi
+
 # ── 4. Stop services ─────────────────────────────────────────
 log "Stopping services..."
 bash "$REPO_DIR/selfhost/stop.sh" 2>&1 | tee -a "$LOG_DIR/update.log"
