@@ -10,6 +10,7 @@ import {
 } from "../lib/personal-playlists-api";
 import { useAuth } from "../lib/auth-store";
 import { PersonalYouTubePlayer } from "./PersonalYouTubePlayer";
+import { stepShuffle, type ShuffleSession } from "../lib/playlist-shuffle";
 
 const MAX_LINKS = 100;
 const MAX_TRACKS = 200;
@@ -30,14 +31,16 @@ function PersonalPlaylistsInner({ username }: { username: string }) {
   const [feedback, setFeedback] = useState<Feedback | null>(null);
   const [playing, setPlaying] = useState<Playing | null>(null);
   const [playRequest, setPlayRequest] = useState(0);
+  const [shuffle, setShuffle] = useState(false);
+  const shuffleSession = useRef<ShuffleSession | null>(null);
 
   const alive = useRef(true);
   const mutationVersion = useRef(0);
   const savingRef = useRef(false);
   const selectedRef = useRef<number | null>(null);
   selectedRef.current = selectedId;
-  const latest = useRef({ playlists, playing });
-  latest.current = { playlists, playing };
+  const latest = useRef({ playlists, playing, shuffle });
+  latest.current = { playlists, playing, shuffle };
 
   useEffect(() => { alive.current = true; return () => { alive.current = false; }; }, []);
 
@@ -99,14 +102,24 @@ function PersonalPlaylistsInner({ username }: { username: string }) {
   const replace = (pl: PersonalYouTubePlaylist) =>
     setPlaylists((list) => list.map((p) => (p.id === pl.id ? pl : p)));
 
-  function playTrack(pl: PersonalYouTubePlaylist, t: PersonalYouTubeTrack) {
-    setPlaying({ playlistId: pl.id, trackId: t.id, videoId: t.videoId });
+  function playTrack(pl: PersonalYouTubePlaylist, t: PersonalYouTubeTrack, keepShuffle = false) {
+    if (!keepShuffle) shuffleSession.current = null;
+    const next = { playlistId: pl.id, trackId: t.id, videoId: t.videoId };
+    latest.current.playing = next;
+    setPlaying(next);
     setPlayRequest((n) => n + 1);
   }
   function step(dir: 1 | -1, auto: boolean) {
     const { playlists: lists, playing: cur } = latest.current;
     const pl = lists.find((p) => p.id === (cur?.playlistId ?? selectedRef.current));
     if (!pl || !pl.tracks.length) return;
+    if (latest.current.shuffle) {
+      const result = stepShuffle(shuffleSession.current, pl.id, pl.tracks.map(t => t.id), cur?.trackId ?? null, dir, auto);
+      shuffleSession.current = result.session;
+      const next = pl.tracks.find(t => t.id === result.trackId);
+      if (next) playTrack(pl, next, true);
+      return;
+    }
     const idx = cur ? pl.tracks.findIndex((t) => t.id === cur.trackId) : -1;
     let n = idx + dir;
     if (idx < 0) n = dir === 1 ? 0 : pl.tracks.length - 1;
@@ -190,6 +203,13 @@ function PersonalPlaylistsInner({ username }: { username: string }) {
       <div className="flex gap-1 flex-wrap">
         <button type="button" className="win98-button px-2" onClick={() => step(-1, false)} disabled={!selected?.tracks.length && !playing} data-testid="button-prev">Previous</button>
         <button type="button" className="win98-button px-2" onClick={() => step(1, false)} disabled={!selected?.tracks.length && !playing} data-testid="button-next">Next</button>
+        <button type="button" className="win98-button px-2" aria-pressed={shuffle}
+          title="Play in random order without changing your saved playlist"
+          onClick={() => {
+            shuffleSession.current = null;
+            latest.current.shuffle = !latest.current.shuffle;
+            setShuffle(latest.current.shuffle);
+          }} data-testid="button-shuffle">Shuffle: {shuffle ? "On" : "Off"}</button>
         <button type="button" className="win98-button px-2 ml-auto" onClick={() => void load(false)} disabled={loading || saving} data-testid="button-refresh">Refresh</button>
       </div>
 
