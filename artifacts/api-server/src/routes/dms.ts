@@ -207,6 +207,7 @@ router.post("/dms/:other", requireAuth, async (req, res) => {
     title: `New message from ${me}`,
     body: trimmed.slice(0, 140),
     tag: `dm:${me}`,
+    kind: "dm",
     url: "/",
   }).catch(() => {});
   res.json(row);

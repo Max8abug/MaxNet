@@ -47,6 +47,11 @@ export async function ensureSchema(): Promise<void> {
     ALTER TABLE users ADD COLUMN IF NOT EXISTS rank text;
     ALTER TABLE users ADD COLUMN IF NOT EXISTS time_zone text;
     ALTER TABLE users ADD COLUMN IF NOT EXISTS display_theme text;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS email text;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS email_verified_at timestamp;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS email_verification_hash text;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS email_verification_expires_at timestamp;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS notification_preferences jsonb NOT NULL DEFAULT '{}'::jsonb;
     ALTER TABLE users ADD COLUMN IF NOT EXISTS background_url text;
     ALTER TABLE users ADD COLUMN IF NOT EXISTS dark_background_url text;
     ALTER TABLE users ADD COLUMN IF NOT EXISTS background_color text;

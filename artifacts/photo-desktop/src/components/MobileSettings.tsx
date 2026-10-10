@@ -3,6 +3,7 @@ import { useAuth } from '../lib/auth-store';
 import { THEME_OPTIONS, useThemeMode } from '../lib/theme';
 import { LoginDialog } from './LoginDialog';
 import { useProfileDialogStore } from '../lib/profile-dialog-store';
+import { NotificationPreferencesPanel } from './NotificationPreferences';
 
 export function MobileSettings({ onRequestLogin }: { onRequestLogin: () => void }) {
   const user = useAuth((state) => state.user);
@@ -46,6 +47,11 @@ export function MobileSettings({ onRequestLogin }: { onRequestLogin: () => void 
         </p>
         {themeError && <p className="mt-1 text-xs text-red-700" role="alert">{themeError}</p>}
       </section>
+
+      {user && <section className="mobile-settings-card win98-inset p-3">
+        <div className="mb-2 flex items-center gap-2 font-bold"><span aria-hidden="true">🔔</span> Notifications</div>
+        <NotificationPreferencesPanel />
+      </section>}
 
       <section className="mobile-settings-card win98-inset p-3">
         <div className="mb-2 flex items-center gap-2 font-bold">

@@ -539,11 +539,27 @@ router.post("/chat", requireAuth, async (req, res) => {
           title: `${author} mentioned you in chat`,
           body: preview,
           tag: `chat-mention:${author}`,
+          kind: "chat-mention",
           url: "/",
         }).catch(() => {});
       }
     }
   } catch { /* mention dispatch is best-effort */ }
+
+  // "All messages" is opt-in per user. Never fan out staff-room content.
+  if (room !== "staff") {
+    void db.select({ username: usersTable.username }).from(usersTable).then((users) =>
+      Promise.all(users.filter((u) => u.username.toLowerCase() !== author.toLowerCase()).map((u) =>
+        sendPushToUser(u.username, {
+          title: `${author} posted in ${room}`,
+          body: trimmedBody.slice(0, 140),
+          tag: `chat:${room}:${row.id}`,
+          kind: "chat-message",
+          url: "/",
+        }),
+      )),
+    ).catch(() => {});
+  }
 
   res.json(row);
 });

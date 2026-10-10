@@ -46,6 +46,8 @@ API_KEY_SETTINGS = (
     ("Spotify Client ID", "SPOTIFY_CLIENT_ID"),
     ("Spotify Client Secret", "SPOTIFY_CLIENT_SECRET"),
     ("YouTube Data API Key", "YOUTUBE_DATA_API_KEY"),
+    ("Resend API Key", "RESEND_API_KEY"),
+    ("Resend From Address", "RESEND_FROM_EMAIL"),
 )
 
 RUN_DIR.mkdir(exist_ok=True)
@@ -89,8 +91,10 @@ def save_env_values(path: Path, updates: dict) -> None:
         if not isinstance(value, str):
             raise ValueError(f"{key} must be text.")
         value = value.strip()
-        if any(char in value for char in "\r\n\0") or any(char.isspace() for char in value):
-            raise ValueError(f"{key} must be a single-line API key without spaces.")
+        if any(char in value for char in "\r\n\0"):
+            raise ValueError(f"{key} must be a single-line value.")
+        if key != "RESEND_FROM_EMAIL" and any(char.isspace() for char in value):
+            raise ValueError(f"{key} must not contain spaces.")
         if any(char in value for char in ("#", '"', "'", "\\")):
             raise ValueError(f"{key} contains a character that needs quoting in .env.")
         normalized[key] = value

@@ -1,5 +1,5 @@
 import webpush from "web-push";
-import { db, siteSettingsTable, pushSubscriptionsTable, expoPushTokensTable } from "@workspace/db";
+import { db, siteSettingsTable, pushSubscriptionsTable, expoPushTokensTable, usersTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { logger } from "./logger";
 
@@ -50,7 +50,42 @@ export async function getPublicKey(): Promise<string> {
   return k?.publicKey || "";
 }
 
-type PushPayload = { title: string; body: string; tag?: string; url?: string; kind?: string; excludeUsername?: string };
+export type PushPayload = { title: string; body: string; tag?: string; url?: string; kind?: string; excludeUsername?: string };
+
+export async function sendResendEmail(to: string, subject: string, html: string): Promise<boolean> {
+  const key = process.env.RESEND_API_KEY;
+  const from = process.env.RESEND_FROM_EMAIL;
+  if (!key || !from) return false;
+  try {
+    const response = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ from, to, subject, html }),
+    });
+    if (!response.ok) logger.warn({ status: response.status }, "Resend email delivery failed");
+    return response.ok;
+  } catch (err) {
+    logger.error({ err }, "Resend email request failed");
+    return false;
+  }
+}
+
+function categoryEnabled(prefs: any, channel: "push" | "email", kind?: string): boolean {
+  const category = kind === "dm" ? "directMessages"
+    : kind === "site-news" ? "siteNews"
+    : kind === "planner" ? "planner"
+    : kind?.startsWith("chat") ? "chat"
+    : null;
+  if (!category) return true;
+  const value = prefs?.[channel]?.[category];
+  if (category === "chat") {
+    if (value === "off") return false;
+    if (value === "mentions") return kind === "chat-mention";
+    if (value === "all") return kind === "chat-message";
+    return false;
+  }
+  return value !== false;
+}
 
 async function sendExpoNotifications(
   rows: Array<{ id: number; username: string; token: string }>,
@@ -125,6 +160,12 @@ export async function sendPushToUser(
   username: string,
   payload: PushPayload,
 ): Promise<void> {
+  let user: typeof usersTable.$inferSelect | undefined;
+  try {
+    [user] = await db.select().from(usersTable).where(eq(usersTable.username, username)).limit(1);
+  } catch {}
+  const prefs = user?.notificationPreferences || {};
+  if (categoryEnabled(prefs, "push", payload.kind)) {
   try {
     const native = await db.select({
       id: expoPushTokensTable.id,
@@ -143,32 +184,20 @@ export async function sendPushToUser(
   } catch (e) {
     logger.error({ err: e, username }, "Failed to load push subscriptions");
   }
+  }
+  if (user?.email && user.emailVerifiedAt && categoryEnabled(prefs, "email", payload.kind)) {
+    const safe = (value: string) => value.replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[char]!));
+    await sendResendEmail(user.email, payload.title, `<p>${safe(payload.body)}</p><p><a href="${safe(payload.url || "/")}">Open Portfolio 98</a></p><p>Manage these emails in Settings → Notifications.</p>`);
+  }
 }
 
 // Broadcast public announcements to every subscribed browser/device.
 export async function sendPushToAll(payload: PushPayload): Promise<void> {
   try {
-    const native = await db.select({
-      id: expoPushTokensTable.id,
-      username: expoPushTokensTable.username,
-      token: expoPushTokensTable.token,
-    }).from(expoPushTokensTable);
-    await sendExpoNotifications(
-      payload.excludeUsername ? native.filter((s) => s.username !== payload.excludeUsername) : native,
-      payload,
-    );
+    const users = await db.select({ username: usersTable.username }).from(usersTable);
+    await Promise.all(users.filter((u) => u.username !== payload.excludeUsername)
+      .map((u) => sendPushToUser(u.username, payload)));
   } catch (e) {
-    logger.error({ err: e }, "Failed to load native push tokens for broadcast");
-  }
-  const vapid = await ensureVapid();
-  if (!vapid) return;
-  try {
-    const subs = await db.select().from(pushSubscriptionsTable);
-    await sendPushToSubscriptions(
-      payload.excludeUsername ? subs.filter((s) => s.username !== payload.excludeUsername) : subs,
-      payload,
-    );
-  } catch (e) {
-    logger.error({ err: e }, "Failed to load push subscriptions for broadcast");
+    logger.error({ err: e }, "Failed to load users for notification broadcast");
   }
 }

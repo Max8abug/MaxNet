@@ -1,8 +1,9 @@
 import { Router, type IRouter } from "express";
-import { db, pushSubscriptionsTable, expoPushTokensTable } from "@workspace/db";
+import { createHash, randomBytes } from "node:crypto";
+import { db, pushSubscriptionsTable, expoPushTokensTable, usersTable } from "@workspace/db";
 import { and, eq } from "drizzle-orm";
 import { requireAuth } from "../lib/auth";
-import { ensureVapid, getPublicKey } from "../lib/push";
+import { ensureVapid, getPublicKey, sendResendEmail } from "../lib/push";
 
 const router: IRouter = Router();
 
@@ -12,6 +13,75 @@ router.get("/push/public-key", async (_req, res) => {
   await ensureVapid();
   const publicKey = await getPublicKey();
   res.json({ publicKey });
+});
+
+router.get("/push/preferences", requireAuth, async (req, res) => {
+  const [user] = await db.select({
+    notificationPreferences: usersTable.notificationPreferences,
+    email: usersTable.email,
+    emailVerifiedAt: usersTable.emailVerifiedAt,
+  }).from(usersTable).where(eq(usersTable.username, req.session.username!)).limit(1);
+  res.json({
+    preferences: user?.notificationPreferences || {},
+    email: user?.email || "",
+    emailVerified: !!user?.emailVerifiedAt,
+  });
+});
+
+router.put("/push/preferences", requireAuth, async (req, res) => {
+  const valid = (x: any) => x && typeof x === "object"
+    && typeof x.directMessages === "boolean" && typeof x.siteNews === "boolean"
+    && typeof x.planner === "boolean" && ["all", "mentions", "off"].includes(x.chat);
+  const p = req.body?.preferences;
+  if (!p || !valid(p.push) || !valid(p.email)) {
+    res.status(400).json({ error: "Invalid notification preferences" });
+    return;
+  }
+  await db.update(usersTable).set({ notificationPreferences: { push: p.push, email: p.email } })
+    .where(eq(usersTable.username, req.session.username!));
+  res.json({ ok: true });
+});
+
+router.post("/push/email", requireAuth, async (req, res) => {
+  const email = typeof req.body?.email === "string" ? req.body.email.trim().toLowerCase() : "";
+  if (email.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    res.status(400).json({ error: "Enter a valid email address." });
+    return;
+  }
+  const token = randomBytes(32).toString("hex");
+  const hash = createHash("sha256").update(token).digest("hex");
+  const expiry = new Date(Date.now() + 30 * 60 * 1000);
+  await db.update(usersTable).set({
+    email, emailVerifiedAt: null, emailVerificationHash: hash, emailVerificationExpiresAt: expiry,
+  }).where(eq(usersTable.username, req.session.username!));
+  const proto = String(req.headers["x-forwarded-proto"] || req.protocol).split(",")[0]!.trim();
+  const host = String(req.headers["x-forwarded-host"] || req.get("host") || "");
+  const link = `${proto}://${host}/api/push/email/verify?token=${token}`;
+  const delivered = await sendResendEmail(email, "Verify your Portfolio 98 email", `<p>Click to verify this address for notifications:</p><p><a href="${link}">Verify email</a></p><p>This link expires in 30 minutes.</p>`);
+  if (!delivered) {
+    res.status(503).json({ error: "Email could not be sent. Configure RESEND_API_KEY and RESEND_FROM_EMAIL in the launcher first." });
+    return;
+  }
+  res.json({ ok: true });
+});
+
+router.get("/push/email/verify", async (req, res) => {
+  const token = typeof req.query.token === "string" ? req.query.token : "";
+  if (!/^[a-f0-9]{64}$/.test(token)) { res.status(400).send("Invalid or expired verification link."); return; }
+  const hash = createHash("sha256").update(token).digest("hex");
+  const [user] = await db.select({
+    id: usersTable.id,
+    emailVerificationExpiresAt: usersTable.emailVerificationExpiresAt,
+  }).from(usersTable).where(eq(usersTable.emailVerificationHash, hash))
+    .limit(1);
+  if (!user || !user.emailVerificationExpiresAt || user.emailVerificationExpiresAt <= new Date()) {
+    res.status(400).send("Invalid or expired verification link.");
+    return;
+  }
+  await db.update(usersTable).set({
+    emailVerifiedAt: new Date(), emailVerificationHash: null, emailVerificationExpiresAt: null,
+  }).where(eq(usersTable.id, user.id));
+  res.send("Email verified. You can close this page.");
 });
 
 // Save (or update) a subscription for the logged-in user. Subscriptions are

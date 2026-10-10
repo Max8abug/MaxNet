@@ -64,6 +64,29 @@ export interface AuthUser {
   displayTheme?: string | null;
 }
 
+export type NotificationChannelPreferences = {
+  directMessages: boolean;
+  chat: "all" | "mentions" | "off";
+  siteNews: boolean;
+  planner: boolean;
+};
+export type NotificationPreferences = { push: NotificationChannelPreferences; email: NotificationChannelPreferences };
+export async function fetchNotificationSettings(): Promise<{ preferences: Partial<NotificationPreferences>; email: string; emailVerified: boolean }> {
+  return jsonOrThrow(await fetch(`${BASE}/push/preferences`, opts));
+}
+export async function saveNotificationPreferences(preferences: NotificationPreferences): Promise<void> {
+  await jsonOrThrow(await fetch(`${BASE}/push/preferences`, {
+    ...opts, method: "PUT", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ preferences }),
+  }));
+}
+export async function requestNotificationEmail(email: string): Promise<void> {
+  await jsonOrThrow(await fetch(`${BASE}/push/email`, {
+    ...opts, method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email }),
+  }));
+}
+
 export async function updateProfile(data: { avatarUrl?: string | null; backgroundUrl?: string | null; darkBackgroundUrl?: string | null; backgroundColor?: string | null; timeZone?: string | null; displayTheme?: string }): Promise<void> {
   await jsonOrThrow(await fetch(`${BASE}/auth/profile`, {
     ...opts, method: "PATCH",

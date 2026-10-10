@@ -36,6 +36,11 @@ export const usersTable = pgTable("users", {
   rank: text("rank"),
   timeZone: text("time_zone"),
   displayTheme: text("display_theme"),
+  email: text("email"),
+  emailVerifiedAt: timestamp("email_verified_at"),
+  emailVerificationHash: text("email_verification_hash"),
+  emailVerificationExpiresAt: timestamp("email_verification_expires_at"),
+  notificationPreferences: jsonb("notification_preferences").notNull().default({}),
   // Persistent cafe character: { color: string, hat: string, accessory: string | null }.
   // Saved by the in-cafe character editor so users keep their look across sessions.
   cafeAvatar: jsonb("cafe_avatar").notNull().default({}),
