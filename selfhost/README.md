@@ -447,12 +447,13 @@ still checks and installs any missing game files without stopping the site. It
 then asks whether to force a code rebuild; answer **no** to finish an assets-only
 install.
 
-Setup and updates also fetch the four selected game-port folders (about 1.01 GB
-the first time) into the ignored `selfhost/data/ported-games` directory. Only the
+Setup and updates fetch the selected game-port folders (about 5.48 GB total on a
+fresh install) into the ignored `selfhost/data/ported-games` directory. Only the
 pinned game folders are downloaded; the binaries are not added to Git and can
-be fetched again if removed. The files are served directly, without duplicating
-them into the frontend build. Downloads finish before the updater stops the
-running site.
+be fetched again if removed. The nine newly added ports remain hidden from users
+until an administrator approves each one in the site's Pending Game Ports folder.
+The files are served directly, without duplicating them into the frontend build.
+Downloads finish before the updater stops the running site.
 
 The launcher’s **API keys** button stores Spotify and YouTube credentials in
 the ignored `selfhost/.env` file. Setup preserves those entries if it needs to

@@ -215,6 +215,17 @@ export async function setFeatureArchived(featureId: string, archived: boolean): 
     body: JSON.stringify({ archived }),
   }));
 }
+export async function fetchPortedGameApprovals(): Promise<{ approvedGamePorts: string[] }> {
+  return jsonOrThrow(await fetch(`${BASE}/site-settings/game-ports`, {
+    ...opts, cache: "no-store",
+  }));
+}
+export async function setPortedGameApproved(gameId: string, approved: boolean): Promise<{ approvedGamePorts: string[] }> {
+  return jsonOrThrow(await fetch(`${BASE}/site-settings/game-ports/${encodeURIComponent(gameId)}`, {
+    ...opts, method: "PUT", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ approved }),
+  }));
+}
 export async function fetchSiteSettings(): Promise<SiteSettings> {
   return jsonOrThrow(await fetch(`${BASE}/site-settings`, opts));
 }

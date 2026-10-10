@@ -1,7 +1,9 @@
 import { useEffect, useState } from "react";
 import { ExternalLink, Info } from "lucide-react";
+import { NEW_GAME_PORTS, type NewGamePortId } from "../lib/game-ports";
+import { fetchPortedGameApprovals } from "../lib/api";
 
-export type PortedGameId = "gettingoverit" | "pvz" | "webfishing" | "undertale";
+export type PortedGameId = "gettingoverit" | "pvz" | "webfishing" | "undertale" | NewGamePortId;
 
 const PORTS: Record<
   PortedGameId,
@@ -27,6 +29,11 @@ const PORTS: Record<
     assetId: "undertale",
     repository: "https://github.com/bandit968thegamer-ops/undertale/tree/main/undertale",
   },
+  ...Object.fromEntries(NEW_GAME_PORTS.map(port => [port.id, {
+    title: port.title,
+    assetId: port.assetId,
+    repository: port.repository,
+  }])),
 };
 
 type AssetManifest = {
@@ -34,7 +41,7 @@ type AssetManifest = {
   games?: Record<string, { installed?: boolean }>;
 };
 
-type AssetStatus = "checking" | "ready" | "missing" | "unavailable";
+type AssetStatus = "checking" | "ready" | "missing" | "unavailable" | "hidden";
 
 export function PortedGame({ game }: { game: PortedGameId }) {
   const [assetStatus, setAssetStatus] = useState<AssetStatus>("checking");
@@ -45,11 +52,28 @@ export function PortedGame({ game }: { game: PortedGameId }) {
 
   useEffect(() => {
     const controller = new AbortController();
-    fetch(`${gameAssetsPath}/asset-manifest.json`, {
-      cache: "no-store",
-      signal: controller.signal,
-    })
+    const isNewPort = NEW_GAME_PORTS.some(port => port.id === game);
+    const checkApproval = isNewPort
+      ? fetchPortedGameApprovals().then(result => result.approvedGamePorts.includes(game))
+      : Promise.resolve(true);
+    checkApproval
+      .then(approved => {
+        if (controller.signal.aborted) return null;
+        if (!approved) {
+          setAssetStatus("hidden");
+          return null;
+        }
+        return fetch(`${gameAssetsPath}/asset-manifest.json`, {
+          cache: "no-store",
+          signal: controller.signal,
+        });
+      })
+      .then(response => {
+        if (!response) return null;
+        return response;
+      })
       .then(async response => {
+        if (!response) return null;
         if (!response.ok) {
           const responseText = await response.text().catch(() => "");
           if (
@@ -77,7 +101,7 @@ export function PortedGame({ game }: { game: PortedGameId }) {
       });
 
     return () => controller.abort();
-  }, [gameAssetsPath, port.assetId]);
+  }, [game, gameAssetsPath, port.assetId]);
 
   return (
     <div className="flex h-full min-h-0 flex-col bg-[#101b18] text-[#e9f4ec]">
@@ -130,6 +154,10 @@ export function PortedGame({ game }: { game: PortedGameId }) {
             the self-hosted API server.
           </p>
         </div>
+      ) : assetStatus === "hidden" ? (
+        <div className="flex min-h-0 flex-1 items-center justify-center p-6 text-center text-sm">
+          This game is still in the administrator review folder.
+        </div>
       ) : (
         <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-3 p-6 text-center">
           <p className="text-base font-semibold">{port.title} files are not installed here.</p>
@@ -141,7 +169,7 @@ export function PortedGame({ game }: { game: PortedGameId }) {
           <p className="max-w-lg text-xs leading-relaxed text-[#c2d2c8]">
             On the server, run <code>python3 selfhost/install-game-assets.py</code> from the
             repository root, or run <code>bash selfhost/update.sh</code>. The first install
-            downloads about 1 GB; refresh this window when it completes.
+            downloads about 5.5 GB total if no ports are installed; refresh this window when it completes.
           </p>
           <a
             className="win98-button inline-flex items-center gap-1 px-2 py-1 text-xs"

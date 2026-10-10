@@ -24,7 +24,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 ASSET_ROOT = REPO_ROOT / "selfhost" / "data" / "ported-games"
 MANIFEST_PATH = ASSET_ROOT / "asset-manifest.json"
 USER_AGENT = "Portfolio98-selfhost-game-assets/1.0"
-MAX_TOTAL_BYTES = 1_250_000_000
+MAX_TOTAL_BYTES = 6_000_000_000
 MAX_WORKERS = 6
 
 # Only the requested game subfolders are fetched. Commits are pinned so a normal
@@ -65,6 +65,87 @@ GAMES = (
         "remote_base_href": "https://cdn.jsdelivr.net/gh/genizy/web-port@master/undertale/",
         "expected_files": 230,
         "expected_bytes": 202_508_178,
+    },
+    {
+        "id": "among-us",
+        "repo": "wasmdotrip/AmongUsPort",
+        "commit": "7b6881186a73a3165ad7274b5e5dd31e3290cbfc",
+        "path": "",
+        "remote_base_href": "",
+        "expected_files": 70,
+        "expected_bytes": 864_877_715,
+    },
+    {
+        "id": "ac-gamecube",
+        "repo": "web-ports/ac-gamecube",
+        "commit": "02e63512555558da9a4a1db5fc8c7ea7a0baffdc",
+        "path": "",
+        "remote_base_href": "",
+        "expected_files": 22,
+        "expected_bytes": 37_280_261,
+    },
+    {
+        "id": "class-of-09",
+        "repo": "genizy/web-port",
+        "commit": "a8bea5fd11f88e5a9192857f434e299c40efe7e6",
+        "path": "class-of-09",
+        "remote_base_href": "https://cdn.jsdelivr.net/gh/genizy/web-port@main/class-of-09/",
+        "expected_files": 111,
+        "expected_bytes": 245_830_265,
+    },
+    {
+        "id": "cuphead",
+        "repo": "web-ports/cuphead",
+        "commit": "08a62227c742d74092f739b168ee4be1993f8ba5",
+        "path": "",
+        "remote_base_href": "https://cdn.jsdelivr.net/gh/web-ports/cuphead@c9ff1b6b16f9d402b78a42fc2200e1c076c0ab6e/",
+        "expected_files": 125,
+        "expected_bytes": 2_208_353_037,
+    },
+    {
+        "id": "deltatraveler",
+        "repo": "genizy/web-port",
+        "commit": "a8bea5fd11f88e5a9192857f434e299c40efe7e6",
+        "path": "deltatraveler",
+        "remote_base_href": "https://cdn.jsdelivr.net/gh/genizy/web-port@main/deltatraveler/",
+        "expected_files": 17,
+        "expected_bytes": 256_912_659,
+    },
+    {
+        "id": "gang-beasts",
+        "repo": "jmhq20120212-cmd/GangBeast-WebPort",
+        "commit": "4943afeebe714d8c0a2a1aa0614d0e6779eec02b",
+        "path": "",
+        "remote_base_href": "",
+        "expected_files": 43,
+        "expected_bytes": 489_357_360,
+    },
+    {
+        "id": "hill-climb-racing",
+        "repo": "NotRexed/HillClimbRacingPort",
+        "commit": "43c3f7537369a4f89d8c81f53f7bfc472d738459",
+        "path": "",
+        "remote_base_href": "",
+        "expected_files": 15,
+        "expected_bytes": 186_445_517,
+    },
+    {
+        "id": "untitled-goose-game",
+        "repo": "web-ports/untitled-goose-game",
+        "commit": "fbdd0473a0f35fabaea9790e7d60330be1788e26",
+        "path": "",
+        "remote_base_href": "https://cdn.jsdelivr.net/gh/web-ports/untitled-goose-game@main/",
+        "expected_files": 20,
+        "expected_bytes": 100_800_959,
+    },
+    {
+        "id": "oneshot",
+        "repo": "Kitaylena/oneshotthing",
+        "commit": "168f34c60799ab6559e1e6c4ddc2d79ff3a71d3f",
+        "path": "",
+        "remote_base_href": "",
+        "expected_files": 378,
+        "expected_bytes": 83_446_381,
     },
 )
 
@@ -199,15 +280,19 @@ def expected_local_bytes(game: dict) -> int:
         if game["id"] == "pvz"
         else 0
     )
-    return (
-        game["expected_bytes"]
-        - len(game["remote_base_href"].encode("utf-8"))
-        + len("./".encode("utf-8"))
-        + cache_patch_delta
-    )
+    if game["remote_base_href"]:
+        base_href_delta = (
+            -len(game["remote_base_href"].encode("utf-8"))
+            + len("./".encode("utf-8"))
+        )
+    else:
+        base_href_delta = 0
+    return game["expected_bytes"] + base_href_delta + cache_patch_delta
 
 
 def localize_base_href(game: dict, index_path: Path) -> None:
+    if not game["remote_base_href"]:
+        return
     content = index_path.read_bytes()
     pattern = re.compile(
         rb'(<base\b[^>]*\bhref\s*=\s*)(["\'])'

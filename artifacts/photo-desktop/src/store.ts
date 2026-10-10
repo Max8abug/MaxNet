@@ -1,8 +1,9 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { isFeatureHiddenFromLaunchers } from '@workspace/feature-registry';
+import type { NewGamePortId } from './lib/game-ports';
 
-export type WindowType = 'photo' | 'gallery' | 'text' | 'link' | 'youtube' | 'drawing' | 'chat' | 'visits' | 'guestbook' | 'sharedphotos' | 'forum' | 'blackjack' | 'flappy' | 'geometry' | 'poker' | 'music' | 'polls' | 'chess' | 'eaglercraft' | 'newcp' | 'terraria' | 'gettingoverit' | 'pvz' | 'webfishing' | 'undertale' | 'cafe' | 'dms' | 'browser' | 'userpage' | 'ranksadmin' | 'userlist' | 'mypage' | 'settings' | 'sitesettings' | 'iplookup' | 'news' | 'diagnostics' | 'sitebackup' | 'accountadmin' | 'planner' | 'personalplaylists' | 'featurearchive' | 'themelab';
+export type WindowType = 'photo' | 'gallery' | 'text' | 'link' | 'youtube' | 'drawing' | 'chat' | 'visits' | 'guestbook' | 'sharedphotos' | 'forum' | 'blackjack' | 'flappy' | 'geometry' | 'poker' | 'music' | 'polls' | 'chess' | 'eaglercraft' | 'newcp' | 'terraria' | 'gettingoverit' | 'pvz' | 'webfishing' | 'undertale' | 'portedgame' | 'gameportreview' | 'cafe' | 'dms' | 'browser' | 'userpage' | 'ranksadmin' | 'userlist' | 'mypage' | 'settings' | 'sitesettings' | 'iplookup' | 'news' | 'diagnostics' | 'sitebackup' | 'accountadmin' | 'planner' | 'personalplaylists' | 'featurearchive' | 'themelab';
 
 export type WindowState = 'normal' | 'min' | 'max';
 
@@ -27,6 +28,7 @@ export interface WindowData {
   username?: string;
   // for dms: if set, the DMs panel will open the conversation with this user
   dmPeer?: string;
+  gameId?: NewGamePortId;
 }
 
 export interface StringConnection {

@@ -33,12 +33,15 @@ import {
 } from 'lucide-react';
 import { Window } from './Window';
 import { useDesktopStore, type WindowData } from '../store';
-import { isArchivableFeatureId, isFeatureHiddenFromLaunchers, type LauncherWindowId } from '@workspace/feature-registry';
+import { isArchivableFeatureId, isFeatureHiddenFromLaunchers } from '@workspace/feature-registry';
 import { useAuth } from '../lib/auth-store';
 import { useThemeMode } from '../lib/theme';
 import { formatLocalTime } from '../lib/dates';
 import { fetchDueReminders } from '../lib/planner-api';
 import { useServerNow } from '../lib/server-clock';
+import { fetchPortedGameApprovals } from '../lib/api';
+import { NEW_GAME_PORTS, type NewGamePortId } from '../lib/game-ports';
+import type { WindowType } from '../store';
 
 type MobileWindowProps = {
   window: WindowData;
@@ -51,12 +54,13 @@ type MobileWindowProps = {
 
 type AppDefinition = {
   label: string;
-  type: LauncherWindowId;
+  type: WindowType;
   icon: typeof Newspaper;
   tone: string;
   size: 'wide' | 'medium' | 'small';
   subtitle?: string;
   adminOnly?: boolean;
+  gameId?: NewGamePortId;
 };
 
 const EMPTY_WINDOWS: WindowData[] = [];
@@ -97,6 +101,7 @@ const APPS: AppDefinition[] = [
   { label: 'Account Admin', type: 'accountadmin', icon: UserCog, tone: 'bg-[#c493d3]', size: 'medium', adminOnly: true },
   { label: 'Site Settings', type: 'sitesettings', icon: Settings, tone: 'bg-[#a78cdb]', size: 'medium', adminOnly: true },
   { label: 'Feature Archive', type: 'featurearchive', icon: Settings, tone: 'bg-[#a78cdb]', size: 'medium', adminOnly: true },
+  { label: 'Pending Game Ports', type: 'gameportreview', icon: Gamepad2, tone: 'bg-[#9a86bb]', size: 'medium', adminOnly: true },
   { label: 'Theme Lab', type: 'themelab', icon: Settings, tone: 'bg-[#b899cf]', size: 'medium', adminOnly: true },
   { label: 'Backup / Restore', type: 'sitebackup', icon: DatabaseBackup, tone: 'bg-[#c29c75]', size: 'medium', adminOnly: true },
   { label: 'Diagnostics', type: 'diagnostics', icon: Activity, tone: 'bg-[#8fb2ce]', size: 'medium', adminOnly: true },
@@ -107,6 +112,7 @@ const MobileWindow = Window as unknown as ComponentType<MobileWindowProps>;
 function createWindowData(app: AppDefinition): Partial<WindowData> {
   return {
     type: app.type,
+    ...(app.gameId ? { gameId: app.gameId } : {}),
     title: app.label,
     x: 0,
     y: 0,
@@ -124,6 +130,7 @@ export function MobileShell({ page }: { page: string }) {
   const homeMainRef = useRef<HTMLElement>(null);
   const [openWindowId, setOpenWindowId] = useState<string | null>(null);
   const [plannerDue, setPlannerDue] = useState(0);
+  const [approvedGamePorts, setApprovedGamePorts] = useState<string[]>([]);
   const user = useAuth((state) => state.user);
   const siteSettings = useAuth((state) => state.siteSettings);
   const refreshSiteSettings = useAuth((state) => state.refreshSiteSettings);
@@ -141,6 +148,24 @@ export function MobileShell({ page }: { page: string }) {
     window.addEventListener("focus", onFocus);
     return () => { clearInterval(timer); window.removeEventListener("focus", onFocus); };
   }, [refreshFeatureArchives]);
+  useEffect(() => {
+    let alive = true;
+    const refresh = () => {
+      void fetchPortedGameApprovals()
+        .then(result => { if (alive) setApprovedGamePorts(result.approvedGamePorts); })
+        .catch(() => { /* Retain the last successful game list. */ });
+    };
+    refresh();
+    const timer = setInterval(refresh, 15_000);
+    window.addEventListener("focus", refresh);
+    window.addEventListener("game-port-approvals-changed", refresh);
+    return () => {
+      alive = false;
+      clearInterval(timer);
+      window.removeEventListener("focus", refresh);
+      window.removeEventListener("game-port-approvals-changed", refresh);
+    };
+  }, []);
   const { darkMode } = useThemeMode();
   const serverNow = useServerNow();
   const savedWindows = useDesktopStore(
@@ -156,10 +181,23 @@ export function MobileShell({ page }: { page: string }) {
     () => windows.find((candidate) => candidate.id === openWindowId) ?? null,
     [openWindowId, windows],
   );
-  const apps = useMemo(
-    () => APPS.filter((app) => (!app.adminOnly || user?.isAdmin) && (!isArchivableFeatureId(app.type) || !(siteSettings.archivedFeatures || []).includes(app.type))),
-    [user?.isAdmin, siteSettings.archivedFeatures],
-  );
+  const apps = useMemo(() => {
+    const availableGames: AppDefinition[] = NEW_GAME_PORTS
+      .filter(port => approvedGamePorts.includes(port.id))
+      .map(port => ({
+        label: port.title,
+        type: 'portedgame',
+        gameId: port.id,
+        icon: Gamepad2,
+        tone: 'bg-[#628c78]',
+        size: 'small',
+        subtitle: 'Self-hosted game',
+      }));
+    return [...APPS, ...availableGames].filter((app) =>
+      (!app.adminOnly || user?.isAdmin) &&
+      (!isArchivableFeatureId(app.type) || !(siteSettings.archivedFeatures || []).includes(app.type)),
+    );
+  }, [approvedGamePorts, user?.isAdmin, siteSettings.archivedFeatures]);
   const regularApps = apps.filter((app) => !app.adminOnly);
   const adminApps = apps.filter((app) => app.adminOnly);
   const personalBackground = darkMode ? user?.darkBackgroundUrl : user?.backgroundUrl;
@@ -176,7 +214,7 @@ export function MobileShell({ page }: { page: string }) {
 
   const launchApp = (app: AppDefinition) => {
     const currentWindows = useDesktopStore.getState().windows[page] ?? [];
-    const existing = currentWindows.find((candidate) => candidate.type === app.type);
+    const existing = currentWindows.find((candidate) => candidate.type === app.type && candidate.gameId === app.gameId);
 
     if (existing) {
       updateWindow(page, existing.id, {
@@ -193,7 +231,7 @@ export function MobileShell({ page }: { page: string }) {
     const createdWindows = useDesktopStore.getState().windows[page] ?? [];
     const created = [...createdWindows]
       .reverse()
-      .find((candidate) => candidate.type === app.type);
+      .find((candidate) => candidate.type === app.type && candidate.gameId === app.gameId);
 
     if (created) {
       bringToFront(page, created.id);
@@ -250,11 +288,11 @@ export function MobileShell({ page }: { page: string }) {
     const Icon = app.icon;
     return (
       <button
-        key={app.type}
+        key={app.gameId ?? app.type}
         type="button"
         className={`mobile-tile mobile-tile--${app.size} ${app.tone} group flex flex-col text-white transition-transform active:translate-y-px`}
         onClick={() => launchApp(app)}
-        data-testid={`button-launch-${app.type}`}
+        data-testid={`button-launch-${app.type}${app.gameId ? `-${app.gameId}` : ''}`}
         aria-label={`Open ${app.label}`}
       >
         <span className="mobile-tile-icon flex items-center justify-center transition-transform group-active:scale-95">

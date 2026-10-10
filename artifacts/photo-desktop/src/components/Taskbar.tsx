@@ -6,7 +6,7 @@ import { LoginDialog } from './LoginDialog';
 import { useProfileDialogStore } from '../lib/profile-dialog-store';
 import { useThemeMode } from '../lib/theme';
 import { Toaster } from './Toaster';
-import { fetchDMConversations, fetchChat, fetchNews } from '../lib/api';
+import { fetchDMConversations, fetchChat, fetchNews, fetchPortedGameApprovals } from '../lib/api';
 import { isFeatureHiddenFromLaunchers } from '@workspace/feature-registry';
 import {
   enablePushNotifications,
@@ -20,6 +20,7 @@ import { formatLocalTime } from '../lib/dates';
 import { useServerNow } from '../lib/server-clock';
 import { fetchDueReminders } from '../lib/planner-api';
 import type { ArchivableFeatureId } from '@workspace/feature-registry';
+import { NEW_GAME_PORTS } from '../lib/game-ports';
 
 export function Taskbar({ page }: { page: string }) {
   const { addWindow, isStringMode, setStringMode, resetState, windows, toggleWindowState, bringToFront } = useDesktopStore();
@@ -33,6 +34,7 @@ export function Taskbar({ page }: { page: string }) {
   const wins = (windows[page] || []).filter((window) => !isFeatureHiddenFromLaunchers(window.type));
   const [dmUnread, setDmUnread] = useState(0);
   const [chatUnread, setChatUnread] = useState(0);
+  const [approvedGamePorts, setApprovedGamePorts] = useState<string[]>([]);
   useEffect(() => { void refresh(); void refreshRanks(); }, [refresh, refreshRanks]);
   // Full branding/settings still load at startup and on focus, independently
   // of the frequent, archive-only visibility refresh.
@@ -49,6 +51,24 @@ export function Taskbar({ page }: { page: string }) {
     window.addEventListener("focus", onFocus);
     return () => { clearInterval(timer); window.removeEventListener("focus", onFocus); };
   }, [refreshFeatureArchives]);
+  useEffect(() => {
+    let alive = true;
+    const refresh = () => {
+      void fetchPortedGameApprovals()
+        .then(result => { if (alive) setApprovedGamePorts(result.approvedGamePorts); })
+        .catch(() => { /* Keep the last successful public game list. */ });
+    };
+    refresh();
+    const timer = setInterval(refresh, 15_000);
+    window.addEventListener("focus", refresh);
+    window.addEventListener("game-port-approvals-changed", refresh);
+    return () => {
+      alive = false;
+      clearInterval(timer);
+      window.removeEventListener("focus", refresh);
+      window.removeEventListener("game-port-approvals-changed", refresh);
+    };
+  }, []);
 
   // Poll for DM and chat unread counts. Treat the badge as cleared while a window of that type is open and not minimized.
   const dmsOpen = wins.some(w => w.type === 'dms' && (w.state || 'normal') !== 'min');
@@ -293,7 +313,9 @@ export function Taskbar({ page }: { page: string }) {
     label: string;
     act: () => void;
     badge?: 'dm' | 'chat';
-  } & ({ feature: ArchivableFeatureId; protected?: never } | { feature?: never; protected: true });
+    feature?: ArchivableFeatureId;
+    protected?: boolean;
+  };
 
   const infoItems: StartMenuItem[] = [
     { label: "Open Planner", feature: 'planner', act: () => { openPlanner(); setStartOpen(false); } },
@@ -317,7 +339,16 @@ export function Taskbar({ page }: { page: string }) {
     { label: "Play Plants vs. Zombies", feature: 'pvz', act: () => open({ type: 'pvz', title: 'Plants vs. Zombies', width: 1000, height: 700 }) },
     { label: "Play Web Fishing", feature: 'webfishing', act: () => open({ type: 'webfishing', title: 'Web Fishing', width: 1000, height: 700 }) },
     { label: "Play Undertale", feature: 'undertale', act: () => open({ type: 'undertale', title: 'Undertale', width: 1000, height: 700 }) },
+    ...NEW_GAME_PORTS.filter(port => approvedGamePorts.includes(port.id)).map(port => ({
+      label: `Play ${port.title}`,
+      act: () => open({ type: 'portedgame', gameId: port.id, title: port.title, width: 1000, height: 700 }),
+    })),
   ];
+  if (user?.isAdmin) gameItems.push({
+    label: "★ Pending Game Ports",
+    protected: true,
+    act: () => open({ type: 'gameportreview', title: 'Pending Game Ports', width: 620, height: 560 }),
+  });
 
   const socialItems: StartMenuItem[] = [
     { label: "My Page Editor", feature: 'mypage', act: () => open({ type: 'mypage', title: user ? `${user.username}'s page` : 'My Page', width: 520, height: 440 }) },

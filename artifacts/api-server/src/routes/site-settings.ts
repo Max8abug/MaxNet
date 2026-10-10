@@ -9,6 +9,45 @@ import { cleanArchivedFeatures, isArchivableFeatureId } from "@workspace/feature
 const router: IRouter = Router();
 
 type CustomButton = { label: string; url: string };
+const REVIEWABLE_GAME_PORT_IDS = new Set([
+  "amongus", "acgamecube", "classof09", "cuphead", "deltatraveler",
+  "gangbeasts", "hillclimb", "untitledgoose", "oneshot",
+]);
+
+function cleanGamePortApprovals(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return [...new Set(value.filter(
+    (id): id is string => typeof id === "string" && REVIEWABLE_GAME_PORT_IDS.has(id),
+  ))];
+}
+
+router.get("/site-settings/game-ports", async (_req, res) => {
+  const [row] = await db.select({
+    gamePortApprovals: siteSettingsTable.gamePortApprovals,
+  }).from(siteSettingsTable).limit(1);
+  res.set("Cache-Control", "no-store").json({
+    approvedGamePorts: cleanGamePortApprovals(row?.gamePortApprovals),
+  });
+});
+
+router.put("/site-settings/game-ports/:gameId", requireAdmin, async (req, res) => {
+  const gameId = String(req.params.gameId);
+  if (!REVIEWABLE_GAME_PORT_IDS.has(gameId) || typeof req.body?.approved !== "boolean") {
+    res.status(400).json({ error: "Choose a pending game port and a boolean approved setting." });
+    return;
+  }
+  const row = await ensureRow();
+  const current = siteSettingsTable.gamePortApprovals;
+  const [updated] = await db.update(siteSettingsTable).set({
+    gamePortApprovals: req.body.approved
+      ? sql`CASE WHEN ${current} @> ${JSON.stringify([gameId])}::jsonb THEN ${current} ELSE ${current} || ${JSON.stringify([gameId])}::jsonb END`
+      : sql`${current} - ${gameId}`,
+    updatedAt: new Date(),
+  }).where(eq(siteSettingsTable.id, row.id)).returning({ gamePortApprovals: current });
+  res.set("Cache-Control", "no-store").json({
+    approvedGamePorts: cleanGamePortApprovals(updated?.gamePortApprovals),
+  });
+});
 
 // This public polling route deliberately does not use ensureRow(): it must
 // neither load uploaded images nor create settings while serving a read.

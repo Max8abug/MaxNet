@@ -17,7 +17,7 @@ log() { echo "[$(ts)] $*" | tee -a "$LOG_DIR/update.log"; }
 
 GAME_ASSETS_READY=0
 prepare_game_assets() {
-  log "Preparing self-hosted game assets (about 1 GB if missing)..."
+  log "Preparing self-hosted game assets (about 5.5 GB if missing)..."
   if ! python3 "$REPO_DIR/selfhost/install-game-assets.py" 2>&1 | tee -a "$LOG_DIR/update.log"; then
     log "ERROR: Game asset installation failed."
     return 1
