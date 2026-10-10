@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { ExternalLink, Info } from "lucide-react";
 import { NEW_GAME_PORTS, type NewGamePortId } from "../lib/game-ports";
 import { fetchPortedGameApprovals } from "../lib/api";
+import { useAuth } from "../lib/auth-store";
 
 export type PortedGameId = "gettingoverit" | "pvz" | "webfishing" | "undertale" | NewGamePortId;
 
@@ -33,7 +34,7 @@ const PORTS: Record<
     title: port.title,
     assetId: port.assetId,
     repository: port.repository,
-  }])),
+  }])) as Record<NewGamePortId, { title: string; assetId: string; repository: string }>,
 };
 
 type AssetManifest = {
@@ -43,7 +44,8 @@ type AssetManifest = {
 
 type AssetStatus = "checking" | "ready" | "missing" | "unavailable" | "hidden";
 
-export function PortedGame({ game }: { game: PortedGameId }) {
+export function PortedGame({ game, adminPreview = false }: { game: PortedGameId; adminPreview?: boolean }) {
+  const user = useAuth(state => state.user);
   const [assetStatus, setAssetStatus] = useState<AssetStatus>("checking");
   const port = PORTS[game];
   const gameOrigin = window.location.origin;
@@ -54,7 +56,8 @@ export function PortedGame({ game }: { game: PortedGameId }) {
     const controller = new AbortController();
     const isNewPort = NEW_GAME_PORTS.some(port => port.id === game);
     const checkApproval = isNewPort
-      ? fetchPortedGameApprovals().then(result => result.approvedGamePorts.includes(game))
+      ? fetchPortedGameApprovals().then(result =>
+          result.approvedGamePorts.includes(game) || (adminPreview && !!user?.isAdmin))
       : Promise.resolve(true);
     checkApproval
       .then(approved => {
@@ -101,14 +104,14 @@ export function PortedGame({ game }: { game: PortedGameId }) {
       });
 
     return () => controller.abort();
-  }, [game, gameAssetsPath, port.assetId]);
+  }, [game, gameAssetsPath, port.assetId, adminPreview, user?.isAdmin]);
 
   return (
     <div className="flex h-full min-h-0 flex-col bg-[#101b18] text-[#e9f4ec]">
       <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-[#38554a] bg-[#1b3028] px-2 py-1.5">
         <Info className="h-4 w-4 shrink-0 text-[#b9d3c3]" aria-hidden="true" />
         <p className="min-w-0 flex-1 text-[10px] leading-snug">
-          Sandboxed game port · progress may not save in games that require browser storage.
+          {adminPreview && user?.isAdmin ? "Admin preview · not yet approved · sandboxed game port." : "Sandboxed game port · progress may not save in games that require browser storage."}
         </p>
         {assetStatus === "ready" && (
           <a

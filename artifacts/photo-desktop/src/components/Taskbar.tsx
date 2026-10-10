@@ -6,7 +6,7 @@ import { LoginDialog } from './LoginDialog';
 import { useProfileDialogStore } from '../lib/profile-dialog-store';
 import { useThemeMode } from '../lib/theme';
 import { Toaster } from './Toaster';
-import { fetchDMConversations, fetchChat, fetchNews, fetchPortedGameApprovals } from '../lib/api';
+import { fetchDMConversations, fetchChat, fetchNews, fetchPortedGameApprovals, fetchNotificationSettings } from '../lib/api';
 import { isFeatureHiddenFromLaunchers } from '@workspace/feature-registry';
 import {
   enablePushNotifications,
@@ -141,6 +141,20 @@ export function Taskbar({ page }: { page: string }) {
   const chatFirstLoadRef = useRef(true);
   const newsMaxIdRef = useRef(0);
   const newsFirstLoadRef = useRef(true);
+  const notificationPrefsRef = useRef<any>({ push: { directMessages: true, chat: "mentions", siteNews: true } });
+  useEffect(() => {
+    if (!user) {
+      notificationPrefsRef.current = { push: { directMessages: true, chat: "mentions", siteNews: true } };
+      return;
+    }
+    let alive = true;
+    void fetchNotificationSettings().then((result) => {
+      if (alive) notificationPrefsRef.current = {
+        push: { directMessages: true, chat: "mentions", siteNews: true, ...result.preferences?.push },
+      };
+    }).catch(() => {});
+    return () => { alive = false; };
+  }, [user?.username]);
   useEffect(() => {
     if (!user) {
       setDmUnread(0);
@@ -174,7 +188,7 @@ export function Taskbar({ page }: { page: string }) {
             const prev = dmAlertedRef.current[c.partner] || "";
             if ((c.unread || 0) > 0 && c.lastAt && c.lastAt > prev) {
               dmAlertedRef.current[c.partner] = c.lastAt;
-              if (!dmsOpen || tabHidden) {
+              if ((!dmsOpen || tabHidden) && notificationPrefsRef.current.push.directMessages !== false) {
                 pushToast({ title: `${c.partner} sent you a message`, body: c.lastBody || "", kind: "dm" });
                 showBrowserNotification(`New message from ${c.partner}`, c.lastBody || "", { tag: `dm:${c.partner}` });
               }
@@ -208,16 +222,22 @@ export function Taskbar({ page }: { page: string }) {
           chatFirstLoadRef.current = false;
         } else {
           const mentionRe = new RegExp(`(^|\\W)@${user.username.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\\\$&')}\\b`, 'i');
-          const fresh = ch.filter(m =>
+          const freshMentions = ch.filter(m =>
             m.id > chatMentionMaxIdRef.current &&
             m.author !== user.username &&
             mentionRe.test(m.body || ""),
           );
-          if (fresh.length > 0) chatMentionMaxIdRef.current = Math.max(chatMentionMaxIdRef.current, ...fresh.map(m => m.id));
+          const chatMode = notificationPrefsRef.current.push.chat;
+          const fresh = chatMode === "all"
+            ? ch.filter(m => m.id > chatMentionMaxIdRef.current && m.author !== user.username)
+            : chatMode === "mentions" ? freshMentions : [];
+          chatMentionMaxIdRef.current = Math.max(chatMentionMaxIdRef.current, newest);
           if (!chatOpen || tabHidden2) {
             for (const m of fresh) {
-              pushToast({ title: `${m.author} mentioned you`, body: m.body || "", kind: "info" });
-              showBrowserNotification(`${m.author} mentioned you in chat`, m.body || "", { tag: `chat-mention:${m.author}` });
+              const mention = mentionRe.test(m.body || "");
+              const title = mention ? `${m.author} mentioned you in chat` : `${m.author} posted in chat`;
+              pushToast({ title: mention ? `${m.author} mentioned you` : `${m.author} posted in chat`, body: m.body || "", kind: "info" });
+              showBrowserNotification(title, m.body || "", { tag: `chat-mention:${m.author}` });
             }
           }
         }
@@ -235,7 +255,7 @@ export function Taskbar({ page }: { page: string }) {
             .filter((post) => post.id > newsMaxIdRef.current && post.author !== user.username)
             .sort((a, b) => a.id - b.id);
           newsMaxIdRef.current = Math.max(newsMaxIdRef.current, newest);
-          if (!newsOpen || hidden) {
+          if ((!newsOpen || hidden) && notificationPrefsRef.current.push.siteNews !== false) {
             for (const post of fresh) {
               const summary = post.title || post.body.replace(/\s+/g, " ").trim().slice(0, 160) || "A new announcement was posted.";
               pushToast({ title: "New site news", body: summary, kind: "info" });

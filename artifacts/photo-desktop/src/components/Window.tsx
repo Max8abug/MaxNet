@@ -350,8 +350,8 @@ export function Window({
         {w.type === 'pvz' && !isEditing && <PortedGame game="pvz" />}
         {w.type === 'webfishing' && !isEditing && <PortedGame game="webfishing" />}
         {w.type === 'undertale' && !isEditing && <PortedGame game="undertale" />}
-        {w.type === 'portedgame' && w.gameId && !isEditing && <PortedGame game={w.gameId} />}
-        {w.type === 'gameportreview' && !isEditing && <GamePortReview />}
+        {w.type === 'portedgame' && w.gameId && !isEditing && <PortedGame game={w.gameId} adminPreview={w.gamePreview} />}
+        {w.type === 'gameportreview' && !isEditing && <GamePortReview page={page} />}
         {w.type === 'dms' && !isEditing && <DMs initialPeer={w.dmPeer} />}
         {w.type === 'userpage' && !isEditing && <UserPage username={w.username || ''} />}
         {w.type === 'browser' && !isEditing && <UserBrowser page={page} />}

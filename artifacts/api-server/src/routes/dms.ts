@@ -119,6 +119,7 @@ router.post("/dms/groups/:id", requireAuth, async (req, res) => {
   for (const member of access.members) {
     if (member !== me) void sendPushToUser(member, {
       title: `${me} in ${access.group.name}`, body: body.slice(0, 140), tag: `dm-group:${id}`, url: "/",
+      kind: "dm",
     }).catch(() => {});
   }
   res.json(row);

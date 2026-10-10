@@ -48,6 +48,7 @@ API_KEY_SETTINGS = (
     ("YouTube Data API Key", "YOUTUBE_DATA_API_KEY"),
     ("Resend API Key", "RESEND_API_KEY"),
     ("Resend From Address", "RESEND_FROM_EMAIL"),
+    ("Public Site URL (HTTPS)", "PUBLIC_SITE_URL"),
 )
 
 RUN_DIR.mkdir(exist_ok=True)

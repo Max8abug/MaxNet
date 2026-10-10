@@ -29,6 +29,7 @@ export interface WindowData {
   // for dms: if set, the DMs panel will open the conversation with this user
   dmPeer?: string;
   gameId?: NewGamePortId;
+  gamePreview?: boolean;
 }
 
 export interface StringConnection {

@@ -79,6 +79,7 @@ function categoryEnabled(prefs: any, channel: "push" | "email", kind?: string): 
   if (!category) return true;
   const value = prefs?.[channel]?.[category];
   if (category === "chat") {
+    if (value === undefined) return kind === "chat-mention";
     if (value === "off") return false;
     if (value === "mentions") return kind === "chat-mention";
     if (value === "all") return kind === "chat-message";
@@ -177,17 +178,22 @@ export async function sendPushToUser(
     logger.error({ err: e, username }, "Failed to load native push tokens");
   }
   const vapid = await ensureVapid();
-  if (!vapid) return;
-  try {
-    const subs = await db.select().from(pushSubscriptionsTable).where(eq(pushSubscriptionsTable.username, username));
-    await sendPushToSubscriptions(subs, payload);
-  } catch (e) {
-    logger.error({ err: e, username }, "Failed to load push subscriptions");
+  if (vapid) {
+    try {
+      const subs = await db.select().from(pushSubscriptionsTable).where(eq(pushSubscriptionsTable.username, username));
+      await sendPushToSubscriptions(subs, payload);
+    } catch (e) {
+      logger.error({ err: e, username }, "Failed to load push subscriptions");
+    }
   }
   }
   if (user?.email && user.emailVerifiedAt && categoryEnabled(prefs, "email", payload.kind)) {
     const safe = (value: string) => value.replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[char]!));
-    await sendResendEmail(user.email, payload.title, `<p>${safe(payload.body)}</p><p><a href="${safe(payload.url || "/")}">Open Portfolio 98</a></p><p>Manage these emails in Settings → Notifications.</p>`);
+    const base = process.env.PUBLIC_SITE_URL?.replace(/\/+$/, "");
+    const path = payload.url?.startsWith("/") && !payload.url.startsWith("//") ? payload.url : "/";
+    const destination = base ? new URL(path, base).toString() : "";
+    const link = destination ? `<p><a href="${safe(destination)}">Open Portfolio 98</a></p>` : "";
+    await sendResendEmail(user.email, payload.title, `<p>${safe(payload.body)}</p>${link}<p>Manage these emails in Settings → Notifications.</p>`);
   }
 }
 

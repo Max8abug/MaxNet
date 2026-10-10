@@ -43,6 +43,12 @@ router.put("/push/preferences", requireAuth, async (req, res) => {
 });
 
 router.post("/push/email", requireAuth, async (req, res) => {
+  const senderConfigured = process.env.RESEND_API_KEY && process.env.RESEND_FROM_EMAIL;
+  const publicSiteUrl = process.env.PUBLIC_SITE_URL?.replace(/\/+$/, "");
+  if (!senderConfigured || !publicSiteUrl) {
+    res.status(503).json({ error: "Configure Resend API key, verified sender address, and HTTPS public site URL in the launcher first." });
+    return;
+  }
   const email = typeof req.body?.email === "string" ? req.body.email.trim().toLowerCase() : "";
   if (email.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
     res.status(400).json({ error: "Enter a valid email address." });
@@ -54,9 +60,17 @@ router.post("/push/email", requireAuth, async (req, res) => {
   await db.update(usersTable).set({
     email, emailVerifiedAt: null, emailVerificationHash: hash, emailVerificationExpiresAt: expiry,
   }).where(eq(usersTable.username, req.session.username!));
-  const proto = String(req.headers["x-forwarded-proto"] || req.protocol).split(",")[0]!.trim();
-  const host = String(req.headers["x-forwarded-host"] || req.get("host") || "");
-  const link = `${proto}://${host}/api/push/email/verify?token=${token}`;
+  let origin: URL;
+  try {
+    origin = new URL(publicSiteUrl);
+    if (origin.protocol !== "https:") throw new Error("HTTPS required");
+  } catch {
+    res.status(503).json({ error: "PUBLIC_SITE_URL must be a valid HTTPS URL." });
+    return;
+  }
+  const linkUrl = new URL("/api/push/email/verify", origin);
+  linkUrl.searchParams.set("token", token);
+  const link = linkUrl.toString();
   const delivered = await sendResendEmail(email, "Verify your Portfolio 98 email", `<p>Click to verify this address for notifications:</p><p><a href="${link}">Verify email</a></p><p>This link expires in 30 minutes.</p>`);
   if (!delivered) {
     res.status(503).json({ error: "Email could not be sent. Configure RESEND_API_KEY and RESEND_FROM_EMAIL in the launcher first." });

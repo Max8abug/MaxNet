@@ -3,9 +3,11 @@ import { ExternalLink } from "lucide-react";
 import { useAuth } from "../lib/auth-store";
 import { fetchPortedGameApprovals, setPortedGameApproved } from "../lib/api";
 import { NEW_GAME_PORTS } from "../lib/game-ports";
+import { useDesktopStore } from "../store";
 
-export function GamePortReview() {
+export function GamePortReview({ page }: { page: string }) {
   const user = useAuth(state => state.user);
+  const addWindow = useDesktopStore(state => state.addWindow);
   const [approved, setApproved] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -80,6 +82,17 @@ export function GamePortReview() {
                 href={port.repository} target="_blank" rel="noopener noreferrer" aria-label={`View ${port.title} source`}>
                 <ExternalLink className="h-3 w-3" aria-hidden="true" /> Source
               </a>
+              {!isApproved && <button type="button" className="win98-button shrink-0 px-2 py-1 text-[10px]"
+                disabled={loading || busyId !== null} onClick={() => addWindow(page, {
+                  type: "portedgame",
+                  title: `Admin test: ${port.title}`,
+                  gameId: port.id,
+                  gamePreview: true,
+                  width: 800,
+                  height: 600,
+                })}>
+                Test
+              </button>}
               <button type="button" className="win98-button shrink-0 px-2 py-1 text-[10px]"
                 disabled={loading || busyId !== null} onClick={() => void toggle(port.id, port.title)}>
                 {busyId === port.id ? "Saving…" : isApproved ? "Hide" : "Approve"}
