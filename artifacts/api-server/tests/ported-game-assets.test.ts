@@ -27,6 +27,7 @@ const baseUrl = `http://127.0.0.1:${address.port}`;
 try {
   await mkdir(path.join(assetDirectory, "pvz"), { recursive: true });
   await mkdir(path.join(assetDirectory, "deltarune"), { recursive: true });
+  await mkdir(path.join(assetDirectory, "hill-climb-racing"), { recursive: true });
   await writeFile(
     path.join(assetDirectory, "asset-manifest.json"),
     JSON.stringify({ version: 1, games: { pvz: { installed: true } } }),
@@ -39,6 +40,8 @@ try {
     path.join(assetDirectory, "deltarune", "index.html"),
     '<!doctype html><html><head><title>DELTARUNE</title><script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script></head></html>',
   );
+  await writeFile(path.join(assetDirectory, "hill-climb-racing", "hcr.wasm.part1"), Buffer.from([0, 1, 2]));
+  await writeFile(path.join(assetDirectory, "hill-climb-racing", "hcr.wasm.part2"), Buffer.from([3, 4]));
 
   assert.equal(
     shouldServePortedGameRequest(
@@ -97,6 +100,12 @@ try {
   assert.match(deltaruneCsp, /https:\/\/cdnjs\.cloudflare\.com/);
   assert.match(deltaruneCsp, /https:\/\/mrdoob\.github\.io/);
   assert.doesNotMatch(deltaruneCsp, /allow-same-origin/);
+
+  response = await fetch(`${baseUrl}/ported-games/hill-climb-racing/hcr.wasm`);
+  assert.equal(response.status, 200);
+  assert.equal(response.headers.get("content-type"), "application/wasm");
+  assert.equal(response.headers.get("content-length"), "5");
+  assert.deepEqual(Buffer.from(await response.arrayBuffer()), Buffer.from([0, 1, 2, 3, 4]));
 
   response = await fetch(`${baseUrl}/ported-games/missing/index.html`);
   assert.equal(response.status, 404);

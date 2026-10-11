@@ -72,8 +72,12 @@ export function PortedGame({ game, adminPreview = false }: { game: PortedGameId;
   const [assetStatus, setAssetStatus] = useState<AssetStatus>("checking");
   const [entryFile, setEntryFile] = useState("index.html");
   const [diagnostic, setDiagnostic] = useState<GameDiagnostic | null>(null);
+  const [approvalState, setApprovalState] = useState<{ game: PortedGameId; approved: boolean } | null>(null);
+  const [showApprovedErrors, setShowApprovedErrors] = useState(false);
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const port = PORTS[game];
+  const approvedPort = approvalState?.game === game && approvalState.approved;
+  const showDiagnostic = !!diagnostic && (!approvedPort || (!!user?.isAdmin && showApprovedErrors));
   const gameOrigin = window.location.origin;
   const gameAssetsPath = `${gameOrigin}/ported-games`;
   const gameUrl = `${gameAssetsPath}/${port.assetId}/${entryFile}`;
@@ -81,10 +85,15 @@ export function PortedGame({ game, adminPreview = false }: { game: PortedGameId;
   useEffect(() => {
     const controller = new AbortController();
     const isNewPort = NEW_GAME_PORTS.some(port => port.id === game);
+    setApprovalState({ game, approved: false });
+    setShowApprovedErrors(false);
     setEntryFile("index.html");
     const checkApproval = isNewPort
-      ? fetchPortedGameApprovals().then(result =>
-          result.approvedGamePorts.includes(game) || (adminPreview && !!user?.isAdmin))
+      ? fetchPortedGameApprovals().then(result => {
+          const approved = result.approvedGamePorts.includes(game);
+          if (!controller.signal.aborted) setApprovalState({ game, approved });
+          return approved || (adminPreview && !!user?.isAdmin);
+        })
       : Promise.resolve(true);
     checkApproval
       .then(approved => {
@@ -183,6 +192,16 @@ export function PortedGame({ game, adminPreview = false }: { game: PortedGameId;
         >
           Source
         </a>
+        {approvedPort && user?.isAdmin && (
+          <button
+            type="button"
+            className="win98-button shrink-0 px-2 py-1 text-[10px]"
+            aria-pressed={showApprovedErrors}
+            onClick={() => setShowApprovedErrors(value => !value)}
+          >
+            {showApprovedErrors ? "Hide debug errors" : "Show debug errors"}
+          </button>
+        )}
       </div>
       {assetStatus === "checking" ? (
         <div className="flex min-h-0 flex-1 items-center justify-center p-6 text-center text-sm">
@@ -200,7 +219,7 @@ export function PortedGame({ game, adminPreview = false }: { game: PortedGameId;
             allowFullScreen
             referrerPolicy="no-referrer"
           />
-          {diagnostic && (
+          {showDiagnostic && diagnostic && (
             <div
               className="absolute inset-x-2 top-2 z-10 flex max-h-40 flex-col gap-1 overflow-auto rounded border border-amber-400 bg-[#221d11]/95 p-2 text-xs text-amber-50 shadow-lg"
               role="alert"

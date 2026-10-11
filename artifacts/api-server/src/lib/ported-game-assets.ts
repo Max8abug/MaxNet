@@ -1,6 +1,9 @@
 import express, { type Router } from "express";
-import { readFile } from "node:fs/promises";
+import { createReadStream } from "node:fs";
+import { readFile, readdir, stat } from "node:fs/promises";
 import path from "node:path";
+import { Readable } from "node:stream";
+import { pipeline } from "node:stream/promises";
 
 const GAME_CONTENT_SECURITY_POLICY = [
   "sandbox allow-forms allow-modals allow-pointer-lock allow-downloads allow-scripts",
@@ -109,13 +112,16 @@ const GAME_DIAGNOSTIC_BOOTSTRAP = `<script>
     } catch (_) {}
   }
   const originalFetch = window.fetch.bind(window);
-  window.fetch = (...args) => originalFetch(...args).then(response => {
-    if (!response.ok) report("request-error", "HTTP " + response.status + " for " + response.url);
-    return response;
-  }, error => {
-    report(isSecurityError(error) ? "permission-error" : "request-error", error?.message || error);
-    throw error;
-  });
+  window.fetch = (...args) => {
+    const requestedUrl = args[0]?.url || String(args[0] || "unknown request");
+    return originalFetch(...args).then(response => {
+      if (!response.ok) report("request-error", "HTTP " + response.status + " for " + response.url);
+      return response;
+    }, error => {
+      report(isSecurityError(error) ? "permission-error" : "request-error", requestedUrl + ": " + (error?.message || error));
+      throw error;
+    });
+  };
   const xhrOpen = XMLHttpRequest.prototype.open;
   const xhrSend = XMLHttpRequest.prototype.send;
   XMLHttpRequest.prototype.open = function(method, url, ...args) {
@@ -178,6 +184,66 @@ export function createPortedGameAssetsRouter(assetDirectory: string): Router {
       return response.type("html").send(instrumentGameHtml(html));
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === "ENOENT") return next();
+      return next(error);
+    }
+  });
+
+  router.use("/ported-games/hill-climb-racing", async (request, response, next) => {
+    const assetName = request.path.replace(/^\/+/, "");
+    if (
+      !["hcr.wasm", "hcr.data", "image.bin"].includes(assetName) ||
+      (request.method !== "GET" && request.method !== "HEAD")
+    ) return next();
+
+    const gameDirectory = path.join(resolvedAssetDirectory, "hill-climb-racing");
+    const assembledFile = path.join(gameDirectory, assetName);
+    try {
+      await stat(assembledFile);
+      return next();
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") return next(error);
+    }
+
+    try {
+      const partPattern = new RegExp(`^${assetName.replace(".", "\\.")}\\.part(\\d+)$`);
+      const partNumbers = (await readdir(gameDirectory))
+        .map(name => ({ name, match: partPattern.exec(name) }))
+        .filter((entry): entry is { name: string; match: RegExpExecArray } => entry.match !== null)
+        .map(entry => ({ name: entry.name, number: Number(entry.match[1]) }))
+        .sort((left, right) => left.number - right.number);
+      if (partNumbers.length === 0) return next();
+
+      for (let index = 0; index < partNumbers.length; index += 1) {
+        if (partNumbers[index].number !== index + 1) {
+          return response.status(503).type("text/plain").send(
+            `Incomplete Hill Climb Racing asset ${assetName}: missing chunk ${index + 1}`,
+          );
+        }
+      }
+
+      const parts = partNumbers.map(part => path.join(gameDirectory, part.name));
+      const sizes = await Promise.all(parts.map(async file => (await stat(file)).size));
+      response.status(200);
+      response.setHeader(
+        "Content-Type",
+        assetName === "hcr.wasm" ? "application/wasm" : "application/octet-stream",
+      );
+      response.setHeader("Content-Length", String(sizes.reduce((sum, size) => sum + size, 0)));
+      response.setHeader("Access-Control-Allow-Origin", "*");
+      response.setHeader("X-Content-Type-Options", "nosniff");
+      response.setHeader("Cache-Control", "public, max-age=3600");
+      if (request.method === "HEAD") return response.end();
+
+      const joinedParts = Readable.from((async function* () {
+        for (const file of parts) {
+          for await (const chunk of createReadStream(file)) yield chunk;
+        }
+      })());
+      await pipeline(joinedParts, response);
+      return;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") return next();
+      if (response.headersSent) return response.destroy(error as Error);
       return next(error);
     }
   });
