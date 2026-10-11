@@ -22,6 +22,7 @@ import { NewClubPenguin } from './NewClubPenguin';
 import { TerrariaGame } from './TerrariaGame';
 import { PortedGame } from './PortedGame';
 import { GamePortReview } from './GamePortReview';
+import { GamesManager } from './GamesManager';
 import { DMs } from './DMs';
 import { UserPage } from './UserPage';
 import { RanksAdmin } from './RanksAdmin';
@@ -352,6 +353,7 @@ export function Window({
         {w.type === 'undertale' && !isEditing && <PortedGame game="undertale" />}
         {w.type === 'portedgame' && w.gameId && !isEditing && <PortedGame game={w.gameId} adminPreview={w.gamePreview} />}
         {w.type === 'gameportreview' && !isEditing && <GamePortReview page={page} />}
+        {w.type === 'gamesmanager' && !isEditing && <GamesManager page={page} />}
         {w.type === 'dms' && !isEditing && <DMs initialPeer={w.dmPeer} />}
         {w.type === 'userpage' && !isEditing && <UserPage username={w.username || ''} />}
         {w.type === 'browser' && !isEditing && <UserBrowser page={page} />}

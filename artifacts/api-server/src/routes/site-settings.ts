@@ -51,6 +51,46 @@ router.put("/site-settings/game-ports/:gameId", requireAdmin, async (req, res) =
   });
 });
 
+function cleanGamePortIcons(value: unknown): Record<string, string> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  return Object.fromEntries(Object.entries(value).filter(([key, url]) => {
+    if (!/^[a-z0-9-]{1,64}$/.test(key) || typeof url !== "string" || url.length > 2048) return false;
+    try { return new URL(url).protocol === "https:"; } catch { return false; }
+  }));
+}
+
+router.get("/site-settings/game-icons", async (_req, res) => {
+  const [row] = await db.select({ gamePortIcons: siteSettingsTable.gamePortIcons })
+    .from(siteSettingsTable).limit(1);
+  res.set("Cache-Control", "no-store").json({ gameIcons: cleanGamePortIcons(row?.gamePortIcons) });
+});
+
+router.put("/site-settings/game-icons", requireAdmin, async (req, res) => {
+  if (!req.body?.gameId || typeof req.body.gameId !== "string" ||
+      !/^[a-z0-9-]{1,64}$/.test(req.body.gameId) ||
+      (req.body.iconUrl !== null && typeof req.body.iconUrl !== "string")) {
+    res.status(400).json({ error: "Provide a valid game ID and HTTPS icon URL, or null to reset it." });
+    return;
+  }
+  const gameId = req.body.gameId as string;
+  const iconUrl = req.body.iconUrl as string | null;
+  if (iconUrl !== null && (iconUrl.length > 2048 || (() => {
+    try { return new URL(iconUrl).protocol !== "https:"; } catch { return true; }
+  })())) {
+    res.status(400).json({ error: "Game icons must use a valid HTTPS image URL." });
+    return;
+  }
+  const row = await ensureRow();
+  const current = siteSettingsTable.gamePortIcons;
+  const [updated] = await db.update(siteSettingsTable).set({
+    gamePortIcons: iconUrl
+      ? sql`jsonb_set(COALESCE(${current}, '{}'::jsonb), ARRAY[${gameId}], to_jsonb(${iconUrl}::text), true)`
+      : sql`${current} - ${gameId}`,
+    updatedAt: new Date(),
+  }).where(eq(siteSettingsTable.id, row.id)).returning({ gamePortIcons: current });
+  res.set("Cache-Control", "no-store").json({ gameIcons: cleanGamePortIcons(updated?.gamePortIcons) });
+});
+
 // This public polling route deliberately does not use ensureRow(): it must
 // neither load uploaded images nor create settings while serving a read.
 router.get("/site-settings/feature-archives", async (req, res) => {

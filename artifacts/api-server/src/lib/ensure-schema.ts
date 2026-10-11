@@ -424,6 +424,7 @@ export async function ensureSchema(): Promise<void> {
        username_blocked_phrases jsonb NOT NULL DEFAULT '[]'::jsonb,
        chat_blocked_phrases jsonb NOT NULL DEFAULT '[]'::jsonb,
        forum_blocked_phrases jsonb NOT NULL DEFAULT '[]'::jsonb,
+      game_port_icons jsonb NOT NULL DEFAULT '{}'::jsonb,
       updated_at timestamp NOT NULL DEFAULT now()
     );
     ALTER TABLE site_settings ADD COLUMN IF NOT EXISTS dark_logo_data_url text NOT NULL DEFAULT '';
@@ -436,6 +437,7 @@ export async function ensureSchema(): Promise<void> {
     ALTER TABLE site_settings ADD COLUMN IF NOT EXISTS custom_buttons jsonb NOT NULL DEFAULT '[]'::jsonb;
     ALTER TABLE site_settings ADD COLUMN IF NOT EXISTS archived_features jsonb NOT NULL DEFAULT '[]'::jsonb;
     ALTER TABLE site_settings ADD COLUMN IF NOT EXISTS game_port_approvals jsonb NOT NULL DEFAULT '[]'::jsonb;
+    ALTER TABLE site_settings ADD COLUMN IF NOT EXISTS game_port_icons jsonb NOT NULL DEFAULT '{}'::jsonb;
     ALTER TABLE site_settings ADD COLUMN IF NOT EXISTS username_blocked_phrases jsonb NOT NULL DEFAULT '[]'::jsonb;
     ALTER TABLE site_settings ADD COLUMN IF NOT EXISTS chat_blocked_phrases jsonb NOT NULL DEFAULT '[]'::jsonb;
     ALTER TABLE site_settings ADD COLUMN IF NOT EXISTS forum_blocked_phrases jsonb NOT NULL DEFAULT '[]'::jsonb;

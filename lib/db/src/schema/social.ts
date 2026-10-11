@@ -387,6 +387,7 @@ export const siteSettingsTable = pgTable("site_settings", {
   customButtons: jsonb("custom_buttons").notNull().default([]),
   archivedFeatures: jsonb("archived_features").notNull().default([]),
   gamePortApprovals: jsonb("game_port_approvals").notNull().default([]),
+  gamePortIcons: jsonb("game_port_icons").notNull().default({}),
   usernameBlockedPhrases: jsonb("username_blocked_phrases").notNull().default([]),
   chatBlockedPhrases: jsonb("chat_blocked_phrases").notNull().default([]),
   forumBlockedPhrases: jsonb("forum_blocked_phrases").notNull().default([]),

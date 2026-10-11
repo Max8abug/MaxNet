@@ -86,6 +86,7 @@ const APPS: AppDefinition[] = [
   { label: 'Geometry Dash', type: 'geometry', icon: Gamepad2, tone: 'bg-[#d8b760]', size: 'small' },
   { label: 'Poker', type: 'poker', icon: Hash, tone: 'bg-[#bc8fd2]', size: 'small' },
   { label: 'Eaglercraft', type: 'eaglercraft', icon: Gamepad2, tone: 'bg-[#7c9e8d]', size: 'small' },
+  { label: 'Games Manager', type: 'gamesmanager', icon: Gamepad2, tone: 'bg-[#557c68]', size: 'medium', subtitle: 'Launch games & manage icons' },
   { label: 'New Club Penguin', type: 'newcp', icon: Gamepad2, tone: 'bg-[#56a7e6]', size: 'small', subtitle: 'Browser game' },
   { label: 'Terraria', type: 'terraria', icon: Gamepad2, tone: 'bg-[#729374]', size: 'small', subtitle: 'WebAssembly game' },
   { label: 'Getting Over It', type: 'gettingoverit', icon: Gamepad2, tone: 'bg-[#a77855]', size: 'small', subtitle: 'Self-hosted game' },

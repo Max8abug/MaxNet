@@ -249,6 +249,18 @@ export async function setPortedGameApproved(gameId: string, approved: boolean): 
     body: JSON.stringify({ approved }),
   }));
 }
+
+export async function fetchGameIcons(): Promise<{ gameIcons: Record<string, string> }> {
+  return jsonOrThrow(await fetch(`${BASE}/site-settings/game-icons`, { cache: "no-store" }));
+}
+
+export async function setGameIcon(gameId: string, iconUrl: string | null): Promise<{ gameIcons: Record<string, string> }> {
+  return jsonOrThrow(await fetch(`${BASE}/site-settings/game-icons`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ gameId, iconUrl }),
+  }));
+}
 export async function fetchSiteSettings(): Promise<SiteSettings> {
   return jsonOrThrow(await fetch(`${BASE}/site-settings`, opts));
 }

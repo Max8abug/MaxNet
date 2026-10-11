@@ -347,6 +347,7 @@ export function Taskbar({ page }: { page: string }) {
   ];
 
   const gameItems: StartMenuItem[] = [
+    { label: "Games Manager", act: () => open({ type: 'gamesmanager', title: 'Games Manager', width: 760, height: 560 }) },
     { label: "Open Chess Lobbies", feature: 'chess', act: () => open({ type: 'chess', title: 'Chess', width: 600, height: 520 }) },
     { label: "Play Blackjack", feature: 'blackjack', act: () => open({ type: 'blackjack', title: 'Blackjack', width: 520, height: 480 }) },
     { label: "Play Flappy Bird", feature: 'flappy', act: () => open({ type: 'flappy', title: 'Flappy Bird', width: 560, height: 540 }) },
