@@ -38,6 +38,7 @@ export function GamesManager({ page }: { page: string }) {
   const [draft, setDraft] = useState("");
   const [uploadDataUrl, setUploadDataUrl] = useState("");
   const [uploadFileName, setUploadFileName] = useState("");
+  const [readingFile, setReadingFile] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState("");
 
@@ -73,12 +74,12 @@ export function GamesManager({ page }: { page: string }) {
     });
   };
 
-  const saveIcon = async (gameId: string, url: string | null) => {
+  const saveIcon = async (gameId: string, url: string | null, pngDataUrl = uploadDataUrl) => {
     setBusy(gameId);
     setError("");
     try {
-      const result = uploadDataUrl
-        ? await uploadGameIcon(gameId, uploadDataUrl)
+      const result = pngDataUrl
+        ? await uploadGameIcon(gameId, pngDataUrl)
         : await setGameIcon(gameId, url);
       setIcons(result.gameIcons);
       setBrokenIcons(current => {
@@ -97,8 +98,10 @@ export function GamesManager({ page }: { page: string }) {
 
   const selectIconFile = (file: File | undefined) => {
     setError("");
+    setReadingFile(false);
     setUploadDataUrl("");
     setUploadFileName("");
+    setDraft("");
     if (!file) return;
     if (file.type !== "image/png") {
       setError("Choose a PNG image.");
@@ -108,14 +111,19 @@ export function GamesManager({ page }: { page: string }) {
       setError("PNG icons must be 1 MB or smaller.");
       return;
     }
+    setReadingFile(true);
     const reader = new FileReader();
     reader.onload = () => {
       if (typeof reader.result === "string") {
         setUploadDataUrl(reader.result);
         setUploadFileName(file.name);
       } else setError("Could not read this image file.");
+      setReadingFile(false);
     };
-    reader.onerror = () => setError("Could not read this image file.");
+    reader.onerror = () => {
+      setError("Could not read this image file.");
+      setReadingFile(false);
+    };
     reader.readAsDataURL(file);
   };
 
@@ -170,7 +178,7 @@ export function GamesManager({ page }: { page: string }) {
                   : <><span className="h-1.5 w-1.5 rounded-full bg-emerald-400" /><span className="text-slate-300">Ready to play</span></>}
               </div>
             </div>
-            {user?.isAdmin && <button type="button" title={`Change ${game.title} icon`} className="absolute right-2 top-2 rounded-lg p-1.5 text-slate-300 opacity-0 transition hover:bg-[#3a555b] hover:text-white group-hover:opacity-100 focus:opacity-100" onClick={() => { setEditing(game.id); setDraft(icons[game.id] || ""); }}>
+            {user?.isAdmin && <button type="button" title={`Change ${game.title} icon`} className="absolute right-2 top-2 rounded-lg p-1.5 text-slate-300 opacity-0 transition hover:bg-[#3a555b] hover:text-white group-hover:opacity-100 focus:opacity-100" onClick={() => { setEditing(game.id); setDraft(icons[game.id]?.startsWith("https://") ? icons[game.id] : ""); setUploadDataUrl(""); setUploadFileName(""); setReadingFile(false); }}>
               <Pencil className="h-3.5 w-3.5" />
             </button>}
             <button type="button" className="shrink-0 rounded-lg bg-teal-800 px-3 py-2 text-xs font-bold text-white shadow-sm transition hover:bg-teal-700 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2" onClick={() => launch(game)}>
@@ -203,8 +211,8 @@ export function GamesManager({ page }: { page: string }) {
         <p className="mt-2 text-xs leading-relaxed text-slate-400">Leave both fields blank and choose Reset to restore the default artwork.</p>
         <div className="mt-5 flex justify-end gap-2">
           <button className="rounded-lg border border-[#496168] px-3 py-2 text-xs font-semibold text-slate-200 hover:bg-[#2c454c]" onClick={() => setEditing(null)}>Cancel</button>
-          <button className="rounded-lg bg-teal-700 px-3 py-2 text-xs font-semibold text-white hover:bg-teal-600 disabled:opacity-50" disabled={busy === editingGame.id || (!uploadDataUrl && !draft.trim())} onClick={() => void saveIcon(editingGame.id, draft.trim() || null)}>
-            {busy === editingGame.id ? "Saving…" : uploadDataUrl ? "Upload PNG" : draft.trim() ? <><Check className="mr-1 inline h-3.5 w-3.5" />Save link</> : "Reset icon"}
+          <button className="rounded-lg bg-teal-700 px-3 py-2 text-xs font-semibold text-white hover:bg-teal-600 disabled:opacity-50" disabled={busy === editingGame.id || readingFile} onClick={() => void saveIcon(editingGame.id, draft.trim() || null, draft.trim() ? "" : uploadDataUrl)}>
+            {busy === editingGame.id ? "Saving…" : readingFile ? "Reading PNG…" : uploadDataUrl ? "Upload PNG" : draft.trim() ? <><Check className="mr-1 inline h-3.5 w-3.5" />Save link</> : "Reset icon"}
           </button>
         </div>
       </div>
