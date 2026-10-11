@@ -171,7 +171,7 @@ GAMES = (
         "repo": "genizy/web-port",
         "commit": "a8bea5fd11f88e5a9192857f434e299c40efe7e6",
         "path": "tattletail",
-        "remote_base_href": "",
+        "remote_base_href": "https://cdn.jsdelivr.net/gh/genizy/web-port@main/tattletail/",
         "expected_files": 9,
         "expected_bytes": 70_170_858,
     },
@@ -180,7 +180,7 @@ GAMES = (
         "repo": "web-ports/tabs",
         "commit": "f03af105ef2a57a6a7c6ccf1831c95da3327c6f0",
         "path": "",
-        "remote_base_href": "",
+        "remote_base_href": "https://cdn.jsdelivr.net/gh/web-ports/tabs@main/",
         "expected_files": 153,
         "expected_bytes": 1_840_088_490,
     },
@@ -343,6 +343,52 @@ HILL_CLIMB_JSPI_CHECK_SANDBOX_SAFE = b"""const supported = 'Suspending' in WebAs
     });
   }"""
 
+NIGHT_IN_THE_WOODS_CDN_ORIGINAL = b'const CDN = "https://cdn.jsdelivr.net/gh/Reeyuki/NightInTheWoods";'
+NIGHT_IN_THE_WOODS_CDN_SANDBOX_SAFE = b'const CDN = ".";'
+
+TABS_MERGE_FUNCTION_ORIGINAL = b"""async function mergeFiles(fileParts, cacheKey) {
+      const cache = await caches.open("tabs-cache");
+      const cachedResponse = await cache.match(cacheKey);
+      if (cachedResponse) {
+        const blob = await cachedResponse.blob();
+        return URL.createObjectURL(blob);
+      }
+      const buffers = await Promise.all(
+        fileParts.map(part => fetchWithProgress(part))
+      );
+      const mergedBlob = new Blob(buffers);
+      const response = new Response(mergedBlob);
+      await cache.put(cacheKey, response);
+      return URL.createObjectURL(mergedBlob);
+    }"""
+
+TABS_MERGE_FUNCTION_SANDBOX_SAFE = b"""async function mergeFiles(fileParts, cacheKey) {
+      let cache;
+      try {
+        cache = await caches.open("tabs-cache");
+        const cachedResponse = await cache.match(cacheKey);
+        if (cachedResponse) {
+          const blob = await cachedResponse.blob();
+          return URL.createObjectURL(blob);
+        }
+      } catch (error) {
+        console.warn("TABS cache unavailable; loading without persistent cache.", error);
+        cache = undefined;
+      }
+      const buffers = await Promise.all(
+        fileParts.map(part => fetchWithProgress(part))
+      );
+      const mergedBlob = new Blob(buffers);
+      if (cache) {
+        try {
+          await cache.put(cacheKey, new Response(mergedBlob));
+        } catch (error) {
+          console.warn("TABS cache write failed; continuing without cache.", error);
+        }
+      }
+      return URL.createObjectURL(mergedBlob);
+    }"""
+
 
 def run_git(repo_dir: Path, *arguments: str) -> str:
     environment = os.environ.copy()
@@ -452,6 +498,17 @@ def expected_local_bytes(game: dict) -> int:
         if game["id"] == "hill-climb-racing"
         else 0
     )
+    tabs_cache_patch_delta = (
+        len(TABS_MERGE_FUNCTION_SANDBOX_SAFE) - len(TABS_MERGE_FUNCTION_ORIGINAL)
+        if game["id"] == "tabs"
+        else 0
+    )
+    nitw_cdn_patch_delta = (
+        len(NIGHT_IN_THE_WOODS_CDN_SANDBOX_SAFE)
+        - len(NIGHT_IN_THE_WOODS_CDN_ORIGINAL)
+        if game["id"] == "night-in-the-woods"
+        else 0
+    )
     if game["remote_base_href"]:
         base_href_delta = (
             -len(game["remote_base_href"].encode("utf-8"))
@@ -467,6 +524,8 @@ def expected_local_bytes(game: dict) -> int:
         + cuphead_cache_patch_delta
         + class09_worker_patch_delta
         + hill_climb_jspi_patch_delta
+        + tabs_cache_patch_delta
+        + nitw_cdn_patch_delta
     )
 
 
@@ -474,6 +533,7 @@ def localize_base_href(game: dict, index_path: Path) -> None:
     if not game["remote_base_href"] and game["id"] not in {
         "ac-gamecube",
         "hill-climb-racing",
+        "night-in-the-woods",
     }:
         return
     content = index_path.read_bytes()
@@ -539,6 +599,18 @@ def localize_base_href(game: dict, index_path: Path) -> None:
             HILL_CLIMB_JSPI_CHECK_ORIGINAL,
             HILL_CLIMB_JSPI_CHECK_SANDBOX_SAFE,
             "Hill Climb Racing JSPI check",
+        )
+    if game["id"] == "tabs":
+        apply_patch(
+            TABS_MERGE_FUNCTION_ORIGINAL,
+            TABS_MERGE_FUNCTION_SANDBOX_SAFE,
+            "TABS CacheStorage merge function",
+        )
+    if game["id"] == "night-in-the-woods":
+        apply_patch(
+            NIGHT_IN_THE_WOODS_CDN_ORIGINAL,
+            NIGHT_IN_THE_WOODS_CDN_SANDBOX_SAFE,
+            "Night in the Woods CDN root",
         )
     index_path.write_bytes(localized)
 

@@ -191,6 +191,65 @@ class GamePortInventoryTests(unittest.TestCase):
             installer.expected_local_bytes(migration_game),
         )
 
+    def test_tabs_localizes_assets_and_loads_without_cache_storage(self):
+        game = next(game for game in installer.GAMES if game["id"] == "tabs")
+        source = (
+            b'<base href="'
+            + game["remote_base_href"].encode("ascii")
+            + b'">\n'
+            + installer.TABS_MERGE_FUNCTION_ORIGINAL
+        )
+        with tempfile.TemporaryDirectory() as temporary:
+            index_path = Path(temporary) / "index.html"
+            index_path.write_bytes(source)
+            installer.localize_base_href(game, index_path)
+            localized = index_path.read_bytes()
+
+        self.assertIn(b'<base href="./">', localized)
+        self.assertNotIn(game["remote_base_href"].encode("ascii"), localized)
+        self.assertNotIn(installer.TABS_MERGE_FUNCTION_ORIGINAL, localized)
+        self.assertIn(b"TABS cache unavailable", localized)
+        self.assertEqual(
+            len(localized) - len(source),
+            installer.expected_local_bytes(game) - game["expected_bytes"],
+        )
+
+    def test_tattletail_assets_are_served_from_the_self_hosted_path(self):
+        game = next(game for game in installer.GAMES if game["id"] == "tattletail")
+        source = (
+            b'<base href="'
+            + game["remote_base_href"].encode("ascii")
+            + b'">\n'
+            + b'<script src="Build/UnityLoader.js"></script>'
+        )
+        with tempfile.TemporaryDirectory() as temporary:
+            index_path = Path(temporary) / "index.html"
+            index_path.write_bytes(source)
+            installer.localize_base_href(game, index_path)
+            localized = index_path.read_bytes()
+
+        self.assertIn(b'<base href="./">', localized)
+        self.assertNotIn(game["remote_base_href"].encode("ascii"), localized)
+        self.assertEqual(
+            len(localized) - len(source),
+            installer.expected_local_bytes(game) - game["expected_bytes"],
+        )
+
+    def test_night_in_the_woods_loads_from_self_hosted_path(self):
+        game = next(game for game in installer.GAMES if game["id"] == "night-in-the-woods")
+        with tempfile.TemporaryDirectory() as temporary:
+            index_path = Path(temporary) / "index.html"
+            index_path.write_bytes(installer.NIGHT_IN_THE_WOODS_CDN_ORIGINAL)
+            installer.localize_base_href(game, index_path)
+            localized = index_path.read_bytes()
+
+        self.assertEqual(localized, installer.NIGHT_IN_THE_WOODS_CDN_SANDBOX_SAFE)
+        self.assertNotIn(b"cdn.jsdelivr.net", localized)
+        self.assertEqual(
+            len(localized) - len(installer.NIGHT_IN_THE_WOODS_CDN_ORIGINAL),
+            installer.expected_local_bytes(game) - game["expected_bytes"],
+        )
+
     def test_localizer_skips_games_with_relative_asset_paths(self):
         game = next(game for game in installer.GAMES if game["id"] == "among-us")
         with tempfile.TemporaryDirectory() as temporary:
