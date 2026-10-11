@@ -95,6 +95,60 @@ export const NEW_GAME_PORTS = [
     assetId: "web-balatro",
     repository: "https://github.com/W0W53R/web-balatro",
   },
+  {
+    id: "chocolatedoom",
+    title: "Chocolate Doom",
+    assetId: "chocolate-doom",
+    repository: "https://github.com/midzer/chocolate-doom",
+  },
+  {
+    id: "ducklifeadventure",
+    title: "Duck Life Adventure",
+    assetId: "duck-life-adventure",
+    repository: "https://github.com/aukak/duck-life-adventure",
+  },
+  {
+    id: "duke3d",
+    title: "Belgian Chocolate Duke3D",
+    assetId: "belgian-chocolate-duke3d",
+    repository: "https://github.com/midzer/BelgianChocolateDuke3D",
+  },
+  {
+    id: "dumbways",
+    title: "Dumb Ways to Die",
+    assetId: "dumb-ways-to-die",
+    repository: "https://github.com/web-ports/dumb-ways-to-die",
+  },
+  {
+    id: "qwasm",
+    title: "Qwasm",
+    assetId: "qwasm",
+    repository: "https://github.com/GMH-Code/Qwasm",
+  },
+  {
+    id: "qwasm2",
+    title: "Qwasm 2",
+    assetId: "qwasm2",
+    repository: "https://github.com/GMH-Code/Qwasm2",
+  },
+  {
+    id: "quake3",
+    title: "Quake III Arena",
+    assetId: "quake3",
+    repository: "https://github.com/lrusso/Quake3",
+  },
+  {
+    id: "hitandrun",
+    title: "The Simpsons: Hit & Run",
+    assetId: "hit-and-run-web",
+    repository: "https://github.com/Vheissu/hit-and-run-web",
+  },
+  {
+    id: "wolf4sdl",
+    title: "Wolf4SDL",
+    assetId: "wolf4sdl",
+    repository: "https://github.com/midzer/wolf4sdl/tree/emscripten",
+  },
 ] as const;
 
 export type NewGamePortId = (typeof NEW_GAME_PORTS)[number]["id"];

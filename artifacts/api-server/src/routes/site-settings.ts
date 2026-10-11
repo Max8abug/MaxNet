@@ -16,7 +16,8 @@ const REVIEWABLE_GAME_PORT_IDS = new Set([
   "amongus", "acgamecube", "classof09", "cuphead", "deltatraveler", "deltarune",
   "gangbeasts", "hillclimb", "untitledgoose", "oneshot",
   "minesweeperplus", "nightinthewoods", "tattletail", "tabs", "daddygame",
-  "webbalatro",
+    "webbalatro", "chocolatedoom", "ducklifeadventure", "duke3d", "dumbways",
+    "qwasm", "qwasm2", "quake3", "hitandrun", "wolf4sdl",
 ]);
 
 function cleanGamePortApprovals(value: unknown): string[] {
