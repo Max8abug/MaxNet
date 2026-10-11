@@ -82,6 +82,23 @@ class GamePortInventoryTests(unittest.TestCase):
         game = next(game for game in installer.GAMES if game["id"] == "minesweeperplus")
         self.assertEqual(game["entry"], "MinesweeperPlus.html")
 
+    def test_animal_crossing_waits_for_rom_storage_or_falls_back_to_memory(self):
+        game = next(game for game in installer.GAMES if game["id"] == "ac-gamecube")
+        with tempfile.TemporaryDirectory() as temporary:
+            index_path = Path(temporary) / "index.html"
+            index_path.write_bytes(installer.AC_SYNC_BLOCK_ORIGINAL)
+            installer.localize_base_href(game, index_path)
+            localized = index_path.read_bytes()
+
+        self.assertNotIn(installer.AC_SYNC_BLOCK_ORIGINAL, localized)
+        self.assertIn(b"await new Promise(function(resolve)", localized)
+        self.assertIn(b"setTimeout(finish, 2000)", localized)
+        self.assertIn(b"setStartEnabled(!0)", localized)
+        self.assertEqual(
+            len(localized) - len(installer.AC_SYNC_BLOCK_ORIGINAL),
+            installer.expected_local_bytes(game) - game["expected_bytes"],
+        )
+
     def test_localizer_skips_games_with_relative_asset_paths(self):
         game = next(game for game in installer.GAMES if game["id"] == "among-us")
         with tempfile.TemporaryDirectory() as temporary:

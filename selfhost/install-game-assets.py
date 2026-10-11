@@ -249,6 +249,36 @@ PVZ_CACHE_FUNCTION_SANDBOX_SAFE = b"""    async function mergeFiles(fileParts, c
     }
 """
 
+AC_SYNC_BLOCK_ORIGINAL = b"""setRomStatus("Saving to browser storage\xe2\x80\xa6"), FS.syncfs(!1, (function(t) {
+\t\t\t\t\t\tif (t) {
+\t\t\t\t\t\t\tvar n = String(t && t.message || t);
+\t\t\t\t\t\t\treturn setRomStatus(n = /quota/i.test(n) ? "Browser storage is full. Clear site data for this page (Settings \xe2\x86\x92 Privacy \xe2\x86\x92 Clear site data) and try again. The compressed ROM is " + formatBytes(s.byteLength) + "." : "Persist failed: " + n, !0), setStartEnabled(!1), void console.error("[rom] FS.syncfs failed", t)
+\t\t\t\t\t\t}
+\t\t\t\t\t\tsetRomStatus("ROM ready: " + (e.name || "user-rom.iso") + " (" + formatBytes(s.byteLength) + ")", "ok"), setStartEnabled(!0)
+\t\t\t\t\t}))"""
+
+AC_SYNC_BLOCK_SANDBOX_SAFE = b"""setRomStatus("Saving to browser storage\xe2\x80\xa6");
+\t\t\t\t\tawait new Promise(function(resolve) {
+\t\t\t\t\t\tvar settled = false;
+\t\t\t\t\t\tvar timer = setTimeout(finish, 2000);
+\t\t\t\t\t\tfunction finish() {
+\t\t\t\t\t\t\tif (settled) return;
+\t\t\t\t\t\tsettled = true;
+\t\t\t\t\t\tclearTimeout(timer);
+\t\t\t\t\t\tresolve();
+\t\t\t\t\t\t}
+\t\t\t\t\t\ttry {
+\t\t\t\t\t\t\tFS.syncfs(!1, function(error) {
+\t\t\t\t\t\t\t\tif (error) console.warn("[rom] Browser storage unavailable; starting without persistence.", error);
+\t\t\t\t\t\t\t\tfinish();
+\t\t\t\t\t\t\t});
+\t\t\t\t\t\t} catch (error) {
+\t\t\t\t\t\t\tconsole.warn("[rom] Browser storage unavailable; starting without persistence.", error);
+\t\t\t\t\t\t\tfinish();
+\t\t\t\t\t\t}
+\t\t\t\t\t});
+\t\t\t\t\tsetRomStatus("ROM ready: " + (e.name || "user-rom.iso") + " (" + formatBytes(s.byteLength) + ")", "ok"), setStartEnabled(!0)"""
+
 
 def run_git(repo_dir: Path, *arguments: str) -> str:
     environment = os.environ.copy()
@@ -335,6 +365,11 @@ def expected_local_bytes(game: dict) -> int:
         if game["id"] == "pvz"
         else 0
     )
+    ac_storage_patch_delta = (
+        len(AC_SYNC_BLOCK_SANDBOX_SAFE) - len(AC_SYNC_BLOCK_ORIGINAL)
+        if game["id"] == "ac-gamecube"
+        else 0
+    )
     if game["remote_base_href"]:
         base_href_delta = (
             -len(game["remote_base_href"].encode("utf-8"))
@@ -342,28 +377,30 @@ def expected_local_bytes(game: dict) -> int:
         )
     else:
         base_href_delta = 0
-    return game["expected_bytes"] + base_href_delta + cache_patch_delta
+    return game["expected_bytes"] + base_href_delta + cache_patch_delta + ac_storage_patch_delta
 
 
 def localize_base_href(game: dict, index_path: Path) -> None:
-    if not game["remote_base_href"]:
+    if not game["remote_base_href"] and game["id"] != "ac-gamecube":
         return
     content = index_path.read_bytes()
-    pattern = re.compile(
-        rb'(<base\b[^>]*\bhref\s*=\s*)(["\'])'
-        + re.escape(game["remote_base_href"].encode("ascii"))
-        + rb'\2',
-        re.IGNORECASE,
-    )
-    localized, count = pattern.subn(
-        lambda match: match.group(1) + match.group(2) + b"./" + match.group(2),
-        content,
-        count=1,
-    )
-    if count != 1:
-        raise RuntimeError(
-            f"Expected the pinned CDN base URL in {game['id']}/index.html"
+    localized = content
+    if game["remote_base_href"]:
+        pattern = re.compile(
+            rb'(<base\b[^>]*\bhref\s*=\s*)(["\'])'
+            + re.escape(game["remote_base_href"].encode("ascii"))
+            + rb'\2',
+            re.IGNORECASE,
         )
+        localized, count = pattern.subn(
+            lambda match: match.group(1) + match.group(2) + b"./" + match.group(2),
+            localized,
+            count=1,
+        )
+        if count != 1:
+            raise RuntimeError(
+                f"Expected the pinned CDN base URL in {game['id']}/index.html"
+            )
     if game["id"] == "pvz":
         cache_count = localized.count(PVZ_CACHE_FUNCTION_ORIGINAL)
         if cache_count != 1:
@@ -373,6 +410,17 @@ def localize_base_href(game: dict, index_path: Path) -> None:
         localized = localized.replace(
             PVZ_CACHE_FUNCTION_ORIGINAL,
             PVZ_CACHE_FUNCTION_SANDBOX_SAFE,
+            1,
+        )
+    if game["id"] == "ac-gamecube":
+        sync_count = localized.count(AC_SYNC_BLOCK_ORIGINAL)
+        if sync_count != 1:
+            raise RuntimeError(
+                "Expected the pinned Animal Crossing ROM storage callback in index.html"
+            )
+        localized = localized.replace(
+            AC_SYNC_BLOCK_ORIGINAL,
+            AC_SYNC_BLOCK_SANDBOX_SAFE,
             1,
         )
     index_path.write_bytes(localized)
