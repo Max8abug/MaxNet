@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import concurrent.futures
 import hashlib
+import io
 import json
 import os
 import re
@@ -17,6 +18,7 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
+import zipfile
 from pathlib import Path, PurePosixPath
 
 
@@ -26,6 +28,22 @@ MANIFEST_PATH = ASSET_ROOT / "asset-manifest.json"
 USER_AGENT = "Portfolio98-selfhost-game-assets/1.0"
 MAX_TOTAL_BYTES = 10_600_000_000
 MAX_WORKERS = 6
+RUFFLE_VERSION = "0.7.1"
+RUFFLE_ARCHIVE_URL = (
+    "https://github.com/ruffle-rs/ruffle/releases/download/v0.7.1/"
+    "ruffle-0.7.1-web-selfhosted.zip"
+)
+RUFFLE_ARCHIVE_SHA256 = "ef12edbee135d581a9cd523837d746da30a07a64dbf1cf472d2e472c656f4b5e"
+RUFFLE_FILES = {
+    "LICENSE_MIT": 1_097,
+    "LICENSE_APACHE": 9_723,
+    "ruffle.js": 465_885,
+    "core.ruffle.16d61072ac7fdc4d5013.js": 108_322,
+    "core.ruffle.994eeef0a471a88cd0e3.js": 114_743,
+    "172de42e6619eac8f371.wasm": 14_302_754,
+    "878d548199cddef07035.wasm": 14_227_884,
+}
+RUFFLE_BYTES = sum(RUFFLE_FILES.values())
 
 # Only the requested game subfolders are fetched. Commits are pinned so a normal
 # site update cannot silently change the game files or expand the download.
@@ -231,6 +249,17 @@ GAMES = (
         "expected_bytes": 1_228_679_250,
         "entry": "index.html",
         "build_vite_site": True,
+    },
+    {
+        "id": "dumb-ways-to-die",
+        "repo": "web-ports/dumb-ways-to-die",
+        "commit": "0a96f33195c8a19a023342162da8302ef9735b18",
+        "path": "",
+        "remote_base_href": "https://cdn.jsdelivr.net/gh/web-ports/dumb-ways-to-die@main/",
+        "expected_files": 3,
+        "expected_bytes": 25_836_728,
+        "entry": "index.html",
+        "ruffle": True,
     },
 )
 
@@ -597,6 +626,17 @@ def expected_local_bytes(game: dict) -> int:
     return (
         game["expected_bytes"]
         + base_href_delta
+        + (
+            -len(b"https://cdn.jsdelivr.net/gh/u-cvlassrom-y/google@main/ruffle.js")
+            + len(b"./ruffle/ruffle.js")
+            + 2 * (
+                -len(b"https://cdn.jsdelivr.net/gh/web-ports/dumb-ways-to-die@main/data/main.swf")
+                + len(b"./data/main.swf")
+            )
+            + RUFFLE_BYTES
+            if game.get("ruffle")
+            else 0
+        )
         + cache_patch_delta
         + ac_storage_patch_delta
         + cuphead_cache_patch_delta
@@ -608,6 +648,42 @@ def expected_local_bytes(game: dict) -> int:
         + nitw_cdn_patch_delta
         + tattletail_data_url_patch_delta
     )
+
+
+def expected_local_files(game: dict) -> int:
+    return game["expected_files"] + (len(RUFFLE_FILES) if game.get("ruffle") else 0)
+
+
+def install_ruffle_assets(staging: Path) -> None:
+    request = urllib.request.Request(
+        RUFFLE_ARCHIVE_URL,
+        headers={"User-Agent": USER_AGENT},
+    )
+    with urllib.request.urlopen(request, timeout=120) as response:
+        archive_bytes = response.read()
+    if hashlib.sha256(archive_bytes).hexdigest() != RUFFLE_ARCHIVE_SHA256:
+        raise RuntimeError("Pinned Ruffle archive failed its SHA-256 check")
+
+    ruffle_dir = staging / "ruffle"
+    ruffle_dir.mkdir(parents=True, exist_ok=True)
+    found: set[str] = set()
+    try:
+        with zipfile.ZipFile(io.BytesIO(archive_bytes)) as archive:
+            for info in archive.infolist():
+                filename = PurePosixPath(info.filename).name
+                if filename not in RUFFLE_FILES:
+                    continue
+                if info.is_dir() or filename in found:
+                    raise RuntimeError(f"Unexpected duplicate Ruffle asset: {filename}")
+                content = archive.read(info)
+                if len(content) != RUFFLE_FILES[filename]:
+                    raise RuntimeError(f"Ruffle asset size check failed: {filename}")
+                (ruffle_dir / filename).write_bytes(content)
+                found.add(filename)
+    except zipfile.BadZipFile as error:
+        raise RuntimeError("Pinned Ruffle archive is not a valid ZIP file") from error
+    if found != set(RUFFLE_FILES):
+        raise RuntimeError("Pinned Ruffle archive is missing required web runtime files")
 
 
 def localize_base_href(game: dict, index_path: Path) -> None:
@@ -657,6 +733,17 @@ def localize_base_href(game: dict, index_path: Path) -> None:
             PVZ_CACHE_FUNCTION_SANDBOX_SAFE,
             "CacheStorage mergeFiles function",
         )
+    if game.get("ruffle"):
+        apply_patch(
+            b"https://cdn.jsdelivr.net/gh/u-cvlassrom-y/google@main/ruffle.js",
+            b"./ruffle/ruffle.js",
+            "Dumb Ways to Die Ruffle runtime",
+        )
+        swf_url = b"https://cdn.jsdelivr.net/gh/web-ports/dumb-ways-to-die@main/data/main.swf"
+        if localized.count(swf_url) == 2:
+            localized = localized.replace(swf_url, b"./data/main.swf")
+        elif localized.count(b"./data/main.swf") != 2:
+            raise RuntimeError("Expected both Dumb Ways to Die SWF references")
     if game["id"] == "ac-gamecube":
         apply_patch(
             AC_SYNC_BLOCK_ORIGINAL,
@@ -809,19 +896,19 @@ def game_is_installed(game: dict, files: list[dict], previous: dict) -> bool:
         return bool(installed_files) and recorded.get("files") == len(installed_files) and recorded.get("bytes") == actual_bytes and (game_root / "index.html").is_file()
     if (
         recorded.get("commit") != game["commit"]
-        or recorded.get("files") != game["expected_files"]
+        or recorded.get("files") != expected_local_files(game)
         or recorded.get("bytes") != expected_local_bytes(game)
     ):
         return False
 
     game_root = ASSET_ROOT / game["id"]
-    actual_bytes = 0
     for item in files:
         target = game_root.joinpath(*PurePosixPath(item["path"]).parts)
         if not target.is_file() or target.is_symlink():
             return False
-        actual_bytes += target.stat().st_size
-    return len(files) == game["expected_files"] and actual_bytes == expected_local_bytes(game)
+    installed_files = [path for path in game_root.rglob("*") if path.is_file()]
+    actual_bytes = sum(path.stat().st_size for path in installed_files)
+    return len(installed_files) == expected_local_files(game) and actual_bytes == expected_local_bytes(game)
 
 
 def migrate_installed_game(
@@ -923,13 +1010,15 @@ def install_game(game: dict, files: list[dict]) -> None:
             index_path.write_bytes(html)
         elif (staging / "index.html").is_file():
             localize_base_href(game, staging / "index.html")
+        if game.get("ruffle"):
+            install_ruffle_assets(staging)
         installed_files = [path for path in staging.rglob("*") if path.is_file()]
         installed_bytes = sum(path.stat().st_size for path in installed_files)
         if game.get("build_vite_site"):
             if not installed_files or not (staging / "index.html").is_file() or installed_bytes > game["expected_bytes"]:
                 raise RuntimeError(f"Built files for {game['id']} failed validation")
         elif (
-            len(installed_files) != game["expected_files"]
+            len(installed_files) != expected_local_files(game)
             or installed_bytes != expected_local_bytes(game)
         ):
             raise RuntimeError(
@@ -958,7 +1047,7 @@ def write_manifest(games: list[dict]) -> None:
             game["id"]: {
                 "installed": True,
                 "commit": game["commit"],
-                "files": sum(1 for path in (ASSET_ROOT / game["id"]).rglob("*") if path.is_file()) if game.get("build_vite_site") else game["expected_files"],
+                "files": sum(1 for path in (ASSET_ROOT / game["id"]).rglob("*") if path.is_file()) if game.get("build_vite_site") else expected_local_files(game),
                 "bytes": sum(path.stat().st_size for path in (ASSET_ROOT / game["id"]).rglob("*") if path.is_file()) if game.get("build_vite_site") else expected_local_bytes(game),
                 "entry": game.get("entry", "index.html"),
             }
@@ -991,7 +1080,9 @@ def main() -> int:
         for game in GAMES:
             files = source_tree(game)
             game["_files"] = files
-            game_bytes = game["expected_bytes"]
+            game_bytes = game["expected_bytes"] + (
+                RUFFLE_BYTES if game.get("ruffle") else 0
+            )
             total_bytes += game_bytes
             prepared.append(game)
             print(

@@ -51,6 +51,24 @@ class PvzSandboxCompatibilityTests(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, "CacheStorage mergeFiles"):
                 installer.localize_base_href(game, index_path)
 
+    def test_dumb_ways_localizes_flash_movie_and_ruffle_runtime(self):
+        game = next(game for game in installer.GAMES if game["id"] == "dumb-ways-to-die")
+        source = (
+            b'<base href="' + game["remote_base_href"].encode("ascii") + b'">'
+            b'<script src="https://cdn.jsdelivr.net/gh/u-cvlassrom-y/google@main/ruffle.js"></script>'
+            b'<param value="https://cdn.jsdelivr.net/gh/web-ports/dumb-ways-to-die@main/data/main.swf">'
+            b'<embed src="https://cdn.jsdelivr.net/gh/web-ports/dumb-ways-to-die@main/data/main.swf">'
+        )
+        with tempfile.TemporaryDirectory() as temporary:
+            index_path = Path(temporary) / "index.html"
+            index_path.write_bytes(source)
+            installer.localize_base_href(game, index_path)
+            localized = index_path.read_bytes()
+
+        self.assertIn(b'<base href="./">', localized)
+        self.assertIn(b'src="./ruffle/ruffle.js"', localized)
+        self.assertNotIn(b"cdn.jsdelivr.net", localized)
+
 class GamePortInventoryTests(unittest.TestCase):
     def test_new_ports_are_pinned_with_expected_sizes(self):
         expected = {
@@ -72,6 +90,7 @@ class GamePortInventoryTests(unittest.TestCase):
             "web-balatro": (21, 18_727_836),
             "quake3": (11, 50_937_513),
             "hit-and-run-web": (12_568, 1_228_679_250),
+            "dumb-ways-to-die": (3, 25_836_728),
         }
         games = {game["id"]: game for game in installer.GAMES}
         for game_id, (files, size) in expected.items():
@@ -89,6 +108,9 @@ class GamePortInventoryTests(unittest.TestCase):
         hit_and_run = next(game for game in installer.GAMES if game["id"] == "hit-and-run-web")
         self.assertTrue(hit_and_run["build_vite_site"])
         self.assertEqual(hit_and_run["entry"], "index.html")
+        dumb_ways = next(game for game in installer.GAMES if game["id"] == "dumb-ways-to-die")
+        self.assertEqual(installer.expected_local_files(dumb_ways), 10)
+        self.assertEqual(installer.expected_local_bytes(dumb_ways), 55_066_917)
 
     def test_animal_crossing_waits_for_rom_storage_or_falls_back_to_memory(self):
         game = next(game for game in installer.GAMES if game["id"] == "ac-gamecube")
