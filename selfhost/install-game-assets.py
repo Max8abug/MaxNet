@@ -326,6 +326,10 @@ CLASS09_SERVICE_WORKER_ORIGINAL = b"""navigator.serviceWorker && (navigator.serv
                 updateViaCache: "all"
             }))"""
 CLASS09_SERVICE_WORKER_SANDBOX_SAFE = b"""/* Offline service workers are unavailable in this sandbox; game files load directly. */"""
+CLASS09_RENPY_PRE_URL_ORIGINAL = b'https://cdn.jsdelivr.net/gh/genizy/web-port@725a19f20c3f376529284c9f86299581719e8d19/class-of-09/renpy-pre.js'
+CLASS09_RENPY_PRE_URL_SANDBOX_SAFE = b'./renpy-pre.js'
+CLASS09_RENPY_URL_ORIGINAL = b'https://cdn.jsdelivr.net/gh/genizy/web-port@725a19f20c3f376529284c9f86299581719e8d19/class-of-09/renpy.js'
+CLASS09_RENPY_URL_SANDBOX_SAFE = b'./renpy.js'
 
 HILL_CLIMB_JSPI_CHECK_ORIGINAL = b"""const supported = 'Suspending' in WebAssembly;
   if (!supported) status('This browser lacks WebAssembly JavaScript Promise Integration: use Chrome or Edge 137 or newer.');"""
@@ -342,6 +346,21 @@ HILL_CLIMB_JSPI_CHECK_SANDBOX_SAFE = b"""const supported = 'Suspending' in WebAs
       if (row.lastElementChild) row.lastElementChild.textContent = 'Not supported';
     });
   }"""
+HILL_CLIMB_STORAGE_SHIM_ORIGINAL = b"  // settings saved before the port's rename (saVsync, saProgs) carry over once"
+HILL_CLIMB_STORAGE_SHIM_SANDBOX_SAFE = b"""      const safeLocalStorage = (() => {
+        try {
+          const storage = window.localStorage;
+          return {
+            getItem: key => { try { return storage.getItem(key); } catch (_) { return null; } },
+            setItem: (key, value) => { try { storage.setItem(key, value); } catch (_) {} },
+            removeItem: key => { try { storage.removeItem(key); } catch (_) {} }
+          };
+        } catch (_) {
+          return { getItem: () => null, setItem: () => {}, removeItem: () => {} };
+        }
+      })();
+  // settings saved before the port's rename (saVsync, saProgs) carry over once"""
+HILL_CLIMB_STORAGE_REF_COUNT = 11
 
 NIGHT_IN_THE_WOODS_CDN_ORIGINAL = b'const CDN = "https://cdn.jsdelivr.net/gh/Reeyuki/NightInTheWoods";'
 NIGHT_IN_THE_WOODS_CDN_SANDBOX_SAFE = b'const CDN = ".";'
@@ -492,9 +511,25 @@ def expected_local_bytes(game: dict) -> int:
         if game["id"] == "class-of-09"
         else 0
     )
+    class09_runtime_patch_delta = (
+        len(CLASS09_RENPY_PRE_URL_SANDBOX_SAFE)
+        - len(CLASS09_RENPY_PRE_URL_ORIGINAL)
+        + len(CLASS09_RENPY_URL_SANDBOX_SAFE)
+        - len(CLASS09_RENPY_URL_ORIGINAL)
+        if game["id"] == "class-of-09"
+        else 0
+    )
     hill_climb_jspi_patch_delta = (
         len(HILL_CLIMB_JSPI_CHECK_SANDBOX_SAFE)
         - len(HILL_CLIMB_JSPI_CHECK_ORIGINAL)
+        if game["id"] == "hill-climb-racing"
+        else 0
+    )
+    hill_climb_storage_patch_delta = (
+        len(HILL_CLIMB_STORAGE_SHIM_SANDBOX_SAFE)
+        - len(HILL_CLIMB_STORAGE_SHIM_ORIGINAL)
+        + HILL_CLIMB_STORAGE_REF_COUNT
+        * (len(b"safeLocalStorage") - len(b"localStorage"))
         if game["id"] == "hill-climb-racing"
         else 0
     )
@@ -523,7 +558,9 @@ def expected_local_bytes(game: dict) -> int:
         + ac_storage_patch_delta
         + cuphead_cache_patch_delta
         + class09_worker_patch_delta
+        + class09_runtime_patch_delta
         + hill_climb_jspi_patch_delta
+        + hill_climb_storage_patch_delta
         + tabs_cache_patch_delta
         + nitw_cdn_patch_delta
     )
@@ -590,6 +627,16 @@ def localize_base_href(game: dict, index_path: Path) -> None:
         )
     if game["id"] == "class-of-09":
         apply_patch(
+            CLASS09_RENPY_PRE_URL_ORIGINAL,
+            CLASS09_RENPY_PRE_URL_SANDBOX_SAFE,
+            "Class of '09 Ren'Py preloader URL",
+        )
+        apply_patch(
+            CLASS09_RENPY_URL_ORIGINAL,
+            CLASS09_RENPY_URL_SANDBOX_SAFE,
+            "Class of '09 Ren'Py runtime URL",
+        )
+        apply_patch(
             CLASS09_SERVICE_WORKER_ORIGINAL,
             CLASS09_SERVICE_WORKER_SANDBOX_SAFE,
             "Class of '09 service worker registration",
@@ -599,6 +646,17 @@ def localize_base_href(game: dict, index_path: Path) -> None:
             HILL_CLIMB_JSPI_CHECK_ORIGINAL,
             HILL_CLIMB_JSPI_CHECK_SANDBOX_SAFE,
             "Hill Climb Racing JSPI check",
+        )
+        storage_count = localized.count(b"localStorage")
+        if storage_count != HILL_CLIMB_STORAGE_REF_COUNT:
+            raise RuntimeError(
+                f"Expected {HILL_CLIMB_STORAGE_REF_COUNT} localStorage references in Hill Climb Racing index.html"
+            )
+        localized = localized.replace(b"localStorage", b"safeLocalStorage")
+        apply_patch(
+            HILL_CLIMB_STORAGE_SHIM_ORIGINAL,
+            HILL_CLIMB_STORAGE_SHIM_SANDBOX_SAFE,
+            "Hill Climb Racing storage fallback",
         )
     if game["id"] == "tabs":
         apply_patch(

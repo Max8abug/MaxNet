@@ -79,7 +79,7 @@ export const NEW_GAME_PORTS = [
   },
   {
     id: "daddygame",
-    title: "Daddy Game",
+    title: "Who's Your Daddy?",
     assetId: "daddygame",
     repository: "https://github.com/Reeyuki/daddygame",
   },

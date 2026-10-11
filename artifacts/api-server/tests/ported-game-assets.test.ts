@@ -32,7 +32,7 @@ try {
   );
   await writeFile(
     path.join(assetDirectory, "pvz", "index.html"),
-    "<!doctype html><title>PVZ</title>",
+    "<!doctype html><html><head><title>PVZ</title></head><body></body></html>",
   );
 
   assert.equal(
@@ -74,10 +74,19 @@ try {
   const csp = response.headers.get("content-security-policy") ?? "";
   assert.match(csp, /sandbox allow-forms allow-modals allow-pointer-lock allow-downloads allow-scripts/);
   assert.doesNotMatch(csp, /allow-same-origin/);
+  const gameHtml = await response.text();
+  assert.match(gameHtml, /source: "ported-game-diagnostics"/);
+  assert.match(gameHtml, /unhandledrejection/);
+  assert.match(gameHtml, /securitypolicyviolation/);
+  assert.match(gameHtml, /window\.fetch =/);
+  assert.match(gameHtml, /<title>PVZ<\/title>/);
 
   response = await fetch(`${baseUrl}/ported-games/missing/index.html`);
   assert.equal(response.status, 404);
   assert.equal(await response.text(), "Game asset not found");
+
+  response = await fetch(`${baseUrl}/ported-games/%2e%2e/package.json`);
+  assert.equal(response.status, 404, "encoded traversal cannot escape the game asset directory");
 
   response = await fetch(`${baseUrl}/`);
   assert.equal(response.status, 200);

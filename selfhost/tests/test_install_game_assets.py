@@ -123,6 +123,11 @@ class GamePortInventoryTests(unittest.TestCase):
             b'<base href="'
             + game["remote_base_href"].encode("ascii")
             + b'">\n'
+            + b'renpypre.src = "'
+            + installer.CLASS09_RENPY_PRE_URL_ORIGINAL
+            + b'"; renpy.src = "'
+            + installer.CLASS09_RENPY_URL_ORIGINAL
+            + b'";\n'
             + installer.CLASS09_SERVICE_WORKER_ORIGINAL
         )
         with tempfile.TemporaryDirectory() as temporary:
@@ -133,18 +138,52 @@ class GamePortInventoryTests(unittest.TestCase):
 
         self.assertNotIn(installer.CLASS09_SERVICE_WORKER_ORIGINAL, localized)
         self.assertIn(b"Offline service workers are unavailable", localized)
+        self.assertIn(b'renpypre.src = "./renpy-pre.js"', localized)
+        self.assertIn(b'renpy.src = "./renpy.js"', localized)
+        self.assertNotIn(b"cdn.jsdelivr.net", localized)
 
     def test_hill_climb_explains_required_browser_feature(self):
         game = next(game for game in installer.GAMES if game["id"] == "hill-climb-racing")
+        source = (
+            installer.HILL_CLIMB_STORAGE_SHIM_ORIGINAL
+            + b"\n"
+            + b"localStorage.getItem('setting');\n" * installer.HILL_CLIMB_STORAGE_REF_COUNT
+            + installer.HILL_CLIMB_JSPI_CHECK_ORIGINAL
+        )
         with tempfile.TemporaryDirectory() as temporary:
             index_path = Path(temporary) / "index.html"
-            index_path.write_bytes(installer.HILL_CLIMB_JSPI_CHECK_ORIGINAL)
+            index_path.write_bytes(source)
             installer.localize_base_href(game, index_path)
             localized = index_path.read_bytes()
 
         self.assertNotIn(installer.HILL_CLIMB_JSPI_CHECK_ORIGINAL, localized)
         self.assertIn(b"WebAssembly JSPI support", localized)
         self.assertIn(b"Not supported", localized)
+
+    def test_hill_climb_storage_unavailable_does_not_abort_startup(self):
+        game = next(game for game in installer.GAMES if game["id"] == "hill-climb-racing")
+        source = (
+            installer.HILL_CLIMB_STORAGE_SHIM_ORIGINAL
+            + b"\n"
+            + b"localStorage.getItem('setting');\n" * installer.HILL_CLIMB_STORAGE_REF_COUNT
+            + installer.HILL_CLIMB_JSPI_CHECK_ORIGINAL
+        )
+        with tempfile.TemporaryDirectory() as temporary:
+            index_path = Path(temporary) / "index.html"
+            index_path.write_bytes(source)
+            installer.localize_base_href(game, index_path)
+            localized = index_path.read_bytes()
+
+        self.assertIn(b"const safeLocalStorage = (() =>", localized)
+        self.assertEqual(
+            localized.count(b"safeLocalStorage.getItem('setting')"),
+            installer.HILL_CLIMB_STORAGE_REF_COUNT,
+        )
+        self.assertIn(b"storage.getItem(key)", localized)
+        self.assertEqual(
+            len(localized) - len(source),
+            installer.expected_local_bytes(game) - game["expected_bytes"],
+        )
 
     def test_existing_game_patch_migration_reuses_large_game_files(self):
         game = next(game for game in installer.GAMES if game["id"] == "cuphead")

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ExternalLink, Info } from "lucide-react";
 import { NEW_GAME_PORTS, type NewGamePortId } from "../lib/game-ports";
 import { fetchPortedGameApprovals } from "../lib/api";
@@ -43,11 +43,36 @@ type AssetManifest = {
 };
 
 type AssetStatus = "checking" | "ready" | "missing" | "unavailable" | "hidden";
+type GameDiagnostic = {
+  type: "permission-error" | "policy-error" | "resource-error" | "request-error" | "runtime-error" | "async-error";
+  detail: string;
+};
+
+const DIAGNOSTIC_TYPES = new Set<GameDiagnostic["type"]>([
+  "permission-error",
+  "policy-error",
+  "resource-error",
+  "request-error",
+  "runtime-error",
+  "async-error",
+]);
+
+function diagnosticSummary(type: GameDiagnostic["type"]): string {
+  if (type === "permission-error" || type === "policy-error") {
+    return "The game hit a browser or sandbox permission restriction.";
+  }
+  if (type === "resource-error" || type === "request-error") {
+    return "The game could not load one of its files.";
+  }
+  return "The game encountered an error while starting.";
+}
 
 export function PortedGame({ game, adminPreview = false }: { game: PortedGameId; adminPreview?: boolean }) {
   const user = useAuth(state => state.user);
   const [assetStatus, setAssetStatus] = useState<AssetStatus>("checking");
   const [entryFile, setEntryFile] = useState("index.html");
+  const [diagnostic, setDiagnostic] = useState<GameDiagnostic | null>(null);
+  const iframeRef = useRef<HTMLIFrameElement>(null);
   const port = PORTS[game];
   const gameOrigin = window.location.origin;
   const gameAssetsPath = `${gameOrigin}/ported-games`;
@@ -112,6 +137,26 @@ export function PortedGame({ game, adminPreview = false }: { game: PortedGameId;
     return () => controller.abort();
   }, [game, gameAssetsPath, port.assetId, adminPreview, user?.isAdmin]);
 
+  useEffect(() => {
+    setDiagnostic(null);
+    const onMessage = (event: MessageEvent<unknown>) => {
+      if (event.source !== iframeRef.current?.contentWindow || !event.data || typeof event.data !== "object") return;
+      const data = event.data as { source?: unknown; version?: unknown; type?: unknown; detail?: unknown };
+      if (
+        data.source !== "ported-game-diagnostics" ||
+        data.version !== 1 ||
+        typeof data.type !== "string" ||
+        !DIAGNOSTIC_TYPES.has(data.type as GameDiagnostic["type"])
+      ) return;
+      setDiagnostic({
+        type: data.type as GameDiagnostic["type"],
+        detail: typeof data.detail === "string" ? data.detail.slice(0, 500) : "No additional details",
+      });
+    };
+    window.addEventListener("message", onMessage);
+    return () => window.removeEventListener("message", onMessage);
+  }, [game]);
+
   return (
     <div className="flex h-full min-h-0 flex-col bg-[#101b18] text-[#e9f4ec]">
       <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-[#38554a] bg-[#1b3028] px-2 py-1.5">
@@ -144,15 +189,39 @@ export function PortedGame({ game, adminPreview = false }: { game: PortedGameId;
           Checking for installed game files…
         </div>
       ) : assetStatus === "ready" ? (
-        <iframe
-          className="min-h-0 w-full flex-1 border-0 bg-black"
-          src={gameUrl}
-          title={`${port.title} game`}
-          allow="autoplay; fullscreen; gamepad *"
-          sandbox="allow-forms allow-modals allow-pointer-lock allow-downloads allow-scripts"
-          allowFullScreen
-          referrerPolicy="no-referrer"
-        />
+        <div className="relative flex min-h-0 flex-1 flex-col bg-black">
+          <iframe
+            ref={iframeRef}
+            className="min-h-0 w-full flex-1 border-0 bg-black"
+            src={gameUrl}
+            title={`${port.title} game`}
+            allow="autoplay; fullscreen; gamepad *"
+            sandbox="allow-forms allow-modals allow-pointer-lock allow-downloads allow-scripts"
+            allowFullScreen
+            referrerPolicy="no-referrer"
+          />
+          {diagnostic && (
+            <div
+              className="absolute inset-x-2 top-2 z-10 flex max-h-40 flex-col gap-1 overflow-auto rounded border border-amber-400 bg-[#221d11]/95 p-2 text-xs text-amber-50 shadow-lg"
+              role="alert"
+              aria-live="assertive"
+            >
+              <div className="flex items-start justify-between gap-3">
+                <p className="font-semibold">{diagnosticSummary(diagnostic.type)}</p>
+                <button
+                  type="button"
+                  className="shrink-0 underline"
+                  onClick={() => setDiagnostic(null)}
+                  aria-label="Dismiss game error"
+                >
+                  Dismiss
+                </button>
+              </div>
+              <code className="break-all whitespace-pre-wrap text-[10px]">{diagnostic.detail}</code>
+              <p className="text-[10px] text-amber-100/80">The game remains isolated from your account and site data.</p>
+            </div>
+          )}
+        </div>
       ) : assetStatus === "unavailable" ? (
         <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-3 p-6 text-center">
           <p className="text-base font-semibold">Can’t reach the game files.</p>
