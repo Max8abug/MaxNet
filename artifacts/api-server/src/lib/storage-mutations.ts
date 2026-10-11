@@ -68,6 +68,11 @@ export async function drainStorageCleanup(keys?: string[]) {
       const references = await tx.execute(sql`
         SELECT 1 FROM hosted_site_files WHERE object_key = ${row.object_key}
         UNION ALL SELECT 1 FROM wiki_assets WHERE object_key = ${row.object_key}
+        UNION ALL SELECT 1 FROM site_settings
+          WHERE EXISTS (
+            SELECT 1 FROM jsonb_each_text(COALESCE(game_port_icons, '{}'::jsonb)) AS icon
+            WHERE icon.value = 'storage:' || ${row.object_key}
+          )
         LIMIT 1
       `);
       if (references.rows.length === 0) {

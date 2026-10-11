@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Gamepad2, Search, Pencil, Check, X, Clock3 } from "lucide-react";
 import { NEW_GAME_PORTS, type NewGamePortId } from "../lib/game-ports";
-import { fetchGameIcons, fetchPortedGameApprovals, setGameIcon } from "../lib/api";
+import { fetchGameIcons, fetchPortedGameApprovals, setGameIcon, uploadGameIcon } from "../lib/api";
 import { useAuth } from "../lib/auth-store";
 import { useDesktopStore, type WindowType } from "../store";
 
@@ -36,6 +36,8 @@ export function GamesManager({ page }: { page: string }) {
   const [filter, setFilter] = useState<"all" | "ready" | "pending">("all");
   const [editing, setEditing] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
+  const [uploadDataUrl, setUploadDataUrl] = useState("");
+  const [uploadFileName, setUploadFileName] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState("");
 
@@ -75,7 +77,9 @@ export function GamesManager({ page }: { page: string }) {
     setBusy(gameId);
     setError("");
     try {
-      const result = await setGameIcon(gameId, url);
+      const result = uploadDataUrl
+        ? await uploadGameIcon(gameId, uploadDataUrl)
+        : await setGameIcon(gameId, url);
       setIcons(result.gameIcons);
       setBrokenIcons(current => {
         const next = { ...current };
@@ -84,9 +88,35 @@ export function GamesManager({ page }: { page: string }) {
       });
       setEditing(null);
       setDraft("");
+      setUploadDataUrl("");
+      setUploadFileName("");
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not save icon.");
     } finally { setBusy(null); }
+  };
+
+  const selectIconFile = (file: File | undefined) => {
+    setError("");
+    setUploadDataUrl("");
+    setUploadFileName("");
+    if (!file) return;
+    if (file.type !== "image/png") {
+      setError("Choose a PNG image.");
+      return;
+    }
+    if (file.size > 1_000_000) {
+      setError("PNG icons must be 1 MB or smaller.");
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (typeof reader.result === "string") {
+        setUploadDataUrl(reader.result);
+        setUploadFileName(file.name);
+      } else setError("Could not read this image file.");
+    };
+    reader.onerror = () => setError("Could not read this image file.");
+    reader.readAsDataURL(file);
   };
 
   const editingGame = GAMES.find(game => game.id === editing);
@@ -156,19 +186,25 @@ export function GamesManager({ page }: { page: string }) {
       </div>}
     </div>
     {editingGame && user?.isAdmin && <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-slate-950/55 p-4 backdrop-blur-sm" role="dialog" aria-modal="true" aria-label={`Change ${editingGame.title} icon`}>
-      <div className="w-full max-w-md rounded-2xl border border-white/60 bg-white p-5 shadow-2xl">
+      <div className="w-full max-w-md rounded-2xl border border-white/20 bg-[#20343b] p-5 text-slate-100 shadow-2xl">
         <div className="mb-4 flex items-center gap-3">
           <div className="grid h-10 w-10 place-items-center rounded-xl bg-teal-50 text-teal-800"><Pencil className="h-5 w-5" /></div>
-          <div><h3 className="font-bold text-slate-900">Change game icon</h3><p className="text-xs text-slate-500">{editingGame.title}</p></div>
+          <div><h3 className="font-bold text-white">Change game icon</h3><p className="text-xs text-slate-300">{editingGame.title}</p></div>
         </div>
-        <label className="block text-xs font-semibold text-slate-700">Image URL
-          <input autoFocus type="url" value={draft} onChange={e => setDraft(e.target.value)} placeholder="https://example.com/icon.png" className="mt-1.5 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-teal-600 focus:ring-2 focus:ring-teal-600/15" />
+        <label className="block text-xs font-semibold text-slate-200">Upload a PNG from your device
+          <input type="file" accept="image/png,.png" onChange={e => selectIconFile(e.currentTarget.files?.[0])} className="mt-1.5 block w-full rounded-lg border border-[#496168] bg-[#172a30] p-2 text-xs text-slate-200 file:mr-3 file:rounded-md file:border-0 file:bg-teal-700 file:px-3 file:py-1.5 file:text-xs file:font-semibold file:text-white hover:file:bg-teal-600" />
         </label>
-        <p className="mt-2 text-xs leading-relaxed text-slate-500">Use a direct HTTPS image URL. Leave it blank and choose Reset to restore the default artwork.</p>
+        <p className="mt-1 text-xs text-slate-400">PNG only · max 1 MB · maximum dimensions 2048 × 2048</p>
+        {uploadFileName && <p className="mt-2 truncate text-xs text-teal-200">Selected: {uploadFileName}</p>}
+        <div className="my-4 flex items-center gap-3 text-[10px] font-semibold uppercase tracking-wider text-slate-500"><span className="h-px flex-1 bg-[#496168]" />or use an image link<span className="h-px flex-1 bg-[#496168]" /></div>
+        <label className="block text-xs font-semibold text-slate-200">HTTPS image URL
+          <input type="url" value={draft} onChange={e => { setDraft(e.target.value); setUploadDataUrl(""); setUploadFileName(""); }} placeholder="https://example.com/icon.png" className="mt-1.5 w-full rounded-lg border border-[#496168] bg-[#172a30] px-3 py-2 text-sm text-white outline-none placeholder:text-slate-500 focus:border-teal-400 focus:ring-2 focus:ring-teal-400/20" />
+        </label>
+        <p className="mt-2 text-xs leading-relaxed text-slate-400">Leave both fields blank and choose Reset to restore the default artwork.</p>
         <div className="mt-5 flex justify-end gap-2">
-          <button className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50" onClick={() => setEditing(null)}>Cancel</button>
-          <button className="rounded-lg bg-teal-800 px-3 py-2 text-xs font-semibold text-white hover:bg-teal-700 disabled:opacity-50" disabled={busy === editingGame.id} onClick={() => void saveIcon(editingGame.id, draft.trim() || null)}>
-            {busy === editingGame.id ? "Saving…" : draft.trim() ? <><Check className="mr-1 inline h-3.5 w-3.5" />Save icon</> : "Reset icon"}
+          <button className="rounded-lg border border-[#496168] px-3 py-2 text-xs font-semibold text-slate-200 hover:bg-[#2c454c]" onClick={() => setEditing(null)}>Cancel</button>
+          <button className="rounded-lg bg-teal-700 px-3 py-2 text-xs font-semibold text-white hover:bg-teal-600 disabled:opacity-50" disabled={busy === editingGame.id || (!uploadDataUrl && !draft.trim())} onClick={() => void saveIcon(editingGame.id, draft.trim() || null)}>
+            {busy === editingGame.id ? "Saving…" : uploadDataUrl ? "Upload PNG" : draft.trim() ? <><Check className="mr-1 inline h-3.5 w-3.5" />Save link</> : "Reset icon"}
           </button>
         </div>
       </div>

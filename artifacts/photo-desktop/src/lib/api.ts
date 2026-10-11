@@ -261,6 +261,13 @@ export async function setGameIcon(gameId: string, iconUrl: string | null): Promi
     body: JSON.stringify({ gameId, iconUrl }),
   }));
 }
+export async function uploadGameIcon(gameId: string, dataUrl: string): Promise<{ gameIcons: Record<string, string> }> {
+  return jsonOrThrow(await fetch(`${BASE}/site-settings/game-icons/${encodeURIComponent(gameId)}/upload`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ dataUrl }),
+  }));
+}
 export async function fetchSiteSettings(): Promise<SiteSettings> {
   return jsonOrThrow(await fetch(`${BASE}/site-settings`, opts));
 }
