@@ -260,7 +260,8 @@ class GamePortInventoryTests(unittest.TestCase):
             b'<base href="'
             + game["remote_base_href"].encode("ascii")
             + b'">\n'
-            + b'<script src="Build/UnityLoader.js"></script>'
+            + b'<script src="Build/UnityLoader.js"></script>\n'
+            + b'var json = {\n          dataUrl: dataUrl,'
         )
         with tempfile.TemporaryDirectory() as temporary:
             index_path = Path(temporary) / "index.html"
@@ -270,6 +271,8 @@ class GamePortInventoryTests(unittest.TestCase):
 
         self.assertIn(b'<base href="./">', localized)
         self.assertNotIn(game["remote_base_href"].encode("ascii"), localized)
+        self.assertIn(b"window.dataUrll = dataUrl;", localized)
+        self.assertIn(b'dataUrl: "WebGL.data.unityweb",', localized)
         self.assertEqual(
             len(localized) - len(source),
             installer.expected_local_bytes(game) - game["expected_bytes"],

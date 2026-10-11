@@ -374,6 +374,11 @@ HILL_CLIMB_STORAGE_REF_COUNT = 11
 NIGHT_IN_THE_WOODS_CDN_ORIGINAL = b'const CDN = "https://cdn.jsdelivr.net/gh/Reeyuki/NightInTheWoods";'
 NIGHT_IN_THE_WOODS_CDN_SANDBOX_SAFE = b'const CDN = ".";'
 
+TATTLETAIL_DATA_URL_SETUP_ORIGINAL = b"var json = {"
+TATTLETAIL_DATA_URL_SETUP_SANDBOX_SAFE = b"window.dataUrll = dataUrl;\n        var json = {"
+TATTLETAIL_DATA_URL_ORIGINAL = b"dataUrl: dataUrl,"
+TATTLETAIL_DATA_URL_SANDBOX_SAFE = b'dataUrl: "WebGL.data.unityweb",'
+
 TABS_MERGE_FUNCTION_ORIGINAL = b"""async function mergeFiles(fileParts, cacheKey) {
       const cache = await caches.open("tabs-cache");
       const cachedResponse = await cache.match(cacheKey);
@@ -553,6 +558,14 @@ def expected_local_bytes(game: dict) -> int:
         if game["id"] == "night-in-the-woods"
         else 0
     )
+    tattletail_data_url_patch_delta = (
+        len(TATTLETAIL_DATA_URL_SETUP_SANDBOX_SAFE)
+        - len(TATTLETAIL_DATA_URL_SETUP_ORIGINAL)
+        + len(TATTLETAIL_DATA_URL_SANDBOX_SAFE)
+        - len(TATTLETAIL_DATA_URL_ORIGINAL)
+        if game["id"] == "tattletail"
+        else 0
+    )
     if game["remote_base_href"]:
         base_href_delta = (
             -len(game["remote_base_href"].encode("utf-8"))
@@ -572,6 +585,7 @@ def expected_local_bytes(game: dict) -> int:
         + hill_climb_storage_patch_delta
         + tabs_cache_patch_delta
         + nitw_cdn_patch_delta
+        + tattletail_data_url_patch_delta
     )
 
 
@@ -678,6 +692,17 @@ def localize_base_href(game: dict, index_path: Path) -> None:
             NIGHT_IN_THE_WOODS_CDN_ORIGINAL,
             NIGHT_IN_THE_WOODS_CDN_SANDBOX_SAFE,
             "Night in the Woods CDN root",
+        )
+    if game["id"] == "tattletail":
+        apply_patch(
+            TATTLETAIL_DATA_URL_SETUP_ORIGINAL,
+            TATTLETAIL_DATA_URL_SETUP_SANDBOX_SAFE,
+            "Tattletail Unity data URL setup",
+        )
+        apply_patch(
+            TATTLETAIL_DATA_URL_ORIGINAL,
+            TATTLETAIL_DATA_URL_SANDBOX_SAFE,
+            "Tattletail Unity data URL config",
         )
     index_path.write_bytes(localized)
 
