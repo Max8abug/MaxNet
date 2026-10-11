@@ -26,6 +26,7 @@ const baseUrl = `http://127.0.0.1:${address.port}`;
 
 try {
   await mkdir(path.join(assetDirectory, "pvz"), { recursive: true });
+  await mkdir(path.join(assetDirectory, "deltarune"), { recursive: true });
   await writeFile(
     path.join(assetDirectory, "asset-manifest.json"),
     JSON.stringify({ version: 1, games: { pvz: { installed: true } } }),
@@ -33,6 +34,10 @@ try {
   await writeFile(
     path.join(assetDirectory, "pvz", "index.html"),
     "<!doctype html><html><head><title>PVZ</title></head><body></body></html>",
+  );
+  await writeFile(
+    path.join(assetDirectory, "deltarune", "index.html"),
+    '<!doctype html><html><head><title>DELTARUNE</title><script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script></head></html>',
   );
 
   assert.equal(
@@ -84,6 +89,14 @@ try {
   assert.match(gameHtml, /window\.fetch =/);
   assert.match(gameHtml, /XMLHttpRequest\.prototype\.send =/);
   assert.match(gameHtml, /<title>PVZ<\/title>/);
+  assert.doesNotMatch(csp, /cdnjs\.cloudflare\.com/);
+
+  response = await fetch(`${baseUrl}/ported-games/deltarune/index.html`);
+  assert.equal(response.status, 200);
+  const deltaruneCsp = response.headers.get("content-security-policy") ?? "";
+  assert.match(deltaruneCsp, /https:\/\/cdnjs\.cloudflare\.com/);
+  assert.match(deltaruneCsp, /https:\/\/mrdoob\.github\.io/);
+  assert.doesNotMatch(deltaruneCsp, /allow-same-origin/);
 
   response = await fetch(`${baseUrl}/ported-games/missing/index.html`);
   assert.equal(response.status, 404);

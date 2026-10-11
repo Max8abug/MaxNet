@@ -30,6 +30,12 @@ export const NEW_GAME_PORTS = [
     repository: "https://github.com/genizy/web-port/tree/main/deltatraveler",
   },
   {
+    id: "deltarune",
+    title: "DELTARUNE",
+    assetId: "deltarune",
+    repository: "https://github.com/Mollomm1/test",
+  },
+  {
     id: "gangbeasts",
     title: "Gang Beasts",
     assetId: "gang-beasts",

@@ -59,6 +59,7 @@ class GamePortInventoryTests(unittest.TestCase):
             "class-of-09": (111, 245_830_265),
             "cuphead": (125, 2_208_353_037),
             "deltatraveler": (17, 256_912_659),
+            "deltarune": (510, 933_226_913),
             "gang-beasts": (43, 489_357_360),
             "hill-climb-racing": (15, 186_445_517),
             "untitled-goose-game": (20, 100_800_959),

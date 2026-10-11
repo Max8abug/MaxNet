@@ -10,7 +10,7 @@ const router: IRouter = Router();
 
 type CustomButton = { label: string; url: string };
 const REVIEWABLE_GAME_PORT_IDS = new Set([
-  "amongus", "acgamecube", "classof09", "cuphead", "deltatraveler",
+  "amongus", "acgamecube", "classof09", "cuphead", "deltatraveler", "deltarune",
   "gangbeasts", "hillclimb", "untitledgoose", "oneshot",
   "minesweeperplus", "nightinthewoods", "tattletail", "tabs", "daddygame",
   "webbalatro",

@@ -24,7 +24,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 ASSET_ROOT = REPO_ROOT / "selfhost" / "data" / "ported-games"
 MANIFEST_PATH = ASSET_ROOT / "asset-manifest.json"
 USER_AGENT = "Portfolio98-selfhost-game-assets/1.0"
-MAX_TOTAL_BYTES = 9_000_000_000
+MAX_TOTAL_BYTES = 9_100_000_000
 MAX_WORKERS = 6
 
 # Only the requested game subfolders are fetched. Commits are pinned so a normal
@@ -110,6 +110,15 @@ GAMES = (
         "remote_base_href": "https://cdn.jsdelivr.net/gh/genizy/web-port@main/deltatraveler/",
         "expected_files": 17,
         "expected_bytes": 256_912_659,
+    },
+    {
+        "id": "deltarune",
+        "repo": "Mollomm1/test",
+        "commit": "ac1db67df09e8ae48572c5de84b4b6ac5ebd1e67",
+        "path": "",
+        "remote_base_href": "",
+        "expected_files": 510,
+        "expected_bytes": 933_226_913,
     },
     {
         "id": "gang-beasts",

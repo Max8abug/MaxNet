@@ -18,6 +18,17 @@ const GAME_CONTENT_SECURITY_POLICY = [
   "base-uri 'self'",
 ].join("; ");
 
+const DELTARUNE_CONTENT_SECURITY_POLICY = GAME_CONTENT_SECURITY_POLICY.replace(
+  "script-src 'self' 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval' blob:",
+  "script-src 'self' 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval' blob: https://cdnjs.cloudflare.com https://mrdoob.github.io",
+);
+
+function gameContentSecurityPolicy(relativePath: string): string {
+  return relativePath.replace(/\\/g, "/").startsWith("deltarune/")
+    ? DELTARUNE_CONTENT_SECURITY_POLICY
+    : GAME_CONTENT_SECURITY_POLICY;
+}
+
 const GAME_DIAGNOSTIC_BOOTSTRAP = `<script>
 (() => {
   const report = (type, detail) => {
@@ -163,7 +174,7 @@ export function createPortedGameAssetsRouter(assetDirectory: string): Router {
       response.setHeader("X-Content-Type-Options", "nosniff");
       response.setHeader("Access-Control-Allow-Origin", "*");
       response.setHeader("Cache-Control", "no-store");
-      response.setHeader("Content-Security-Policy", GAME_CONTENT_SECURITY_POLICY);
+      response.setHeader("Content-Security-Policy", gameContentSecurityPolicy(relativePath));
       return response.type("html").send(instrumentGameHtml(html));
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === "ENOENT") return next();
@@ -189,7 +200,7 @@ export function createPortedGameAssetsRouter(assetDirectory: string): Router {
           // is defense in depth. In particular, never grant same-origin access.
           response.setHeader(
             "Content-Security-Policy",
-            GAME_CONTENT_SECURITY_POLICY,
+            gameContentSecurityPolicy(path.relative(resolvedAssetDirectory, filePath)),
           );
         }
       },
