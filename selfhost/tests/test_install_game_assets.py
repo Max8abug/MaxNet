@@ -99,6 +99,98 @@ class GamePortInventoryTests(unittest.TestCase):
             installer.expected_local_bytes(game) - game["expected_bytes"],
         )
 
+    def test_cuphead_cache_storage_failure_does_not_abort_startup(self):
+        game = next(game for game in installer.GAMES if game["id"] == "cuphead")
+        source = (
+            b'<base href="'
+            + game["remote_base_href"].encode("ascii")
+            + b'">\n'
+            + installer.CUPHEAD_MERGE_FUNCTION_ORIGINAL
+        )
+        with tempfile.TemporaryDirectory() as temporary:
+            index_path = Path(temporary) / "index.html"
+            index_path.write_bytes(source)
+            installer.localize_base_href(game, index_path)
+            localized = index_path.read_bytes()
+
+        self.assertNotIn(installer.CUPHEAD_MERGE_FUNCTION_ORIGINAL, localized)
+        self.assertIn(b"Cuphead cache unavailable", localized)
+        self.assertIn(b"return URL.createObjectURL(mergedBlob)", localized)
+
+    def test_class09_does_not_register_service_worker_in_sandbox(self):
+        game = next(game for game in installer.GAMES if game["id"] == "class-of-09")
+        source = (
+            b'<base href="'
+            + game["remote_base_href"].encode("ascii")
+            + b'">\n'
+            + installer.CLASS09_SERVICE_WORKER_ORIGINAL
+        )
+        with tempfile.TemporaryDirectory() as temporary:
+            index_path = Path(temporary) / "index.html"
+            index_path.write_bytes(source)
+            installer.localize_base_href(game, index_path)
+            localized = index_path.read_bytes()
+
+        self.assertNotIn(installer.CLASS09_SERVICE_WORKER_ORIGINAL, localized)
+        self.assertIn(b"Offline service workers are unavailable", localized)
+
+    def test_hill_climb_explains_required_browser_feature(self):
+        game = next(game for game in installer.GAMES if game["id"] == "hill-climb-racing")
+        with tempfile.TemporaryDirectory() as temporary:
+            index_path = Path(temporary) / "index.html"
+            index_path.write_bytes(installer.HILL_CLIMB_JSPI_CHECK_ORIGINAL)
+            installer.localize_base_href(game, index_path)
+            localized = index_path.read_bytes()
+
+        self.assertNotIn(installer.HILL_CLIMB_JSPI_CHECK_ORIGINAL, localized)
+        self.assertIn(b"WebAssembly JSPI support", localized)
+        self.assertIn(b"Not supported", localized)
+
+    def test_existing_game_patch_migration_reuses_large_game_files(self):
+        game = next(game for game in installer.GAMES if game["id"] == "cuphead")
+        base = (
+            b'<base href="'
+            + game["remote_base_href"].encode("ascii")
+            + b'">\n'
+        )
+        raw_index = base + installer.CUPHEAD_MERGE_FUNCTION_ORIGINAL
+        installed_old_index = raw_index.replace(
+            game["remote_base_href"].encode("ascii"),
+            b"./",
+            1,
+        )
+        migration_game = dict(game)
+        migration_game["expected_files"] = 1
+        migration_game["expected_bytes"] = len(raw_index)
+        previous = {
+            "games": {
+                "cuphead": {
+                    "commit": game["commit"],
+                    "files": 1,
+                    "bytes": len(installed_old_index),
+                }
+            }
+        }
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            game_root = root / "cuphead"
+            game_root.mkdir()
+            (game_root / "index.html").write_bytes(installed_old_index)
+            migrated = installer.migrate_installed_game(
+                migration_game,
+                [{"path": "index.html"}],
+                previous,
+                asset_root=root,
+            )
+            localized = (game_root / "index.html").read_bytes()
+
+        self.assertTrue(migrated)
+        self.assertIn(b"Cuphead cache unavailable", localized)
+        self.assertEqual(
+            len(localized),
+            installer.expected_local_bytes(migration_game),
+        )
+
     def test_localizer_skips_games_with_relative_asset_paths(self):
         game = next(game for game in installer.GAMES if game["id"] == "among-us")
         with tempfile.TemporaryDirectory() as temporary:

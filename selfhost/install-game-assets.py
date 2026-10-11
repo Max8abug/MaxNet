@@ -279,6 +279,70 @@ AC_SYNC_BLOCK_SANDBOX_SAFE = b"""setRomStatus("Saving to browser storage\xe2\x80
 \t\t\t\t\t});
 \t\t\t\t\tsetRomStatus("ROM ready: " + (e.name || "user-rom.iso") + " (" + formatBytes(s.byteLength) + ")", "ok"), setStartEnabled(!0)"""
 
+CUPHEAD_MERGE_FUNCTION_ORIGINAL = b"""async function mergeFiles(fileParts, cacheKey) {
+      const cache = await caches.open("cuphead-cache");
+      const cachedResponse = await cache.match(cacheKey);
+      if (cachedResponse) {
+        const blob = await cachedResponse.blob();
+        return URL.createObjectURL(blob);
+      }
+      const buffers = await Promise.all(
+        fileParts.map(part => fetchWithProgress(part))
+      );
+      const mergedBlob = new Blob(buffers);
+      const response = new Response(mergedBlob);
+      await cache.put(cacheKey, response);
+      return URL.createObjectURL(mergedBlob);
+    }"""
+
+CUPHEAD_MERGE_FUNCTION_SANDBOX_SAFE = b"""async function mergeFiles(fileParts, cacheKey) {
+      let cache;
+      try {
+        cache = await caches.open("cuphead-cache");
+        const cachedResponse = await cache.match(cacheKey);
+        if (cachedResponse) {
+          const blob = await cachedResponse.blob();
+          return URL.createObjectURL(blob);
+        }
+      } catch (error) {
+        console.warn("Cuphead cache unavailable; loading without persistent cache.", error);
+        cache = undefined;
+      }
+      const buffers = await Promise.all(
+        fileParts.map(part => fetchWithProgress(part))
+      );
+      const mergedBlob = new Blob(buffers);
+      if (cache) {
+        try {
+          await cache.put(cacheKey, new Response(mergedBlob));
+        } catch (error) {
+          console.warn("Cuphead cache write failed; continuing without cache.", error);
+        }
+      }
+      return URL.createObjectURL(mergedBlob);
+    }"""
+
+CLASS09_SERVICE_WORKER_ORIGINAL = b"""navigator.serviceWorker && (navigator.serviceWorker.controller || navigator.serviceWorker.register("./service-worker.js", {
+                updateViaCache: "all"
+            }))"""
+CLASS09_SERVICE_WORKER_SANDBOX_SAFE = b"""/* Offline service workers are unavailable in this sandbox; game files load directly. */"""
+
+HILL_CLIMB_JSPI_CHECK_ORIGINAL = b"""const supported = 'Suspending' in WebAssembly;
+  if (!supported) status('This browser lacks WebAssembly JavaScript Promise Integration: use Chrome or Edge 137 or newer.');"""
+HILL_CLIMB_JSPI_CHECK_SANDBOX_SAFE = b"""const supported = 'Suspending' in WebAssembly;
+  if (!supported) {
+    status('Hill Climb Racing requires a browser with WebAssembly JSPI support (the port specifies Chrome or Edge 137+).');
+    const statusEl = $('status');
+    statusEl.style.color = '#ffd166';
+    statusEl.style.fontWeight = '700';
+    statusEl.style.padding = '12px';
+    statusEl.style.background = '#4a1c22';
+    statusEl.style.borderRadius = '8px';
+    document.querySelectorAll('.timing-row').forEach(row => {
+      if (row.lastElementChild) row.lastElementChild.textContent = 'Not supported';
+    });
+  }"""
+
 
 def run_git(repo_dir: Path, *arguments: str) -> str:
     environment = os.environ.copy()
@@ -370,6 +434,24 @@ def expected_local_bytes(game: dict) -> int:
         if game["id"] == "ac-gamecube"
         else 0
     )
+    cuphead_cache_patch_delta = (
+        len(CUPHEAD_MERGE_FUNCTION_SANDBOX_SAFE)
+        - len(CUPHEAD_MERGE_FUNCTION_ORIGINAL)
+        if game["id"] == "cuphead"
+        else 0
+    )
+    class09_worker_patch_delta = (
+        len(CLASS09_SERVICE_WORKER_SANDBOX_SAFE)
+        - len(CLASS09_SERVICE_WORKER_ORIGINAL)
+        if game["id"] == "class-of-09"
+        else 0
+    )
+    hill_climb_jspi_patch_delta = (
+        len(HILL_CLIMB_JSPI_CHECK_SANDBOX_SAFE)
+        - len(HILL_CLIMB_JSPI_CHECK_ORIGINAL)
+        if game["id"] == "hill-climb-racing"
+        else 0
+    )
     if game["remote_base_href"]:
         base_href_delta = (
             -len(game["remote_base_href"].encode("utf-8"))
@@ -377,11 +459,22 @@ def expected_local_bytes(game: dict) -> int:
         )
     else:
         base_href_delta = 0
-    return game["expected_bytes"] + base_href_delta + cache_patch_delta + ac_storage_patch_delta
+    return (
+        game["expected_bytes"]
+        + base_href_delta
+        + cache_patch_delta
+        + ac_storage_patch_delta
+        + cuphead_cache_patch_delta
+        + class09_worker_patch_delta
+        + hill_climb_jspi_patch_delta
+    )
 
 
 def localize_base_href(game: dict, index_path: Path) -> None:
-    if not game["remote_base_href"] and game["id"] != "ac-gamecube":
+    if not game["remote_base_href"] and game["id"] not in {
+        "ac-gamecube",
+        "hill-climb-racing",
+    }:
         return
     content = index_path.read_bytes()
     localized = content
@@ -397,31 +490,55 @@ def localize_base_href(game: dict, index_path: Path) -> None:
             localized,
             count=1,
         )
-        if count != 1:
+        already_localized = re.search(
+            rb'<base\b[^>]*\bhref\s*=\s*(["\'])\./\1',
+            localized,
+            re.IGNORECASE,
+        )
+        if count != 1 and not already_localized:
             raise RuntimeError(
                 f"Expected the pinned CDN base URL in {game['id']}/index.html"
             )
+
+    def apply_patch(original: bytes, patched: bytes, label: str) -> None:
+        nonlocal localized
+        count = localized.count(original)
+        if count == 1:
+            localized = localized.replace(original, patched, 1)
+        elif count == 0 and localized.count(patched) == 1:
+            return
+        else:
+            raise RuntimeError(f"Expected exactly one {label} patch site in {game['id']}/index.html")
+
     if game["id"] == "pvz":
-        cache_count = localized.count(PVZ_CACHE_FUNCTION_ORIGINAL)
-        if cache_count != 1:
-            raise RuntimeError(
-                "Expected the pinned CacheStorage mergeFiles function in pvz/index.html"
-            )
-        localized = localized.replace(
+        apply_patch(
             PVZ_CACHE_FUNCTION_ORIGINAL,
             PVZ_CACHE_FUNCTION_SANDBOX_SAFE,
-            1,
+            "CacheStorage mergeFiles function",
         )
     if game["id"] == "ac-gamecube":
-        sync_count = localized.count(AC_SYNC_BLOCK_ORIGINAL)
-        if sync_count != 1:
-            raise RuntimeError(
-                "Expected the pinned Animal Crossing ROM storage callback in index.html"
-            )
-        localized = localized.replace(
+        apply_patch(
             AC_SYNC_BLOCK_ORIGINAL,
             AC_SYNC_BLOCK_SANDBOX_SAFE,
-            1,
+            "Animal Crossing ROM storage callback",
+        )
+    if game["id"] == "cuphead":
+        apply_patch(
+            CUPHEAD_MERGE_FUNCTION_ORIGINAL,
+            CUPHEAD_MERGE_FUNCTION_SANDBOX_SAFE,
+            "Cuphead CacheStorage merge function",
+        )
+    if game["id"] == "class-of-09":
+        apply_patch(
+            CLASS09_SERVICE_WORKER_ORIGINAL,
+            CLASS09_SERVICE_WORKER_SANDBOX_SAFE,
+            "Class of '09 service worker registration",
+        )
+    if game["id"] == "hill-climb-racing":
+        apply_patch(
+            HILL_CLIMB_JSPI_CHECK_ORIGINAL,
+            HILL_CLIMB_JSPI_CHECK_SANDBOX_SAFE,
+            "Hill Climb Racing JSPI check",
         )
     index_path.write_bytes(localized)
 
@@ -510,6 +627,47 @@ def game_is_installed(game: dict, files: list[dict], previous: dict) -> bool:
             return False
         actual_bytes += target.stat().st_size
     return len(files) == game["expected_files"] and actual_bytes == expected_local_bytes(game)
+
+
+def migrate_installed_game(
+    game: dict,
+    files: list[dict],
+    previous: dict,
+    asset_root: Path | None = None,
+) -> bool:
+    """Apply HTML-only compatibility patches without re-downloading game binaries."""
+    recorded = previous.get("games", {}).get(game["id"], {})
+    if (
+        recorded.get("commit") != game["commit"]
+        or recorded.get("files") != game["expected_files"]
+    ):
+        return False
+
+    root = asset_root or ASSET_ROOT
+    game_root = root / game["id"]
+    actual_bytes = 0
+    for item in files:
+        target = game_root.joinpath(*PurePosixPath(item["path"]).parts)
+        if not target.is_file() or target.is_symlink():
+            return False
+        actual_bytes += target.stat().st_size
+    if len(files) != game["expected_files"] or actual_bytes != recorded.get("bytes"):
+        return False
+
+    index_path = game_root / "index.html"
+    temporary = game_root / ".index.html.compat.tmp"
+    try:
+        temporary.write_bytes(index_path.read_bytes())
+        localize_base_href(game, temporary)
+        new_total = actual_bytes - index_path.stat().st_size + temporary.stat().st_size
+        if new_total != expected_local_bytes(game):
+            return False
+        os.replace(temporary, index_path)
+        return True
+    except (OSError, RuntimeError):
+        return False
+    finally:
+        temporary.unlink(missing_ok=True)
 
 
 def install_game(game: dict, files: list[dict]) -> None:
@@ -631,6 +789,9 @@ def main() -> int:
             files = game["_files"]
             if not args.force and game_is_installed(game, files, previous):
                 print(f"{game['id']}: already installed; skipping")
+                continue
+            if not args.force and migrate_installed_game(game, files, previous):
+                print(f"{game['id']}: updated compatibility patch in place; game files reused")
                 continue
             install_game(game, files)
 
