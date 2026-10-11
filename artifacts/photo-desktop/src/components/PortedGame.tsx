@@ -39,7 +39,7 @@ const PORTS: Record<
 
 type AssetManifest = {
   version?: number;
-  games?: Record<string, { installed?: boolean }>;
+  games?: Record<string, { installed?: boolean; entry?: string }>;
 };
 
 type AssetStatus = "checking" | "ready" | "missing" | "unavailable" | "hidden";
@@ -47,14 +47,16 @@ type AssetStatus = "checking" | "ready" | "missing" | "unavailable" | "hidden";
 export function PortedGame({ game, adminPreview = false }: { game: PortedGameId; adminPreview?: boolean }) {
   const user = useAuth(state => state.user);
   const [assetStatus, setAssetStatus] = useState<AssetStatus>("checking");
+  const [entryFile, setEntryFile] = useState("index.html");
   const port = PORTS[game];
   const gameOrigin = window.location.origin;
   const gameAssetsPath = `${gameOrigin}/ported-games`;
-  const gameUrl = `${gameAssetsPath}/${port.assetId}/index.html`;
+  const gameUrl = `${gameAssetsPath}/${port.assetId}/${entryFile}`;
 
   useEffect(() => {
     const controller = new AbortController();
     const isNewPort = NEW_GAME_PORTS.some(port => port.id === game);
+    setEntryFile("index.html");
     const checkApproval = isNewPort
       ? fetchPortedGameApprovals().then(result =>
           result.approvedGamePorts.includes(game) || (adminPreview && !!user?.isAdmin))
@@ -93,6 +95,10 @@ export function PortedGame({ game, adminPreview = false }: { game: PortedGameId;
       })
       .then(manifest => {
         if (!manifest || controller.signal.aborted) return;
+        const entry = manifest.games?.[port.assetId]?.entry;
+        if (entry && /^[A-Za-z0-9._-]+\.html$/i.test(entry) && !entry.startsWith(".")) {
+          setEntryFile(entry);
+        }
         setAssetStatus(
           manifest.version === 1 && manifest.games?.[port.assetId]?.installed === true
             ? "ready"

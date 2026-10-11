@@ -53,6 +53,42 @@ export const NEW_GAME_PORTS = [
     assetId: "oneshot",
     repository: "https://github.com/Kitaylena/oneshotthing",
   },
+  {
+    id: "minesweeperplus",
+    title: "Minesweeper Plus",
+    assetId: "minesweeperplus",
+    repository: "https://github.com/genizy/web-port/tree/main/minesweeperplus",
+  },
+  {
+    id: "nightinthewoods",
+    title: "Night in the Woods",
+    assetId: "night-in-the-woods",
+    repository: "https://github.com/reeyuki/NightInTheWoods",
+  },
+  {
+    id: "tattletail",
+    title: "Tattletail",
+    assetId: "tattletail",
+    repository: "https://github.com/genizy/web-port/tree/main/tattletail",
+  },
+  {
+    id: "tabs",
+    title: "Totally Accurate Battle Simulator",
+    assetId: "tabs",
+    repository: "https://github.com/web-ports/tabs",
+  },
+  {
+    id: "daddygame",
+    title: "Daddy Game",
+    assetId: "daddygame",
+    repository: "https://github.com/Reeyuki/daddygame",
+  },
+  {
+    id: "webbalatro",
+    title: "Balatro",
+    assetId: "web-balatro",
+    repository: "https://github.com/W0W53R/web-balatro",
+  },
 ] as const;
 
 export type NewGamePortId = (typeof NEW_GAME_PORTS)[number]["id"];

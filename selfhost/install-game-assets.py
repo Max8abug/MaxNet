@@ -24,7 +24,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 ASSET_ROOT = REPO_ROOT / "selfhost" / "data" / "ported-games"
 MANIFEST_PATH = ASSET_ROOT / "asset-manifest.json"
 USER_AGENT = "Portfolio98-selfhost-game-assets/1.0"
-MAX_TOTAL_BYTES = 6_000_000_000
+MAX_TOTAL_BYTES = 9_000_000_000
 MAX_WORKERS = 6
 
 # Only the requested game subfolders are fetched. Commits are pinned so a normal
@@ -146,6 +146,61 @@ GAMES = (
         "remote_base_href": "",
         "expected_files": 378,
         "expected_bytes": 83_446_381,
+    },
+    {
+        "id": "minesweeperplus",
+        "repo": "genizy/web-port",
+        "commit": "a8bea5fd11f88e5a9192857f434e299c40efe7e6",
+        "path": "minesweeperplus",
+        "remote_base_href": "",
+        "entry": "MinesweeperPlus.html",
+        "expected_files": 17,
+        "expected_bytes": 91_807_534,
+    },
+    {
+        "id": "night-in-the-woods",
+        "repo": "reeyuki/NightInTheWoods",
+        "commit": "0a31ed6d0a54eaf93d1cec111dc743cabfed4d0b",
+        "path": "",
+        "remote_base_href": "",
+        "expected_files": 33,
+        "expected_bytes": 438_750_872,
+    },
+    {
+        "id": "tattletail",
+        "repo": "genizy/web-port",
+        "commit": "a8bea5fd11f88e5a9192857f434e299c40efe7e6",
+        "path": "tattletail",
+        "remote_base_href": "",
+        "expected_files": 9,
+        "expected_bytes": 70_170_858,
+    },
+    {
+        "id": "tabs",
+        "repo": "web-ports/tabs",
+        "commit": "f03af105ef2a57a6a7c6ccf1831c95da3327c6f0",
+        "path": "",
+        "remote_base_href": "",
+        "expected_files": 153,
+        "expected_bytes": 1_840_088_490,
+    },
+    {
+        "id": "daddygame",
+        "repo": "Reeyuki/daddygame",
+        "commit": "b3ee2fe65d5f9565e992ca28d7484b1ee1d8ca23",
+        "path": "",
+        "remote_base_href": "",
+        "expected_files": 15,
+        "expected_bytes": 126_653_214,
+    },
+    {
+        "id": "web-balatro",
+        "repo": "W0W53R/web-balatro",
+        "commit": "53ddedfdd2e44d29b922210a92b85b2bfd57d9c2",
+        "path": "",
+        "remote_base_href": "",
+        "expected_files": 21,
+        "expected_bytes": 18_727_836,
     },
 )
 
@@ -474,6 +529,7 @@ def write_manifest(games: list[dict]) -> None:
                 "commit": game["commit"],
                 "files": game["expected_files"],
                 "bytes": expected_local_bytes(game),
+                "entry": game.get("entry", "index.html"),
             }
             for game in games
         },

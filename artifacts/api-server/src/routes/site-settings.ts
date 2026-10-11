@@ -12,6 +12,8 @@ type CustomButton = { label: string; url: string };
 const REVIEWABLE_GAME_PORT_IDS = new Set([
   "amongus", "acgamecube", "classof09", "cuphead", "deltatraveler",
   "gangbeasts", "hillclimb", "untitledgoose", "oneshot",
+  "minesweeperplus", "nightinthewoods", "tattletail", "tabs", "daddygame",
+  "webbalatro",
 ]);
 
 function cleanGamePortApprovals(value: unknown): string[] {

@@ -63,6 +63,12 @@ class GamePortInventoryTests(unittest.TestCase):
             "hill-climb-racing": (15, 186_445_517),
             "untitled-goose-game": (20, 100_800_959),
             "oneshot": (378, 83_446_381),
+            "minesweeperplus": (17, 91_807_534),
+            "night-in-the-woods": (33, 438_750_872),
+            "tattletail": (9, 70_170_858),
+            "tabs": (153, 1_840_088_490),
+            "daddygame": (15, 126_653_214),
+            "web-balatro": (21, 18_727_836),
         }
         games = {game["id"]: game for game in installer.GAMES}
         for game_id, (files, size) in expected.items():
@@ -70,7 +76,11 @@ class GamePortInventoryTests(unittest.TestCase):
                 self.assertEqual(games[game_id]["expected_files"], files)
                 self.assertEqual(games[game_id]["expected_bytes"], size)
                 self.assertTrue(games[game_id]["commit"])
-        self.assertGreater(sum(game["expected_bytes"] for game in installer.GAMES), 5_000_000_000)
+        self.assertGreater(sum(game["expected_bytes"] for game in installer.GAMES), 8_000_000_000)
+
+    def test_nonstandard_game_entry_is_recorded_in_manifest(self):
+        game = next(game for game in installer.GAMES if game["id"] == "minesweeperplus")
+        self.assertEqual(game["entry"], "MinesweeperPlus.html")
 
     def test_localizer_skips_games_with_relative_asset_paths(self):
         game = next(game for game in installer.GAMES if game["id"] == "among-us")
