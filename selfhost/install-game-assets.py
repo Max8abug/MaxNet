@@ -24,7 +24,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 ASSET_ROOT = REPO_ROOT / "selfhost" / "data" / "ported-games"
 MANIFEST_PATH = ASSET_ROOT / "asset-manifest.json"
 USER_AGENT = "Portfolio98-selfhost-game-assets/1.0"
-MAX_TOTAL_BYTES = 9_100_000_000
+MAX_TOTAL_BYTES = 10_600_000_000
 MAX_WORKERS = 6
 
 # Only the requested game subfolders are fetched. Commits are pinned so a normal
@@ -210,6 +210,27 @@ GAMES = (
         "remote_base_href": "",
         "expected_files": 21,
         "expected_bytes": 18_727_836,
+    },
+    {
+        "id": "quake3",
+        "repo": "lrusso/Quake3",
+        "commit": "a1da35382627b548ce59ca1e09a27d6da0285574",
+        "path": "",
+        "remote_base_href": "",
+        "expected_files": 11,
+        "expected_bytes": 50_937_513,
+        "entry": "Quake3.htm?demo",
+    },
+    {
+        "id": "hit-and-run-web",
+        "repo": "Vheissu/hit-and-run-web",
+        "commit": "94800b3436df05dee92e52e70c2bdaa8d9ee8420",
+        "path": "",
+        "remote_base_href": "",
+        "expected_files": 12_568,
+        "expected_bytes": 1_228_679_250,
+        "entry": "index.html",
+        "build_vite_site": True,
     },
 )
 
@@ -776,6 +797,16 @@ def read_previous_manifest() -> dict:
 
 def game_is_installed(game: dict, files: list[dict], previous: dict) -> bool:
     recorded = previous.get("games", {}).get(game["id"], {})
+    if game.get("build_vite_site"):
+        if (
+            recorded.get("commit") != game["commit"]
+            or recorded.get("entry") != game.get("entry", "index.html")
+        ):
+            return False
+        game_root = ASSET_ROOT / game["id"]
+        installed_files = [path for path in game_root.rglob("*") if path.is_file()]
+        actual_bytes = sum(path.stat().st_size for path in installed_files)
+        return bool(installed_files) and recorded.get("files") == len(installed_files) and recorded.get("bytes") == actual_bytes and (game_root / "index.html").is_file()
     if (
         recorded.get("commit") != game["commit"]
         or recorded.get("files") != game["expected_files"]
@@ -864,10 +895,40 @@ def install_game(game: dict, files: list[dict]) -> None:
             for future in concurrent.futures.as_completed(futures):
                 future.result()
 
-        localize_base_href(game, staging / "index.html")
+        if game.get("build_vite_site"):
+            node = subprocess.run(["node", "--version"], cwd=staging, capture_output=True, text=True)
+            version = re.match(r"v?(\d+)", node.stdout.strip())
+            if node.returncode or not version or int(version.group(1)) < 24:
+                raise RuntimeError("Hit & Run requires Node.js 24 or newer to build its browser site.")
+            subprocess.run(["npm", "ci", "--no-audit", "--no-fund"], cwd=staging, check=True)
+            subprocess.run(
+                ["npm", "run", "build", "--", "--base=/ported-games/hit-and-run-web/"],
+                cwd=staging,
+                check=True,
+            )
+            subprocess.run(["node", "tools/prepare_site.mjs"], cwd=staging, check=True)
+            built = staging.with_name(f".{game['id']}.built")
+            shutil.rmtree(built, ignore_errors=True)
+            os.replace(staging / "dist", built)
+            shutil.rmtree(staging)
+            os.replace(built, staging)
+            index_path = staging / "index.html"
+            if not index_path.is_file():
+                raise RuntimeError("Hit & Run build did not produce an index.html.")
+            storage_shim = b"""<script>(()=>{const values=new Map();const storage={get length(){return values.size},key:i=>Array.from(values.keys())[i]??null,getItem:k=>values.has(String(k))?values.get(String(k)):null,setItem:(k,v)=>values.set(String(k),String(v)),removeItem:k=>values.delete(String(k)),clear:()=>values.clear()};try{Object.defineProperty(window,"localStorage",{configurable:true,value:storage});Object.defineProperty(window,"sessionStorage",{configurable:true,value:storage})}catch(_){}})();</script>"""
+            html = index_path.read_bytes()
+            if b"</head>" not in html.lower():
+                raise RuntimeError("Hit & Run build has no HTML head for sandbox compatibility setup.")
+            html = re.sub(rb"</head>", storage_shim + b"</head>", html, count=1, flags=re.IGNORECASE)
+            index_path.write_bytes(html)
+        elif (staging / "index.html").is_file():
+            localize_base_href(game, staging / "index.html")
         installed_files = [path for path in staging.rglob("*") if path.is_file()]
         installed_bytes = sum(path.stat().st_size for path in installed_files)
-        if (
+        if game.get("build_vite_site"):
+            if not installed_files or not (staging / "index.html").is_file() or installed_bytes > game["expected_bytes"]:
+                raise RuntimeError(f"Built files for {game['id']} failed validation")
+        elif (
             len(installed_files) != game["expected_files"]
             or installed_bytes != expected_local_bytes(game)
         ):
@@ -897,8 +958,8 @@ def write_manifest(games: list[dict]) -> None:
             game["id"]: {
                 "installed": True,
                 "commit": game["commit"],
-                "files": game["expected_files"],
-                "bytes": expected_local_bytes(game),
+                "files": sum(1 for path in (ASSET_ROOT / game["id"]).rglob("*") if path.is_file()) if game.get("build_vite_site") else game["expected_files"],
+                "bytes": sum(path.stat().st_size for path in (ASSET_ROOT / game["id"]).rglob("*") if path.is_file()) if game.get("build_vite_site") else expected_local_bytes(game),
                 "entry": game.get("entry", "index.html"),
             }
             for game in games

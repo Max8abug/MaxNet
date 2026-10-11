@@ -70,6 +70,8 @@ class GamePortInventoryTests(unittest.TestCase):
             "tabs": (153, 1_840_088_490),
             "daddygame": (15, 126_653_214),
             "web-balatro": (21, 18_727_836),
+            "quake3": (11, 50_937_513),
+            "hit-and-run-web": (12_568, 1_228_679_250),
         }
         games = {game["id"]: game for game in installer.GAMES}
         for game_id, (files, size) in expected.items():
@@ -82,6 +84,11 @@ class GamePortInventoryTests(unittest.TestCase):
     def test_nonstandard_game_entry_is_recorded_in_manifest(self):
         game = next(game for game in installer.GAMES if game["id"] == "minesweeperplus")
         self.assertEqual(game["entry"], "MinesweeperPlus.html")
+        quake3 = next(game for game in installer.GAMES if game["id"] == "quake3")
+        self.assertEqual(quake3["entry"], "Quake3.htm?demo")
+        hit_and_run = next(game for game in installer.GAMES if game["id"] == "hit-and-run-web")
+        self.assertTrue(hit_and_run["build_vite_site"])
+        self.assertEqual(hit_and_run["entry"], "index.html")
 
     def test_animal_crossing_waits_for_rom_storage_or_falls_back_to_memory(self):
         game = next(game for game in installer.GAMES if game["id"] == "ac-gamecube")

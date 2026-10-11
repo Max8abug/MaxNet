@@ -164,7 +164,7 @@ export function createPortedGameAssetsRouter(assetDirectory: string): Router {
   const resolvedAssetDirectory = path.resolve(assetDirectory);
 
   router.use("/ported-games", async (request, response, next) => {
-    if (!request.path.toLowerCase().endsWith(".html")) return next();
+    if (!/\.html?$/i.test(request.path)) return next();
     let relativePath: string;
     try {
       relativePath = decodeURIComponent(request.path).replace(/^\/+/, "");

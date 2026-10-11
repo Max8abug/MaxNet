@@ -130,7 +130,7 @@ export function PortedGame({ game, adminPreview = false }: { game: PortedGameId;
       .then(manifest => {
         if (!manifest || controller.signal.aborted) return;
         const entry = manifest.games?.[port.assetId]?.entry;
-        if (entry && /^[A-Za-z0-9._-]+\.html$/i.test(entry) && !entry.startsWith(".")) {
+        if (entry && /^[A-Za-z0-9._-]+\.html?(?:\?[A-Za-z0-9_=&.-]+)?$/i.test(entry) && !entry.startsWith(".")) {
           setEntryFile(entry);
         }
         setAssetStatus(

@@ -28,6 +28,7 @@ try {
   await mkdir(path.join(assetDirectory, "pvz"), { recursive: true });
   await mkdir(path.join(assetDirectory, "deltarune"), { recursive: true });
   await mkdir(path.join(assetDirectory, "hill-climb-racing"), { recursive: true });
+  await mkdir(path.join(assetDirectory, "quake3"), { recursive: true });
   await writeFile(
     path.join(assetDirectory, "asset-manifest.json"),
     JSON.stringify({ version: 1, games: { pvz: { installed: true } } }),
@@ -39,6 +40,10 @@ try {
   await writeFile(
     path.join(assetDirectory, "deltarune", "index.html"),
     '<!doctype html><html><head><title>DELTARUNE</title><script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script></head></html>',
+  );
+  await writeFile(
+    path.join(assetDirectory, "quake3", "Quake3.htm"),
+    "<!doctype html><html><head><title>Quake III</title></head><body>demo</body></html>",
   );
   await writeFile(path.join(assetDirectory, "hill-climb-racing", "hcr.wasm.part1"), Buffer.from([0, 1, 2]));
   await writeFile(path.join(assetDirectory, "hill-climb-racing", "hcr.wasm.part2"), Buffer.from([3, 4]));
@@ -100,6 +105,11 @@ try {
   assert.match(deltaruneCsp, /https:\/\/cdnjs\.cloudflare\.com/);
   assert.match(deltaruneCsp, /https:\/\/mrdoob\.github\.io/);
   assert.doesNotMatch(deltaruneCsp, /allow-same-origin/);
+
+  response = await fetch(`${baseUrl}/ported-games/quake3/Quake3.htm?demo`);
+  assert.equal(response.status, 200);
+  assert.match(response.headers.get("content-security-policy") ?? "", /sandbox allow-forms/);
+  assert.match(await response.text(), /<title>Quake III<\/title>/);
 
   response = await fetch(`${baseUrl}/ported-games/hill-climb-racing/hcr.wasm`);
   assert.equal(response.status, 200);
