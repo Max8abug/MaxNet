@@ -2,13 +2,10 @@ import type { ComponentType, CSSProperties, RefObject } from 'react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   BarChart3,
-  Bird,
   BookOpen,
-  Crown,
   ExternalLink,
   Gamepad2,
   Globe,
-  Hash,
   Image,
   Link2,
   DatabaseBackup,
@@ -24,7 +21,6 @@ import {
   CalendarDays,
   Pencil,
   Send,
-  Spade,
   StickyNote,
   UserRound,
   Users,
@@ -39,8 +35,7 @@ import { useThemeMode } from '../lib/theme';
 import { formatLocalTime } from '../lib/dates';
 import { fetchDueReminders } from '../lib/planner-api';
 import { useServerNow } from '../lib/server-clock';
-import { fetchPortedGameApprovals } from '../lib/api';
-import { NEW_GAME_PORTS, type NewGamePortId } from '../lib/game-ports';
+import type { NewGamePortId } from '../lib/game-ports';
 import type { WindowType } from '../store';
 
 type MobileWindowProps = {
@@ -80,19 +75,7 @@ const APPS: AppDefinition[] = [
   { label: 'My Page', type: 'mypage', icon: UserRound, tone: 'bg-[#d5a7dc]', size: 'medium' },
   { label: 'Web Browser', type: 'browser', icon: Globe, tone: 'bg-[#9ab5e5]', size: 'medium' },
   { label: 'Settings', type: 'settings', icon: Settings, tone: 'bg-[#9ca9bb]', size: 'medium', subtitle: 'Theme & account' },
-  { label: 'Chess', type: 'chess', icon: Crown, tone: 'bg-[#d7a3c3]', size: 'small' },
-  { label: 'Blackjack', type: 'blackjack', icon: Spade, tone: 'bg-[#cd8585]', size: 'small' },
-  { label: 'Flappy Bird', type: 'flappy', icon: Bird, tone: 'bg-[#80c4d7]', size: 'small' },
-  { label: 'Geometry Dash', type: 'geometry', icon: Gamepad2, tone: 'bg-[#d8b760]', size: 'small' },
-  { label: 'Poker', type: 'poker', icon: Hash, tone: 'bg-[#bc8fd2]', size: 'small' },
-  { label: 'Eaglercraft', type: 'eaglercraft', icon: Gamepad2, tone: 'bg-[#7c9e8d]', size: 'small' },
   { label: 'Games Manager', type: 'gamesmanager', icon: Gamepad2, tone: 'bg-[#557c68]', size: 'medium', subtitle: 'Launch games & manage icons' },
-  { label: 'New Club Penguin', type: 'newcp', icon: Gamepad2, tone: 'bg-[#56a7e6]', size: 'small', subtitle: 'Browser game' },
-  { label: 'Terraria', type: 'terraria', icon: Gamepad2, tone: 'bg-[#729374]', size: 'small', subtitle: 'WebAssembly game' },
-  { label: 'Getting Over It', type: 'gettingoverit', icon: Gamepad2, tone: 'bg-[#a77855]', size: 'small', subtitle: 'Self-hosted game' },
-  { label: 'Plants vs. Zombies', type: 'pvz', icon: Gamepad2, tone: 'bg-[#65a65a]', size: 'small', subtitle: 'Self-hosted game' },
-  { label: 'Web Fishing', type: 'webfishing', icon: Gamepad2, tone: 'bg-[#4b91b0]', size: 'small', subtitle: 'Self-hosted game' },
-  { label: 'Undertale', type: 'undertale', icon: Gamepad2, tone: 'bg-[#9a638e]', size: 'small', subtitle: 'Self-hosted game' },
   { label: 'Drawings', type: 'drawing', icon: Pencil, tone: 'bg-[#e5a279]', size: 'small' },
   { label: 'Guestbook', type: 'guestbook', icon: BookOpen, tone: 'bg-[#b2c889]', size: 'small' },
   { label: 'Visitor Counter', type: 'visits', icon: BarChart3, tone: 'bg-[#dfc276]', size: 'small' },
@@ -131,7 +114,6 @@ export function MobileShell({ page }: { page: string }) {
   const homeMainRef = useRef<HTMLElement>(null);
   const [openWindowId, setOpenWindowId] = useState<string | null>(null);
   const [plannerDue, setPlannerDue] = useState(0);
-  const [approvedGamePorts, setApprovedGamePorts] = useState<string[]>([]);
   const user = useAuth((state) => state.user);
   const siteSettings = useAuth((state) => state.siteSettings);
   const refreshSiteSettings = useAuth((state) => state.refreshSiteSettings);
@@ -149,24 +131,6 @@ export function MobileShell({ page }: { page: string }) {
     window.addEventListener("focus", onFocus);
     return () => { clearInterval(timer); window.removeEventListener("focus", onFocus); };
   }, [refreshFeatureArchives]);
-  useEffect(() => {
-    let alive = true;
-    const refresh = () => {
-      void fetchPortedGameApprovals()
-        .then(result => { if (alive) setApprovedGamePorts(result.approvedGamePorts); })
-        .catch(() => { /* Retain the last successful game list. */ });
-    };
-    refresh();
-    const timer = setInterval(refresh, 15_000);
-    window.addEventListener("focus", refresh);
-    window.addEventListener("game-port-approvals-changed", refresh);
-    return () => {
-      alive = false;
-      clearInterval(timer);
-      window.removeEventListener("focus", refresh);
-      window.removeEventListener("game-port-approvals-changed", refresh);
-    };
-  }, []);
   const { darkMode } = useThemeMode();
   const serverNow = useServerNow();
   const savedWindows = useDesktopStore(
@@ -183,22 +147,11 @@ export function MobileShell({ page }: { page: string }) {
     [openWindowId, windows],
   );
   const apps = useMemo(() => {
-    const availableGames: AppDefinition[] = NEW_GAME_PORTS
-      .filter(port => approvedGamePorts.includes(port.id))
-      .map(port => ({
-        label: port.title,
-        type: 'portedgame',
-        gameId: port.id,
-        icon: Gamepad2,
-        tone: 'bg-[#628c78]',
-        size: 'small',
-        subtitle: 'Self-hosted game',
-      }));
-    return [...APPS, ...availableGames].filter((app) =>
+    return APPS.filter((app) =>
       (!app.adminOnly || user?.isAdmin) &&
       (!isArchivableFeatureId(app.type) || !(siteSettings.archivedFeatures || []).includes(app.type)),
     );
-  }, [approvedGamePorts, user?.isAdmin, siteSettings.archivedFeatures]);
+  }, [user?.isAdmin, siteSettings.archivedFeatures]);
   const regularApps = apps.filter((app) => !app.adminOnly);
   const adminApps = apps.filter((app) => app.adminOnly);
   const personalBackground = darkMode ? user?.darkBackgroundUrl : user?.backgroundUrl;

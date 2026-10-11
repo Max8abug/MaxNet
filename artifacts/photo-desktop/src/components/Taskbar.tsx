@@ -6,7 +6,7 @@ import { LoginDialog } from './LoginDialog';
 import { useProfileDialogStore } from '../lib/profile-dialog-store';
 import { useThemeMode } from '../lib/theme';
 import { Toaster } from './Toaster';
-import { fetchDMConversations, fetchChat, fetchNews, fetchPortedGameApprovals, fetchNotificationSettings } from '../lib/api';
+import { fetchDMConversations, fetchChat, fetchNews, fetchNotificationSettings } from '../lib/api';
 import { isFeatureHiddenFromLaunchers } from '@workspace/feature-registry';
 import {
   enablePushNotifications,
@@ -20,7 +20,6 @@ import { formatLocalTime } from '../lib/dates';
 import { useServerNow } from '../lib/server-clock';
 import { fetchDueReminders } from '../lib/planner-api';
 import type { ArchivableFeatureId } from '@workspace/feature-registry';
-import { NEW_GAME_PORTS } from '../lib/game-ports';
 
 export function Taskbar({ page }: { page: string }) {
   const { addWindow, isStringMode, setStringMode, resetState, windows, toggleWindowState, bringToFront } = useDesktopStore();
@@ -34,7 +33,6 @@ export function Taskbar({ page }: { page: string }) {
   const wins = (windows[page] || []).filter((window) => !isFeatureHiddenFromLaunchers(window.type));
   const [dmUnread, setDmUnread] = useState(0);
   const [chatUnread, setChatUnread] = useState(0);
-  const [approvedGamePorts, setApprovedGamePorts] = useState<string[]>([]);
   useEffect(() => { void refresh(); void refreshRanks(); }, [refresh, refreshRanks]);
   // Full branding/settings still load at startup and on focus, independently
   // of the frequent, archive-only visibility refresh.
@@ -51,25 +49,6 @@ export function Taskbar({ page }: { page: string }) {
     window.addEventListener("focus", onFocus);
     return () => { clearInterval(timer); window.removeEventListener("focus", onFocus); };
   }, [refreshFeatureArchives]);
-  useEffect(() => {
-    let alive = true;
-    const refresh = () => {
-      void fetchPortedGameApprovals()
-        .then(result => { if (alive) setApprovedGamePorts(result.approvedGamePorts); })
-        .catch(() => { /* Keep the last successful public game list. */ });
-    };
-    refresh();
-    const timer = setInterval(refresh, 15_000);
-    window.addEventListener("focus", refresh);
-    window.addEventListener("game-port-approvals-changed", refresh);
-    return () => {
-      alive = false;
-      clearInterval(timer);
-      window.removeEventListener("focus", refresh);
-      window.removeEventListener("game-port-approvals-changed", refresh);
-    };
-  }, []);
-
   // Poll for DM and chat unread counts. Treat the badge as cleared while a window of that type is open and not minimized.
   const dmsOpen = wins.some(w => w.type === 'dms' && (w.state || 'normal') !== 'min');
   const chatOpen = wins.some(w => w.type === 'chat' && (w.state || 'normal') !== 'min');
@@ -348,22 +327,6 @@ export function Taskbar({ page }: { page: string }) {
 
   const gameItems: StartMenuItem[] = [
     { label: "Games Manager", act: () => open({ type: 'gamesmanager', title: 'Games Manager', width: 760, height: 560 }) },
-    { label: "Open Chess Lobbies", feature: 'chess', act: () => open({ type: 'chess', title: 'Chess', width: 600, height: 520 }) },
-    { label: "Play Blackjack", feature: 'blackjack', act: () => open({ type: 'blackjack', title: 'Blackjack', width: 520, height: 480 }) },
-    { label: "Play Flappy Bird", feature: 'flappy', act: () => open({ type: 'flappy', title: 'Flappy Bird', width: 560, height: 540 }) },
-    { label: "Play Geometry Dash", feature: 'geometry', act: () => open({ type: 'geometry', title: 'Geometry Dash', width: 560, height: 330 }) },
-    { label: "Play Poker", feature: 'poker', act: () => open({ type: 'poker', title: 'Poker', width: 560, height: 390 }) },
-    { label: "Play Eaglercraft", feature: 'eaglercraft', act: () => open({ type: 'eaglercraft', title: 'Eaglercraft', width: 900, height: 600 }) },
-    { label: "Play New Club Penguin", feature: 'newcp', act: () => open({ type: 'newcp', title: 'New Club Penguin', width: 1000, height: 680 }) },
-    { label: "Play Terraria", feature: 'terraria', act: () => open({ type: 'terraria', title: 'Terraria', width: 1100, height: 680 }) },
-    { label: "Play Getting Over It", feature: 'gettingoverit', act: () => open({ type: 'gettingoverit', title: 'Getting Over It', width: 1000, height: 700 }) },
-    { label: "Play Plants vs. Zombies", feature: 'pvz', act: () => open({ type: 'pvz', title: 'Plants vs. Zombies', width: 1000, height: 700 }) },
-    { label: "Play Web Fishing", feature: 'webfishing', act: () => open({ type: 'webfishing', title: 'Web Fishing', width: 1000, height: 700 }) },
-    { label: "Play Undertale", feature: 'undertale', act: () => open({ type: 'undertale', title: 'Undertale', width: 1000, height: 700 }) },
-    ...NEW_GAME_PORTS.filter(port => approvedGamePorts.includes(port.id)).map(port => ({
-      label: `Play ${port.title}`,
-      act: () => open({ type: 'portedgame', gameId: port.id, title: port.title, width: 1000, height: 700 }),
-    })),
   ];
   if (user?.isAdmin) gameItems.push({
     label: "★ Pending Game Ports",
