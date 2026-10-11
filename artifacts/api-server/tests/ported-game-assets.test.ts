@@ -78,21 +78,25 @@ try {
   assert.match(gameHtml, /source: "ported-game-diagnostics"/);
   assert.match(gameHtml, /unhandledrejection/);
   assert.match(gameHtml, /securitypolicyviolation/);
+  assert.match(gameHtml, /Object\.getOwnPropertyDescriptor\(Window\.prototype, key\)/);
+  assert.match(gameHtml, /Gamepad access:/);
+  assert.match(gameHtml, /CacheStorage:/);
   assert.match(gameHtml, /window\.fetch =/);
+  assert.match(gameHtml, /XMLHttpRequest\.prototype\.send =/);
   assert.match(gameHtml, /<title>PVZ<\/title>/);
 
   response = await fetch(`${baseUrl}/ported-games/missing/index.html`);
   assert.equal(response.status, 404);
   assert.equal(await response.text(), "Game asset not found");
 
-  response = await fetch(`${baseUrl}/ported-games/%2e%2e/package.json`);
+  response = await fetch(`${baseUrl}/ported-games/%252e%252e/package.json`);
   assert.equal(response.status, 404, "encoded traversal cannot escape the game asset directory");
 
   response = await fetch(`${baseUrl}/`);
   assert.equal(response.status, 200);
   assert.equal(await response.text(), "main site");
 
-  console.log("PASS: main-site path, legacy game host, static CORS, sandbox CSP, missing files, and normal routes");
+  console.log("PASS: path hosting, sandbox CSP, runtime permission/request diagnostics, missing files, and normal routes");
 } finally {
   server.close();
   await once(server, "close");

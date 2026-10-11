@@ -49,6 +49,54 @@ const GAME_DIAGNOSTIC_BOOTSTRAP = `<script>
   addEventListener("securitypolicyviolation", event => {
     report("policy-error", event.violatedDirective + " blocked " + (event.blockedURI || "a resource"));
   });
+  for (const key of ["localStorage", "sessionStorage"]) {
+    const getter = Object.getOwnPropertyDescriptor(Window.prototype, key)?.get;
+    if (!getter) continue;
+    try {
+      Object.defineProperty(window, key, {
+        configurable: true,
+        get() {
+          try {
+            return getter.call(window);
+          } catch (error) {
+            report("permission-error", key + ": " + (error?.message || error));
+            throw error;
+          }
+        }
+      });
+    } catch (_) {}
+  }
+  const originalGetGamepads = Navigator.prototype.getGamepads;
+  if (typeof originalGetGamepads === "function") {
+    try {
+      Navigator.prototype.getGamepads = function(...args) {
+        try {
+          return originalGetGamepads.apply(this, args);
+        } catch (error) {
+          report("permission-error", "Gamepad access: " + (error?.message || error));
+          throw error;
+        }
+      };
+    } catch (_) {}
+  }
+  const originalCacheOpen = window.caches?.open;
+  if (typeof originalCacheOpen === "function") {
+    try {
+      window.caches.open = function(...args) {
+        let result;
+        try {
+          result = originalCacheOpen.apply(this, args);
+        } catch (error) {
+          report("permission-error", "CacheStorage: " + (error?.message || error));
+          throw error;
+        }
+        return Promise.resolve(result).catch(error => {
+          if (isSecurityError(error)) report("permission-error", "CacheStorage: " + (error?.message || error));
+          throw error;
+        });
+      };
+    } catch (_) {}
+  }
   const originalFetch = window.fetch.bind(window);
   window.fetch = (...args) => originalFetch(...args).then(response => {
     if (!response.ok) report("request-error", "HTTP " + response.status + " for " + response.url);
@@ -57,13 +105,27 @@ const GAME_DIAGNOSTIC_BOOTSTRAP = `<script>
     report(isSecurityError(error) ? "permission-error" : "request-error", error?.message || error);
     throw error;
   });
+  const xhrOpen = XMLHttpRequest.prototype.open;
+  const xhrSend = XMLHttpRequest.prototype.send;
+  XMLHttpRequest.prototype.open = function(method, url, ...args) {
+    this.__portedGameUrl = String(url);
+    return xhrOpen.call(this, method, url, ...args);
+  };
+  XMLHttpRequest.prototype.send = function(...args) {
+    this.addEventListener("loadend", () => {
+      if (this.status === 0 || this.status >= 400) {
+        report("request-error", "HTTP " + this.status + " for " + (this.__portedGameUrl || "unknown request"));
+      }
+    }, { once: true });
+    return xhrSend.apply(this, args);
+  };
 })();
 </script>`;
 
 function instrumentGameHtml(html: string): string {
   if (html.includes('source: "ported-game-diagnostics"')) return html;
-  const headClose = /<\/head\s*>/i;
-  if (headClose.test(html)) return html.replace(headClose, `${GAME_DIAGNOSTIC_BOOTSTRAP}</head>`);
+  const headOpen = /<head\b[^>]*>/i;
+  if (headOpen.test(html)) return html.replace(headOpen, match => `${match}${GAME_DIAGNOSTIC_BOOTSTRAP}`);
   const bodyOpen = /<body\b[^>]*>/i;
   if (bodyOpen.test(html)) return html.replace(bodyOpen, match => `${match}${GAME_DIAGNOSTIC_BOOTSTRAP}`);
   return `${GAME_DIAGNOSTIC_BOOTSTRAP}${html}`;
