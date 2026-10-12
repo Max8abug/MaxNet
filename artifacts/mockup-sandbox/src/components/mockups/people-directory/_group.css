@@ -1,0 +1,12 @@
+@import "tailwindcss";
+
+:root {
+  --app-font-sans: "Pixelated MS Sans Serif", "MS Sans Serif", Tahoma, sans-serif;
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+html, body, #root { min-width: 320px; min-height: 100%; margin: 0; }
+body { font-family: var(--app-font-sans); background: #008080; color: #171d27; overflow: auto; }
+.win98-window { background: #c0c0c0; border: 2px solid; border-color: #fff #404040 #404040 #fff; box-shadow: inset 1px 1px #dfdfdf, inset -1px -1px #808080, 1px 1px #000; padding: 2px; }
+.win98-button { background: #c0c0c0; border: 1px solid; border-color: #fff #000 #000 #fff; box-shadow: inset 1px 1px #dfdfdf, inset -1px -1px #808080; color: #000; font-weight: bold; display: inline-flex; align-items: center; justify-content: center; padding: 2px 6px; }
+.win98-inset { background: white; border: 2px solid; border-color: #808080 #fff #fff #808080; box-shadow: inset 1px 1px #000, inset -1px -1px #dfdfdf; }
