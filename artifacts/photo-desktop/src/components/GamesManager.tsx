@@ -74,12 +74,12 @@ export function GamesManager({ page }: { page: string }) {
     });
   };
 
-  const saveIcon = async (gameId: string, url: string | null, pngDataUrl = uploadDataUrl) => {
+  const saveIcon = async (gameId: string, url: string | null, iconDataUrl = uploadDataUrl) => {
     setBusy(gameId);
     setError("");
     try {
-      const result = pngDataUrl
-        ? await uploadGameIcon(gameId, pngDataUrl)
+      const result = iconDataUrl
+        ? await uploadGameIcon(gameId, iconDataUrl)
         : await setGameIcon(gameId, url);
       setIcons(result.gameIcons);
       setBrokenIcons(current => {
@@ -103,12 +103,12 @@ export function GamesManager({ page }: { page: string }) {
     setUploadFileName("");
     setDraft("");
     if (!file) return;
-    if (file.type !== "image/png") {
-      setError("Choose a PNG image.");
+    if (file.type !== "image/png" && file.type !== "image/jpeg") {
+      setError("Choose a PNG or JPEG image.");
       return;
     }
     if (file.size > 1_000_000) {
-      setError("PNG icons must be 1 MB or smaller.");
+      setError("Icons must be 1 MB or smaller.");
       return;
     }
     setReadingFile(true);
@@ -199,10 +199,10 @@ export function GamesManager({ page }: { page: string }) {
           <div className="grid h-10 w-10 place-items-center rounded-xl bg-teal-50 text-teal-800"><Pencil className="h-5 w-5" /></div>
           <div><h3 className="font-bold text-white">Change game icon</h3><p className="text-xs text-slate-300">{editingGame.title}</p></div>
         </div>
-        <label className="block text-xs font-semibold text-slate-200">Upload a PNG from your device
-          <input type="file" accept="image/png,.png" onChange={e => selectIconFile(e.currentTarget.files?.[0])} className="mt-1.5 block w-full rounded-lg border border-[#496168] bg-[#172a30] p-2 text-xs text-slate-200 file:mr-3 file:rounded-md file:border-0 file:bg-teal-700 file:px-3 file:py-1.5 file:text-xs file:font-semibold file:text-white hover:file:bg-teal-600" />
+        <label className="block text-xs font-semibold text-slate-200">Upload a PNG or JPEG from your device
+          <input type="file" accept="image/png,image/jpeg,.png,.jpg,.jpeg" onChange={e => selectIconFile(e.currentTarget.files?.[0])} className="mt-1.5 block w-full rounded-lg border border-[#496168] bg-[#172a30] p-2 text-xs text-slate-200 file:mr-3 file:rounded-md file:border-0 file:bg-teal-700 file:px-3 file:py-1.5 file:text-xs file:font-semibold file:text-white hover:file:bg-teal-600" />
         </label>
-        <p className="mt-1 text-xs text-slate-400">PNG only · max 1 MB · maximum dimensions 2048 × 2048</p>
+        <p className="mt-1 text-xs text-slate-400">PNG or JPEG · max 1 MB · maximum dimensions 2048 × 2048</p>
         {uploadFileName && <p className="mt-2 truncate text-xs text-teal-200">Selected: {uploadFileName}</p>}
         <div className="my-4 flex items-center gap-3 text-[10px] font-semibold uppercase tracking-wider text-slate-500"><span className="h-px flex-1 bg-[#496168]" />or use an image link<span className="h-px flex-1 bg-[#496168]" /></div>
         <label className="block text-xs font-semibold text-slate-200">HTTPS image URL
@@ -212,7 +212,7 @@ export function GamesManager({ page }: { page: string }) {
         <div className="mt-5 flex justify-end gap-2">
           <button className="rounded-lg border border-[#496168] px-3 py-2 text-xs font-semibold text-slate-200 hover:bg-[#2c454c]" onClick={() => setEditing(null)}>Cancel</button>
           <button className="rounded-lg bg-teal-700 px-3 py-2 text-xs font-semibold text-white hover:bg-teal-600 disabled:opacity-50" disabled={busy === editingGame.id || readingFile} onClick={() => void saveIcon(editingGame.id, draft.trim() || null, draft.trim() ? "" : uploadDataUrl)}>
-            {busy === editingGame.id ? "Saving…" : readingFile ? "Reading PNG…" : uploadDataUrl ? "Upload PNG" : draft.trim() ? <><Check className="mr-1 inline h-3.5 w-3.5" />Save link</> : "Reset icon"}
+            {busy === editingGame.id ? "Saving…" : readingFile ? "Reading image…" : uploadDataUrl ? "Upload image" : draft.trim() ? <><Check className="mr-1 inline h-3.5 w-3.5" />Save link</> : "Reset icon"}
           </button>
         </div>
       </div>

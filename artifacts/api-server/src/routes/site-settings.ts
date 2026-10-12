@@ -74,20 +74,58 @@ function parseStoredGameIcon(value: string, gameId: string): string | null {
   const prefix = `storage:game-icons/${gameId}/`;
   if (!value.startsWith(prefix)) return null;
   const objectKey = value.slice("storage:".length);
-  return /^game-icons\/[a-z0-9-]{1,64}\/[0-9a-f-]{36}\.png$/.test(objectKey) ? objectKey : null;
+  return /^game-icons\/[a-z0-9-]{1,64}\/[0-9a-f-]{36}\.(?:png|jpe?g)$/.test(objectKey) ? objectKey : null;
 }
 
-function parseGameIconPng(value: unknown): Buffer | null {
+type ParsedGameIcon = {
+  bytes: Buffer;
+  extension: "png" | "jpg";
+};
+
+function jpegDimensions(bytes: Buffer): { width: number; height: number } | null {
+  if (bytes.length < 4 || bytes[0] !== 0xff || bytes[1] !== 0xd8) return null;
+  const frameMarkers = new Set([0xc0, 0xc1, 0xc2, 0xc3, 0xc5, 0xc6, 0xc7, 0xc9, 0xca, 0xcb, 0xcd, 0xce, 0xcf]);
+  let offset = 2;
+  while (offset < bytes.length) {
+    while (offset < bytes.length && bytes[offset] !== 0xff) offset++;
+    while (offset < bytes.length && bytes[offset] === 0xff) offset++;
+    if (offset >= bytes.length) return null;
+    const marker = bytes[offset++];
+    if (marker === 0xd9 || marker === 0xda) return null;
+    if (marker === 0x01 || (marker >= 0xd0 && marker <= 0xd7)) continue;
+    if (offset + 2 > bytes.length) return null;
+    const segmentLength = bytes.readUInt16BE(offset);
+    if (segmentLength < 2 || offset + segmentLength > bytes.length) return null;
+    if (frameMarkers.has(marker)) {
+      if (segmentLength < 7) return null;
+      return {
+        height: bytes.readUInt16BE(offset + 3),
+        width: bytes.readUInt16BE(offset + 5),
+      };
+    }
+    offset += segmentLength;
+  }
+  return null;
+}
+
+function parseGameIcon(value: unknown): ParsedGameIcon | null {
   if (typeof value !== "string" || value.length > 1_400_000) return null;
-  const match = /^data:image\/png;base64,([A-Za-z0-9+/]*={0,2})$/i.exec(value);
+  const match = /^data:image\/(png|jpeg);base64,([A-Za-z0-9+/]*={0,2})$/i.exec(value);
   if (!match) return null;
-  const bytes = Buffer.from(match[1], "base64");
-  if (bytes.length < 24 || bytes.length > 1_000_000 ||
-      !bytes.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10])) ||
-      bytes.toString("ascii", 12, 16) !== "IHDR") return null;
-  const width = bytes.readUInt32BE(16);
-  const height = bytes.readUInt32BE(20);
-  return width > 0 && height > 0 && width <= 2048 && height <= 2048 ? bytes : null;
+  const isPng = match[1].toLowerCase() === "png";
+  const bytes = Buffer.from(match[2], "base64");
+  if (bytes.length < 24 || bytes.length > 1_000_000) return null;
+  let dimensions: { width: number; height: number } | null;
+  if (isPng) {
+    if (!bytes.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10])) ||
+        bytes.toString("ascii", 12, 16) !== "IHDR") return null;
+    dimensions = { width: bytes.readUInt32BE(16), height: bytes.readUInt32BE(20) };
+  } else {
+    dimensions = jpegDimensions(bytes);
+  }
+  if (!dimensions || dimensions.width < 1 || dimensions.height < 1 ||
+      dimensions.width > 2048 || dimensions.height > 2048) return null;
+  return { bytes, extension: isPng ? "png" : "jpg" };
 }
 
 router.get("/site-settings/game-icons", async (_req, res) => {
@@ -107,7 +145,7 @@ router.get("/site-settings/game-icons/:gameId/image", async (req, res) => {
   const objectKey = typeof stored === "string" ? parseStoredGameIcon(stored, gameId) : null;
   if (!objectKey) { res.status(404).end(); return; }
   res.set({
-    "Content-Type": "image/png",
+    "Content-Type": objectKey.endsWith(".png") ? "image/png" : "image/jpeg",
     "X-Content-Type-Options": "nosniff",
     "Cache-Control": "no-store",
   });
@@ -122,14 +160,14 @@ router.get("/site-settings/game-icons/:gameId/image", async (req, res) => {
 
 router.post("/site-settings/game-icons/:gameId/upload", requireAdmin, async (req, res) => {
   const gameId = String(req.params.gameId);
-  const bytes = parseGameIconPng(req.body?.dataUrl);
-  if (!/^[a-z0-9-]{1,64}$/.test(gameId) || !bytes) {
-    res.status(400).json({ error: "Choose a PNG icon up to 1 MB and 2048 × 2048 pixels." });
+  const icon = parseGameIcon(req.body?.dataUrl);
+  if (!/^[a-z0-9-]{1,64}$/.test(gameId) || !icon) {
+    res.status(400).json({ error: "Choose a PNG or JPEG icon up to 1 MB and 2048 × 2048 pixels." });
     return;
   }
   const row = await ensureRow();
   const lockKey = `game-icon:${gameId}`;
-  const objectKey = `game-icons/${gameId}/${randomUUID()}.png`;
+  const objectKey = `game-icons/${gameId}/${randomUUID()}.${icon.extension}`;
   let oldObjectKey: string | null = null;
   try {
     const updated = await db.transaction(async tx => {
@@ -141,7 +179,7 @@ router.post("/site-settings/game-icons/:gameId/upload", requireAdmin, async (req
         : null;
       oldObjectKey = typeof existing === "string" ? parseStoredGameIcon(existing, gameId) : null;
       await trackUpload(lockKey, objectKey);
-      const stored = await appStorage.uploadFromBytes(objectKey, bytes, { compress: false });
+      const stored = await appStorage.uploadFromBytes(objectKey, icon.bytes, { compress: false });
       if (!stored.ok) throw new Error(stored.error.message);
       const [saved] = await tx.update(siteSettingsTable).set({
         gamePortIcons: sql`jsonb_set(COALESCE(${siteSettingsTable.gamePortIcons}, '{}'::jsonb), ARRAY[${gameId}], to_jsonb(${"storage:" + objectKey}::text), true)`,

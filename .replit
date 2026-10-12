@@ -45,7 +45,7 @@ channel = "stable-25_05"
 
 [[ports]]
 localPort = 5000
-externalPort = 80
+externalPort = 5000
 
 [[ports]]
 localPort = 8080
@@ -56,13 +56,12 @@ localPort = 8081
 externalPort = 8081
 
 [[ports]]
-localPort = 22084
+localPort = 8082
 externalPort = 3001
-exposeLocalhost = true
 
 [[ports]]
 localPort = 24911
-externalPort = 3000
+externalPort = 80
 
 [userenv]
 
