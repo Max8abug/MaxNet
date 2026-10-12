@@ -17,6 +17,7 @@ import "./SocialFeed.css";
 
 type SocialFeedProps = { username?: string };
 type FeedMode = "for-you" | "following";
+type FeedTheme = "light" | "dark";
 const MAX_MEDIA_BYTES = 6 * 1024 * 1024;
 const MAX_BODY_LENGTH = 500;
 
@@ -78,7 +79,15 @@ function PostCard({
       <header className="social-post-header">
         <Avatar username={post.author} size={38} />
         <div className="social-author-copy">
-          <button type="button" onClick={() => onOpenUser(post.author)} data-testid={`social-post-author-${post.id}`}>{post.author}</button>
+          <button
+            type="button"
+            onClick={() => onOpenUser(post.author)}
+            aria-label={`Open ${post.author}'s profile to follow or view posts`}
+            title={`Open ${post.author}'s profile`}
+            data-testid={`social-post-author-${post.id}`}
+          >
+            {post.author}
+          </button>
           <time dateTime={post.createdAt} data-testid={`social-post-time-${post.id}`}>{formatPostTime(post.createdAt)}</time>
         </div>
         {canDelete && (
@@ -128,6 +137,13 @@ function PostCard({
 export function SocialFeed({ username }: SocialFeedProps) {
   const me = useAuth((state) => state.user);
   const [mode, setMode] = useState<FeedMode>("for-you");
+  const [theme, setTheme] = useState<FeedTheme>(() => {
+    try {
+      return localStorage.getItem("photo-desktop-social-theme") === "dark" ? "dark" : "light";
+    } catch {
+      return "light";
+    }
+  });
   const [posts, setPosts] = useState<SocialPost[]>([]);
   const [profile, setProfile] = useState<SocialProfile | null>(null);
   const [loading, setLoading] = useState(true);
@@ -144,6 +160,10 @@ export function SocialFeed({ username }: SocialFeedProps) {
   const fileRef = useRef<HTMLInputElement>(null);
   const addWindow = useDesktopStore((state) => state.addWindow);
   const activePage = useDesktopStore((state) => state.activePage);
+
+  useEffect(() => {
+    try { localStorage.setItem("photo-desktop-social-theme", theme); } catch { /* Use the current session preference. */ }
+  }, [theme]);
 
   const load = useCallback(async (selectedMode: FeedMode = mode) => {
     setLoading(true);
@@ -298,7 +318,12 @@ export function SocialFeed({ username }: SocialFeedProps) {
   const isProfile = !!username;
 
   return (
-    <section className="social-feed" data-testid={isProfile ? "social-profile" : "social-feed"}>
+    <section className="social-feed" data-theme={theme} data-testid={isProfile ? "social-profile" : "social-feed"}>
+      <div className="social-theme-toolbar" role="group" aria-label="Social feed appearance">
+        <span>APPEARANCE</span>
+        <button type="button" className={theme === "light" ? "is-active" : ""} onClick={() => setTheme("light")} aria-pressed={theme === "light"} data-testid="button-social-theme-light">Light</button>
+        <button type="button" className={theme === "dark" ? "is-active" : ""} onClick={() => setTheme("dark")} aria-pressed={theme === "dark"} data-testid="button-social-theme-dark">Dark</button>
+      </div>
       {isProfile ? (
         <div className="social-profile-banner" data-testid="social-profile-header">
           <div className="social-profile-identity">
@@ -331,7 +356,7 @@ export function SocialFeed({ username }: SocialFeedProps) {
             <div>
               <span className="social-eyebrow">THE COMMUNITY WIRE</span>
               <h1 data-testid="social-feed-title">A little corner of the web.</h1>
-              <p>Short notes, fresh finds, and what people are up to.</p>
+              <p>Posts from people you follow, plus popular and recent finds from everyone.</p>
             </div>
             <div className="social-feed-index" aria-hidden="true"><b>01</b><span> / LIVE</span></div>
           </header>

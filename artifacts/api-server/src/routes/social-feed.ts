@@ -68,16 +68,22 @@ router.get("/social/feed", async (req, res) => {
       ? await db.select().from(socialPostsTable).where(inArray(socialPostsTable.author, followedAuthors))
         .orderBy(desc(socialPostsTable.createdAt)).limit(20)
       : [];
-    const counts = rows.length ? await db.select({
+    const candidates = [...new Map([...rows, ...followedPosts].map(row => [row.id, row])).values()];
+    const counts = candidates.length ? await db.select({
       postId: socialPostLikesTable.postId,
       count: sql<number>`count(*)::int`,
-    }).from(socialPostLikesTable).where(inArray(socialPostLikesTable.postId, rows.map(row => row.id)))
+    }).from(socialPostLikesTable).where(inArray(socialPostLikesTable.postId, candidates.map(row => row.id)))
       .groupBy(socialPostLikesTable.postId) : [];
     const scoreByPost = new Map(counts.map(row => [row.postId, Number(row.count)]));
-    const popular = [...rows].sort((a, b) => (scoreByPost.get(b.id) || 0) - (scoreByPost.get(a.id) || 0)).slice(0, 30);
-    const recent = [...rows].slice(0, 30);
-    rows = [...new Map([...followedPosts, ...popular, ...recent].map(row => [row.id, row])).values()]
-      .sort(() => Math.random() - 0.5).slice(0, 40);
+    const followedSet = new Set(followedAuthors);
+    const score = (post: typeof candidates[number]) => {
+      const ageHours = Math.max(0, (Date.now() - post.createdAt.getTime()) / 3_600_000);
+      const recency = 40 * Math.exp(-ageHours / 72);
+      const popularity = Math.log2(1 + (scoreByPost.get(post.id) || 0)) * 12;
+      const followedBoost = followedSet.has(post.author) ? 4 : 0;
+      return recency + popularity + followedBoost;
+    };
+    rows = candidates.sort((a, b) => score(b) - score(a) || b.createdAt.getTime() - a.createdAt.getTime()).slice(0, 40);
   }
   res.json(await Promise.all(rows.map(row => presentPost(row, username))));
 });
