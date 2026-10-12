@@ -126,6 +126,26 @@ overrides:
   "rollup>@rollup/rollup-darwin-x64": "-"
   "rollup>@rollup/rollup-freebsd-arm64": "-"
   "rollup>@rollup/rollup-freebsd-x64": "-"
+  # Keep vulnerable transitive dependencies on patched, compatible releases.
+  "@babel/core": 7.29.6
+  "baseline-browser-mapping": 2.11.0
+  "body-parser": 2.3.0
+  "brace-expansion@2": 2.1.7
+  "browserslist": 4.29.3
+  "fast-copy": 4.1.0
+  "fast-uri": 3.1.8
+  "js-yaml": 4.3.2
+  "linkify-it": 5.0.2
+  "lodash": 4.18.0
+  "nanoid@3": 3.3.18
+  "path-to-regexp@8": 8.4.0
+  "picomatch@2": 2.3.2
+  "picomatch@4": 4.0.4
+  "postcss": 8.5.23
+  "proxy-addr": 2.0.8
+  "qs": 6.16.0
+  "source-map-js": 1.2.2
+  "yaml": 2.8.3
   "rollup>@rollup/rollup-linux-arm-gnueabihf": "-"
   "rollup>@rollup/rollup-linux-arm-musleabihf": "-"
   "rollup>@rollup/rollup-linux-arm64-gnu": "-"
@@ -154,6 +174,6 @@ overrides:
   "@expo/ngrok-bin>@expo/ngrok-bin-sunos-x64": "-"
   "@expo/ngrok-bin>@expo/ngrok-bin-win32-ia32": "-"
   "@expo/ngrok-bin>@expo/ngrok-bin-win32-x64": "-"
-  # drizzle-kit uses esbuild internally on an older version that's vulnerable, this overrides it
+  # drizzle-kit uses esbuild internally; pin its shared version to a patched release.
   "@esbuild-kit/esm-loader": "npm:tsx@^4.21.0"
-  esbuild: "0.27.3"
+  esbuild: "0.28.1"
