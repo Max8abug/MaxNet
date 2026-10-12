@@ -20,3 +20,4 @@
 - [Notification email delivery](notification-delivery.md) — self-hosted notification email uses Resend configured through launcher settings, with verified recipients.
 - [Path-based game hosting](ported-game-path-sandbox.md) — serve game ports under the main site path, but keep their frames sandboxed without same-origin access.
 - [Game port hosting permission](game-port-permission.md) — user says repository creators explicitly permitted self-hosting the supplied port files.
+- [Social feed migration scope](social-feed-migration.md) — keep the standalone Drawpad and its drawings; migrate only legacy My Page artwork into the owner's first post.

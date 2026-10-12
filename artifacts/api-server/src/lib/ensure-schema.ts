@@ -209,6 +209,31 @@ export async function ensureSchema(): Promise<void> {
     ALTER TABLE user_pages ADD COLUMN IF NOT EXISTS elements jsonb NOT NULL DEFAULT '[]'::jsonb;
     ALTER TABLE user_pages ADD COLUMN IF NOT EXISTS votes jsonb NOT NULL DEFAULT '{}'::jsonb;
 
+    CREATE TABLE IF NOT EXISTS social_posts (
+      id serial PRIMARY KEY,
+      author text NOT NULL,
+      body text NOT NULL DEFAULT '',
+      media_object_key text,
+      media_type text,
+      source_page_username text UNIQUE,
+      created_at timestamp NOT NULL DEFAULT now()
+    );
+    CREATE INDEX IF NOT EXISTS social_posts_author_created_idx ON social_posts (author, created_at);
+    CREATE TABLE IF NOT EXISTS social_follows (
+      id serial PRIMARY KEY,
+      follower text NOT NULL,
+      following text NOT NULL,
+      created_at timestamp NOT NULL DEFAULT now(),
+      CONSTRAINT social_follows_pair_unique UNIQUE (follower, following)
+    );
+    CREATE TABLE IF NOT EXISTS social_post_likes (
+      id serial PRIMARY KEY,
+      post_id integer NOT NULL,
+      username text NOT NULL,
+      created_at timestamp NOT NULL DEFAULT now(),
+      CONSTRAINT social_post_likes_pair_unique UNIQUE (post_id, username)
+    );
+
     CREATE TABLE IF NOT EXISTS wiki_pages (
       slug text PRIMARY KEY,
       title text NOT NULL,

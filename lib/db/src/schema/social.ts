@@ -144,6 +144,30 @@ export const userPagesTable = pgTable("user_pages", {
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 
+export const socialPostsTable = pgTable("social_posts", {
+  id: serial("id").primaryKey(),
+  author: text("author").notNull(),
+  body: text("body").notNull().default(""),
+  mediaObjectKey: text("media_object_key"),
+  mediaType: text("media_type"),
+  sourcePageUsername: text("source_page_username").unique(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => [index("social_posts_author_created_idx").on(table.author, table.createdAt)]);
+
+export const socialFollowsTable = pgTable("social_follows", {
+  id: serial("id").primaryKey(),
+  follower: text("follower").notNull(),
+  following: text("following").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => [uniqueIndex("social_follows_pair_idx").on(table.follower, table.following)]);
+
+export const socialPostLikesTable = pgTable("social_post_likes", {
+  id: serial("id").primaryKey(),
+  postId: integer("post_id").notNull(),
+  username: text("username").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => [uniqueIndex("social_post_likes_pair_idx").on(table.postId, table.username)]);
+
 export const wikiPagesTable = pgTable("wiki_pages", {
   slug: text("slug").primaryKey(),
   title: text("title").notNull(),

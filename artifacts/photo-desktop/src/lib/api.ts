@@ -861,6 +861,52 @@ export async function voteUserPage(username: string, vote: boolean): Promise<{ u
   }));
 }
 
+export interface SocialPost {
+  id: number;
+  author: string;
+  body: string;
+  mediaUrl: string | null;
+  mediaType: string | null;
+  likes: number;
+  myLike: boolean;
+  createdAt: string;
+}
+export interface SocialProfile {
+  username: string;
+  avatarUrl: string | null;
+  rank: string | null;
+  followers: number;
+  following: number;
+  isFollowing: boolean;
+  posts: SocialPost[];
+}
+export async function fetchSocialFeed(mode: "for-you" | "following"): Promise<SocialPost[]> {
+  return jsonOrThrow(await fetch(`${BASE}/social/feed?mode=${mode}`, opts));
+}
+export async function fetchSocialProfile(username: string): Promise<SocialProfile> {
+  return jsonOrThrow(await fetch(`${BASE}/social/profile/${encodeURIComponent(username)}`, opts));
+}
+export async function createSocialPost(body: string, mediaDataUrl?: string): Promise<SocialPost> {
+  return jsonOrThrow(await fetch(`${BASE}/social/posts`, {
+    ...opts, method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ body, mediaDataUrl }),
+  }));
+}
+export async function deleteSocialPost(id: number): Promise<void> {
+  await jsonOrThrow(await fetch(`${BASE}/social/posts/${id}`, { ...opts, method: "DELETE" }));
+}
+export async function toggleSocialPostLike(id: number): Promise<{ ok: boolean; liked: boolean }> {
+  return jsonOrThrow(await fetch(`${BASE}/social/posts/${id}/like`, { ...opts, method: "POST" }));
+}
+export async function toggleSocialFollow(username: string, follow: boolean): Promise<void> {
+  await jsonOrThrow(await fetch(`${BASE}/social/follow/${encodeURIComponent(username)}`, {
+    ...opts, method: follow ? "POST" : "DELETE",
+  }));
+}
+export async function migrateLegacyMyPage(): Promise<void> {
+  await jsonOrThrow(await fetch(`${BASE}/social/migrate-page`, { ...opts, method: "POST" }));
+}
+
 // ----- Wiki -----
 export interface WikiPageSummary {
   slug: string;

@@ -4,6 +4,7 @@ import { useAuth } from "../lib/auth-store";
 import { useDesktopStore } from "../store";
 import { Avatar } from "./Avatar";
 import { WikiBrowser } from "./WikiBrowser";
+import { SocialFeed } from "./SocialFeed";
 
 type UserBrowserProps = {
   page?: string;
@@ -130,7 +131,7 @@ export function UserBrowser({ page = "/" }: UserBrowserProps) {
   const [users, setUsers] = useState<PublicUser[]>([]);
   const [query, setQuery] = useState("");
   const [sortMode, setSortMode] = useState<"popular" | "alphabetical">("popular");
-  const [activeView, setActiveView] = useState<"people" | "wiki">("people");
+  const [activeView, setActiveView] = useState<"feed" | "people" | "wiki">("feed");
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -212,6 +213,14 @@ export function UserBrowser({ page = "/" }: UserBrowserProps) {
         </button>
         <button
           type="button"
+          className={`win98-button px-2 ${activeView === "feed" ? "font-bold" : ""}`}
+          onClick={() => setActiveView("feed")}
+          data-testid="button-browser-for-you"
+        >
+          For You
+        </button>
+        <button
+          type="button"
           className={`win98-button px-2 ${activeView === "people" ? "font-bold" : ""}`}
           onClick={() => setActiveView("people")}
           data-testid="button-browser-people"
@@ -234,15 +243,15 @@ export function UserBrowser({ page = "/" }: UserBrowserProps) {
           <input
             id="user-browser-address"
             className="win98-inset min-w-0 flex-1 bg-white px-1 py-0.5 text-[11px]"
-            value={`http://photo.local/${activeView === "wiki" ? "wiki/" : "users/"}`}
+            value={`http://photo.local/${activeView === "wiki" ? "wiki/" : activeView === "people" ? "users/" : "feed/"}`}
             readOnly
             data-testid="input-browser-address"
-            aria-label={activeView === "wiki" ? "Wiki address" : "Directory address"}
+            aria-label={activeView === "wiki" ? "Wiki address" : activeView === "people" ? "Directory address" : "For You feed address"}
           />
         </label>
       </div>
 
-      {activeView === "wiki" ? <WikiBrowser /> : <>
+      {activeView === "wiki" ? <WikiBrowser /> : activeView === "feed" ? <SocialFeed /> : <>
       <div className="flex shrink-0 flex-wrap items-end justify-between gap-2 border-b border-[#808080] bg-[#d8d8d8] p-2">
         <div>
           <div className="text-base font-bold text-[#000080]">Personal Web Directory</div>
