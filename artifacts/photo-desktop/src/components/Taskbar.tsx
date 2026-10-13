@@ -15,14 +15,14 @@ import {
   showBrowserNotification,
   notificationPermission,
 } from '../lib/notifications';
-import { ChevronRight } from 'lucide-react';
+import { ChevronRight, MonitorUp } from 'lucide-react';
 import { formatLocalTime } from '../lib/dates';
 import { useServerNow } from '../lib/server-clock';
 import { fetchDueReminders } from '../lib/planner-api';
 import type { ArchivableFeatureId } from '@workspace/feature-registry';
 
 export function Taskbar({ page }: { page: string }) {
-  const { addWindow, isStringMode, setStringMode, resetState, windows, toggleWindowState, bringToFront } = useDesktopStore();
+  const { addWindow, isStringMode, setStringMode, resetState, windows, toggleWindowState, bringToFront, updateWindow } = useDesktopStore();
   const [startOpen, setStartOpen] = useState(false);
   const [loginOpen, setLoginOpen] = useState(false);
   const setProfileOpen = useProfileDialogStore(state => state.setProfileOpen);
@@ -472,6 +472,39 @@ export function Taskbar({ page }: { page: string }) {
     }
     setStartOpen(false);
   }
+  function recoverOffscreenWindows() {
+    const stage = document.querySelector<HTMLElement>(".desktop-surface");
+    if (!stage) return;
+    const stageWidth = stage.clientWidth;
+    const stageHeight = stage.clientHeight;
+    const usableHeight = Math.max(32, stageHeight - 40);
+    const offscreen = wins.filter((w) => {
+      if ((w.state || "normal") !== "normal") return false;
+      return w.x < 0 || w.y < 0 || w.x + Math.min(80, w.width) > stageWidth || w.y + 28 > usableHeight;
+    });
+    if (!offscreen.length) {
+      pushToast({ title: "Windows are on screen", body: "No off-screen windows needed recovery.", kind: "info" });
+      return;
+    }
+    const maxWidth = Math.max(200, stageWidth - 16);
+    const maxHeight = Math.max(150, usableHeight - 16);
+    for (const w of [...offscreen].sort((a, b) => a.zIndex - b.zIndex)) {
+      const width = Math.min(w.width, maxWidth);
+      const height = Math.min(w.height, maxHeight);
+      updateWindow(page, w.id, {
+        x: Math.max(0, Math.min(w.x, stageWidth - width)),
+        y: Math.max(0, Math.min(w.y, usableHeight - 28)),
+        width,
+        height,
+      });
+      bringToFront(page, w.id);
+    }
+    pushToast({
+      title: "Windows recovered",
+      body: `${offscreen.length} window${offscreen.length === 1 ? "" : "s"} moved back on screen.`,
+      kind: "info",
+    });
+  }
   return (
     <div className="absolute bottom-0 left-0 right-0 h-10 bg-[#c0c0c0] border-t-2 border-t-white flex items-center px-1 z-[9999] shadow-[inset_0_1px_0_#dfdfdf]">
       <div className="relative">
@@ -591,6 +624,17 @@ export function Taskbar({ page }: { page: string }) {
       >
         <div className="w-3 h-3 bg-red-600 rounded-full" />
         {isStringMode ? 'Cancel' : 'String'}
+      </button>
+      <button
+        type="button"
+        className="win98-button h-8 px-2 ml-1 flex items-center gap-1 text-xs whitespace-nowrap"
+        onClick={recoverOffscreenWindows}
+        title="Move any off-screen windows back into view"
+        aria-label="Recover off-screen windows"
+        data-testid="button-recover-windows"
+      >
+        <MonitorUp className="w-4 h-4" aria-hidden="true" />
+        Recover windows
       </button>
 
       <div className="flex items-center gap-1 ml-1">
