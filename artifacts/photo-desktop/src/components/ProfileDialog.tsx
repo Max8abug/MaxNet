@@ -45,6 +45,8 @@ export function ProfileDialog({ onClose, mobile = false }: Props) {
   const [err, setErr] = useState<string | null>(null);
   const [color, setColor] = useState(user?.backgroundColor || "#008080");
   const [timeZone, setTimeZone] = useState(user?.timeZone || "");
+  const [bio, setBio] = useState(user?.bio || "");
+  const [bioNotice, setBioNotice] = useState<string | null>(null);
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -129,6 +131,16 @@ export function ProfileDialog({ onClose, mobile = false }: Props) {
     } finally {
       setBusy(false);
     }
+  }
+
+  async function applyBio() {
+    setBusy(true); setErr(null); setBioNotice(null);
+    try {
+      await updateProfile({ bio: bio.slice(0, 280) });
+      setBioNotice("Profile description saved.");
+    } catch (e: any) {
+      setErr(e?.message || "Could not save profile description.");
+    } finally { setBusy(false); }
   }
 
   async function applyPassword() {
@@ -222,6 +234,26 @@ export function ProfileDialog({ onClose, mobile = false }: Props) {
           <button className="win98-button px-2 py-0.5 text-xs self-start" disabled={busy || (!user.backgroundUrl && !user.darkBackgroundUrl && !user.backgroundColor)} onClick={clearBg}>
             Reset All Backgrounds
           </button>
+          <div className="border-t border-gray-400 pt-2">
+            <div className="font-bold mb-1">Profile description</div>
+            <p className="text-[11px] text-gray-700 mb-1">A short introduction shown on your Network profile (up to 280 characters).</p>
+            <textarea
+              className="win98-inset w-full min-h-16 p-1"
+              maxLength={280}
+              value={bio}
+              disabled={busy}
+              onChange={(event) => setBio(event.target.value)}
+              aria-label="Profile description"
+              data-testid="input-profile-description"
+            />
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-[10px]">{bio.length}/280</span>
+              <button className="win98-button px-2 py-0.5 text-xs" disabled={busy || bio === (user.bio || "")} onClick={() => void applyBio()} data-testid="button-save-profile-description">
+                {busy ? "Saving…" : "Save description"}
+              </button>
+            </div>
+            {bioNotice && <div className="text-green-700 text-xs" role="status">{bioNotice}</div>}
+          </div>
           <div className="border-t border-gray-400 pt-2">
             <div className="font-bold mb-1">Username</div>
             <div className="text-[11px] text-gray-700 mb-1">

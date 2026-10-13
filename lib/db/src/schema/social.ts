@@ -30,6 +30,7 @@ export const usersTable = pgTable("users", {
   passwordHash: text("password_hash").notNull(),
   isAdmin: boolean("is_admin").notNull().default(false),
   avatarUrl: text("avatar_url"),
+  bio: text("bio").notNull().default(""),
   backgroundUrl: text("background_url"),
   darkBackgroundUrl: text("dark_background_url"),
   backgroundColor: text("background_color"),
@@ -167,6 +168,31 @@ export const socialPostLikesTable = pgTable("social_post_likes", {
   username: text("username").notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 }, (table) => [uniqueIndex("social_post_likes_pair_idx").on(table.postId, table.username)]);
+
+export const socialPostCommentsTable = pgTable("social_post_comments", {
+  id: serial("id").primaryKey(),
+  postId: integer("post_id").notNull(),
+  author: text("author").notNull(),
+  body: text("body").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => [index("social_post_comments_post_created_idx").on(table.postId, table.createdAt)]);
+
+export const socialPostRepostsTable = pgTable("social_post_reposts", {
+  id: serial("id").primaryKey(),
+  postId: integer("post_id").notNull(),
+  username: text("username").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => [uniqueIndex("social_post_reposts_pair_idx").on(table.postId, table.username)]);
+
+export const socialNotificationsTable = pgTable("social_notifications", {
+  id: serial("id").primaryKey(),
+  username: text("username").notNull(),
+  actor: text("actor").notNull(),
+  postId: integer("post_id"),
+  kind: text("kind").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  readAt: timestamp("read_at"),
+}, (table) => [index("social_notifications_user_created_idx").on(table.username, table.createdAt)]);
 
 export const wikiPagesTable = pgTable("wiki_pages", {
   slug: text("slug").primaryKey(),

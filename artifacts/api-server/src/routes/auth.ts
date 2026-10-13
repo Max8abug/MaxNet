@@ -30,6 +30,7 @@ router.get("/auth/me", async (req, res) => {
       username: u.username,
       isAdmin: u.isAdmin,
       avatarUrl: u.avatarUrl,
+      bio: u.bio,
       backgroundUrl: u.backgroundUrl,
       darkBackgroundUrl: u.darkBackgroundUrl,
       backgroundColor: u.backgroundColor,
@@ -267,8 +268,15 @@ router.patch("/auth/profile", async (req, res) => {
     res.status(401).json({ error: "Login required" });
     return;
   }
-  const { avatarUrl, backgroundUrl, darkBackgroundUrl, backgroundColor, timeZone, displayTheme } = req.body ?? {};
+  const { avatarUrl, bio, backgroundUrl, darkBackgroundUrl, backgroundColor, timeZone, displayTheme } = req.body ?? {};
   const update: Record<string, string | null> = {};
+  if (bio !== undefined) {
+    if (typeof bio !== "string" || bio.length > 280) {
+      res.status(400).json({ error: "Profile descriptions must be 280 characters or fewer." });
+      return;
+    }
+    update.bio = bio.trim();
+  }
   if (displayTheme !== undefined) {
     if (typeof displayTheme !== "string" || !["classic-light", "classic-dark", "xp-light", "xp-dark", "vista", "vista-dark", "gold", "silver"].includes(displayTheme)) {
       res.status(400).json({ error: "Invalid display theme" });

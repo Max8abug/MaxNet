@@ -214,7 +214,7 @@ export function UserBrowser({ page = "/" }: UserBrowserProps) {
       addWindow(page, {
         type: "userpage",
         username,
-        title: `Web Browser - ${username}`,
+        title: `the Network - ${username}`,
         width: 520,
         height: 460,
       });
@@ -229,7 +229,7 @@ export function UserBrowser({ page = "/" }: UserBrowserProps) {
       data-theme={directoryTheme}
     >
       <div className="flex shrink-0 flex-wrap items-center gap-1 border-b border-[#808080] bg-[#c0c0c0] p-1">
-        <span className="px-1 font-bold text-[#000080]">Web</span>
+        <span className="px-1 font-bold text-[#000080]">the Network</span>
         <button
           type="button"
           className={`win98-button px-2 ${activeView === "wiki" ? "font-bold" : ""}`}

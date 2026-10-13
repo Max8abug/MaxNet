@@ -340,7 +340,7 @@ export function Taskbar({ page }: { page: string }) {
     { label: "Add Chatbox", feature: 'chat', badge: 'chat', act: openChat },
     { label: "Open DMs", feature: 'dms', badge: 'dm', act: () => open({ type: 'dms', title: 'Direct Messages', width: 460, height: 380 }) },
     { label: "Add Synced YouTube", feature: 'youtube', act: () => open({ type: 'youtube', title: 'YouTube', width: 480, height: 320 }) },
-    { label: "Web Browser", feature: 'browser', act: () => open({ type: 'browser', title: 'Web Browser', width: 620, height: 520 }) },
+    { label: "the Network", feature: 'browser', act: () => open({ type: 'browser', title: 'the Network', width: 760, height: 560 }) },
     { label: "Open Polls", feature: 'polls', act: () => open({ type: 'polls', title: 'Polls', width: 380, height: 420 }) },
     { label: "Open Music Player", feature: 'music', act: () => open({ type: 'music', title: 'Music Player', width: 360, height: 380 }) },
     { label: "Open My Playlists", feature: 'personalplaylists', act: openPersonalPlaylists },

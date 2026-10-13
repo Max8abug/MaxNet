@@ -56,6 +56,7 @@ export interface AuthUser {
   username: string;
   isAdmin: boolean;
   avatarUrl?: string | null;
+  bio?: string;
   backgroundUrl?: string | null;
   darkBackgroundUrl?: string | null;
   backgroundColor?: string | null;
@@ -87,7 +88,7 @@ export async function requestNotificationEmail(email: string): Promise<void> {
   }));
 }
 
-export async function updateProfile(data: { avatarUrl?: string | null; backgroundUrl?: string | null; darkBackgroundUrl?: string | null; backgroundColor?: string | null; timeZone?: string | null; displayTheme?: string }): Promise<void> {
+export async function updateProfile(data: { avatarUrl?: string | null; bio?: string; backgroundUrl?: string | null; darkBackgroundUrl?: string | null; backgroundColor?: string | null; timeZone?: string | null; displayTheme?: string }): Promise<void> {
   await jsonOrThrow(await fetch(`${BASE}/auth/profile`, {
     ...opts, method: "PATCH",
     headers: { "Content-Type": "application/json" },
@@ -869,11 +870,20 @@ export interface SocialPost {
   mediaType: string | null;
   likes: number;
   myLike: boolean;
+  comments: number;
+  reposts: number;
+  myRepost: boolean;
+  authorFollowed: boolean;
+  repostedBy?: string | null;
   createdAt: string;
 }
+export interface SocialComment { id: number; postId: number; author: string; body: string; createdAt: string; }
+export interface SocialNotification { id: number; username: string; actor: string; postId: number | null; kind: string; createdAt: string; readAt: string | null; }
+export interface TrendingTag { tag: string; count: number; }
 export interface SocialProfile {
   username: string;
   avatarUrl: string | null;
+  bio: string;
   rank: string | null;
   followers: number;
   following: number;
@@ -882,6 +892,27 @@ export interface SocialProfile {
 }
 export async function fetchSocialFeed(mode: "for-you" | "following"): Promise<SocialPost[]> {
   return jsonOrThrow(await fetch(`${BASE}/social/feed?mode=${mode}`, opts));
+}
+export async function fetchSocialSearch(q: string): Promise<SocialPost[]> {
+  return jsonOrThrow(await fetch(`${BASE}/social/search?q=${encodeURIComponent(q)}`, opts));
+}
+export async function fetchLikedSocialPosts(): Promise<SocialPost[]> {
+  return jsonOrThrow(await fetch(`${BASE}/social/liked`, opts));
+}
+export async function fetchSocialNotifications(): Promise<SocialNotification[]> {
+  return jsonOrThrow(await fetch(`${BASE}/social/notifications`, opts));
+}
+export async function fetchSocialTrending(): Promise<TrendingTag[]> {
+  return jsonOrThrow(await fetch(`${BASE}/social/trending`, opts));
+}
+export async function fetchSocialComments(id: number): Promise<SocialComment[]> {
+  return jsonOrThrow(await fetch(`${BASE}/social/posts/${id}/comments`, opts));
+}
+export async function createSocialComment(id: number, body: string): Promise<SocialComment> {
+  return jsonOrThrow(await fetch(`${BASE}/social/posts/${id}/comments`, { ...opts, method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ body }) }));
+}
+export async function toggleSocialRepost(id: number): Promise<{ reposted: boolean }> {
+  return jsonOrThrow(await fetch(`${BASE}/social/posts/${id}/repost`, { ...opts, method: "POST" }));
 }
 export async function fetchSocialProfile(username: string): Promise<SocialProfile> {
   return jsonOrThrow(await fetch(`${BASE}/social/profile/${encodeURIComponent(username)}`, opts));

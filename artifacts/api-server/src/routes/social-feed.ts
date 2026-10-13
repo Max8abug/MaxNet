@@ -1,10 +1,13 @@
 import { Router, type IRouter } from "express";
 import { randomUUID } from "node:crypto";
-import { and, desc, eq, inArray, sql } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, sql } from "drizzle-orm";
 import {
   db,
   socialFollowsTable,
   socialPostLikesTable,
+  socialPostCommentsTable,
+  socialPostRepostsTable,
+  socialNotificationsTable,
   socialPostsTable,
   userPagesTable,
   usersTable,
@@ -29,35 +32,126 @@ function parseMedia(value: unknown): { type: string; bytes: Buffer } | null {
   return bytes.length > 0 && bytes.length <= MAX_MEDIA_BYTES ? { type: match[1].toLowerCase(), bytes } : null;
 }
 
-async function presentPost(row: typeof socialPostsTable.$inferSelect, username?: string) {
-  const [likes, mine] = await Promise.all([
+async function presentPost(row: typeof socialPostsTable.$inferSelect, username?: string, repostedBy?: string) {
+  const [likes, mine, comments, reposts, myRepost, authorFollowed] = await Promise.all([
     db.select({ count: sql<number>`count(*)::int` }).from(socialPostLikesTable).where(eq(socialPostLikesTable.postId, row.id)),
     username
       ? db.select({ id: socialPostLikesTable.id }).from(socialPostLikesTable)
         .where(and(eq(socialPostLikesTable.postId, row.id), eq(socialPostLikesTable.username, username))).limit(1)
       : Promise.resolve([]),
+    db.select({ count: sql<number>`count(*)::int` }).from(socialPostCommentsTable).where(eq(socialPostCommentsTable.postId, row.id)),
+    db.select({ count: sql<number>`count(*)::int` }).from(socialPostRepostsTable).where(eq(socialPostRepostsTable.postId, row.id)),
+    username ? db.select({ id: socialPostRepostsTable.id }).from(socialPostRepostsTable)
+      .where(and(eq(socialPostRepostsTable.postId, row.id), eq(socialPostRepostsTable.username, username))).limit(1) : Promise.resolve([]),
+    username ? db.select({ id: socialFollowsTable.id }).from(socialFollowsTable)
+      .where(and(eq(socialFollowsTable.follower, username), eq(socialFollowsTable.following, row.author))).limit(1) : Promise.resolve([]),
   ]);
   return {
     id: row.id, author: row.author, body: row.body,
     mediaUrl: row.mediaObjectKey ? `/api/social/media/${row.id}` : null,
     mediaType: row.mediaType, createdAt: row.createdAt,
     likes: Number(likes[0]?.count || 0), myLike: mine.length > 0,
+    comments: Number(comments[0]?.count || 0), reposts: Number(reposts[0]?.count || 0), myRepost: myRepost.length > 0,
+    authorFollowed: authorFollowed.length > 0,
+    repostedBy: repostedBy || null,
   };
 }
+
+router.get("/social/search", async (req, res) => {
+  const q = String(req.query.q || "").trim().slice(0, 80);
+  if (!q) { res.json([]); return; }
+  const rows = await db.select().from(socialPostsTable).where(sql`${socialPostsTable.body} ILIKE ${`%${q}%`}`)
+    .orderBy(desc(socialPostsTable.createdAt)).limit(40);
+  res.json(await Promise.all(rows.map(row => presentPost(row, req.session.username))));
+});
+
+router.get("/social/liked", requireAuth, async (req, res) => {
+  const likes = await db.select({ postId: socialPostLikesTable.postId }).from(socialPostLikesTable)
+    .where(eq(socialPostLikesTable.username, req.session.username!)).orderBy(desc(socialPostLikesTable.createdAt)).limit(60);
+  const ids = likes.map(row => row.postId);
+  const rows = ids.length ? await db.select().from(socialPostsTable).where(inArray(socialPostsTable.id, ids)) : [];
+  const byId = new Map(rows.map(row => [row.id, row]));
+  res.json(await Promise.all(ids.flatMap(id => byId.has(id) ? [presentPost(byId.get(id)!, req.session.username)] : [])));
+});
+
+router.get("/social/trending", async (_req, res) => {
+  const since = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+  const rows = await db.select({ body: socialPostsTable.body }).from(socialPostsTable)
+    .where(gte(socialPostsTable.createdAt, since)).orderBy(desc(socialPostsTable.createdAt)).limit(2000);
+  const counts = new Map<string, number>();
+  for (const row of rows) for (const tag of new Set(row.body.match(/#[\p{L}\p{N}_]{2,40}/gu) || [])) {
+    const normalized = tag.toLowerCase();
+    counts.set(normalized, (counts.get(normalized) || 0) + 1);
+  }
+  res.json([...counts].filter(([, count]) => count > 3).sort((a, b) => b[1] - a[1]).slice(0, 10).map(([tag, count]) => ({ tag, count })));
+});
+
+router.get("/social/notifications", requireAuth, async (req, res) => {
+  const username = req.session.username!;
+  const rows = await db.select().from(socialNotificationsTable).where(eq(socialNotificationsTable.username, username))
+    .orderBy(desc(socialNotificationsTable.createdAt)).limit(50);
+  await db.update(socialNotificationsTable).set({ readAt: new Date() }).where(and(eq(socialNotificationsTable.username, username), sql`${socialNotificationsTable.readAt} IS NULL`));
+  res.json(rows);
+});
+
+router.get("/social/posts/:id/comments", async (req, res) => {
+  const postId = Number(req.params.id);
+  if (!Number.isInteger(postId)) { res.status(400).json({ error: "Invalid post." }); return; }
+  const rows = await db.select().from(socialPostCommentsTable).where(eq(socialPostCommentsTable.postId, postId))
+    .orderBy(desc(socialPostCommentsTable.createdAt)).limit(100);
+  res.json(rows);
+});
+
+router.post("/social/posts/:id/comments", requireAuth, async (req, res) => {
+  const postId = Number(req.params.id);
+  const body = typeof req.body?.body === "string" ? req.body.body.trim().slice(0, 500) : "";
+  if (!Number.isInteger(postId) || !body) { res.status(400).json({ error: "Write a comment first." }); return; }
+  const author = req.session.username!;
+  if (await isBanned(author)) { res.status(403).json({ error: "Your account cannot comment." }); return; }
+  if (findBlockedPhrase(body, await getBlockedPhrases("chat"))) { res.status(400).json({ error: "Your comment contains a blocked word or phrase." }); return; }
+  const [post] = await db.select({ author: socialPostsTable.author }).from(socialPostsTable).where(eq(socialPostsTable.id, postId)).limit(1);
+  if (!post) { res.status(404).json({ error: "Post not found." }); return; }
+  const [comment] = await db.insert(socialPostCommentsTable).values({ postId, author, body }).returning();
+  if (post.author !== author) await db.insert(socialNotificationsTable).values({ username: post.author, actor: author, postId, kind: "comment" });
+  res.status(201).json(comment);
+});
+
+router.post("/social/posts/:id/repost", requireAuth, async (req, res) => {
+  const postId = Number(req.params.id);
+  const username = req.session.username!;
+  const [post] = await db.select({ author: socialPostsTable.author }).from(socialPostsTable).where(eq(socialPostsTable.id, postId)).limit(1);
+  if (!post) { res.status(404).json({ error: "Post not found." }); return; }
+  const [existing] = await db.select({ id: socialPostRepostsTable.id }).from(socialPostRepostsTable)
+    .where(and(eq(socialPostRepostsTable.postId, postId), eq(socialPostRepostsTable.username, username))).limit(1);
+  if (existing) await db.delete(socialPostRepostsTable).where(eq(socialPostRepostsTable.id, existing.id));
+  else {
+    await db.insert(socialPostRepostsTable).values({ postId, username }).onConflictDoNothing();
+    if (post.author !== username) await db.insert(socialNotificationsTable).values({ username: post.author, actor: username, postId, kind: "repost" });
+  }
+  res.json({ reposted: !existing });
+});
 
 router.get("/social/feed", async (req, res) => {
   const mode = req.query.mode === "following" ? "following" : "for-you";
   const username = req.session.username;
   let rows = await db.select().from(socialPostsTable).orderBy(desc(socialPostsTable.createdAt)).limit(100);
+  const repostedBy = new Map<number, string>();
   if (mode === "following") {
     if (!username) { res.status(401).json({ error: "Sign in to see your following feed." }); return; }
     const follows = await db.select({ following: socialFollowsTable.following }).from(socialFollowsTable)
       .where(eq(socialFollowsTable.follower, username));
     const authors = follows.map(row => row.following);
-    rows = authors.length
-      ? await db.select().from(socialPostsTable).where(inArray(socialPostsTable.author, authors))
-        .orderBy(desc(socialPostsTable.createdAt)).limit(40)
-      : [];
+    if (authors.length) {
+      const reposts = await db.select().from(socialPostRepostsTable).where(inArray(socialPostRepostsTable.username, authors))
+        .orderBy(desc(socialPostRepostsTable.createdAt)).limit(40);
+      const sharedIds = [...new Set(reposts.map(item => item.postId))];
+      const shared = sharedIds.length ? await db.select().from(socialPostsTable).where(inArray(socialPostsTable.id, sharedIds)) : [];
+      for (const item of reposts) if (!repostedBy.has(item.postId)) repostedBy.set(item.postId, item.username);
+      const authored = await db.select().from(socialPostsTable).where(inArray(socialPostsTable.author, authors))
+        .orderBy(desc(socialPostsTable.createdAt)).limit(40);
+      rows = [...new Map([...authored, ...shared].map(row => [row.id, row])).values()]
+        .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime()).slice(0, 40);
+    } else rows = [];
   } else {
     const follows = username
       ? await db.select({ following: socialFollowsTable.following }).from(socialFollowsTable)
@@ -85,13 +179,13 @@ router.get("/social/feed", async (req, res) => {
     };
     rows = candidates.sort((a, b) => score(b) - score(a) || b.createdAt.getTime() - a.createdAt.getTime()).slice(0, 40);
   }
-  res.json(await Promise.all(rows.map(row => presentPost(row, username))));
+  res.json(await Promise.all(rows.map(row => presentPost(row, username, repostedBy.get(row.id)))));
 });
 
 router.get("/social/profile/:username", async (req, res) => {
   const username = String(req.params.username || "").slice(0, 40);
   const [user] = await db.select({
-    username: usersTable.username, avatarUrl: usersTable.avatarUrl, rank: usersTable.rank,
+    username: usersTable.username, avatarUrl: usersTable.avatarUrl, rank: usersTable.rank, bio: usersTable.bio,
   }).from(usersTable).where(eq(usersTable.username, username)).limit(1);
   if (!user) { res.status(404).json({ error: "User not found." }); return; }
   const [posts, followers, following, relation] = await Promise.all([
@@ -159,6 +253,9 @@ router.delete("/social/posts/:id", requireAuth, async (req, res) => {
   if (post.author !== req.session.username && !req.session.isAdmin) { res.status(403).json({ error: "You cannot delete this post." }); return; }
   await db.delete(socialPostsTable).where(eq(socialPostsTable.id, id));
   await db.delete(socialPostLikesTable).where(eq(socialPostLikesTable.postId, id));
+  await db.delete(socialPostCommentsTable).where(eq(socialPostCommentsTable.postId, id));
+  await db.delete(socialPostRepostsTable).where(eq(socialPostRepostsTable.postId, id));
+  await db.delete(socialNotificationsTable).where(eq(socialNotificationsTable.postId, id));
   if (post.mediaObjectKey) await cleanupAfterMutation([post.mediaObjectKey]);
   res.json({ ok: true });
 });
@@ -166,12 +263,15 @@ router.delete("/social/posts/:id", requireAuth, async (req, res) => {
 router.post("/social/posts/:id/like", requireAuth, async (req, res) => {
   const id = Number(req.params.id);
   if (!Number.isInteger(id)) { res.status(400).json({ error: "Invalid post." }); return; }
-  const [post] = await db.select({ id: socialPostsTable.id }).from(socialPostsTable).where(eq(socialPostsTable.id, id)).limit(1);
+  const [post] = await db.select({ id: socialPostsTable.id, author: socialPostsTable.author }).from(socialPostsTable).where(eq(socialPostsTable.id, id)).limit(1);
   if (!post) { res.status(404).json({ error: "Post not found." }); return; }
   const [existing] = await db.select({ id: socialPostLikesTable.id }).from(socialPostLikesTable)
     .where(and(eq(socialPostLikesTable.postId, id), eq(socialPostLikesTable.username, req.session.username!))).limit(1);
   if (existing) await db.delete(socialPostLikesTable).where(eq(socialPostLikesTable.id, existing.id));
-  else await db.insert(socialPostLikesTable).values({ postId: id, username: req.session.username! }).onConflictDoNothing();
+  else {
+    await db.insert(socialPostLikesTable).values({ postId: id, username: req.session.username! }).onConflictDoNothing();
+    if (post.author !== req.session.username) await db.insert(socialNotificationsTable).values({ username: post.author, actor: req.session.username!, postId: id, kind: "like" });
+  }
   res.json({ ok: true, liked: !existing });
 });
 
@@ -180,7 +280,8 @@ router.post("/social/follow/:username", requireAuth, async (req, res) => {
   if (target === req.session.username) { res.status(400).json({ error: "You cannot follow yourself." }); return; }
   const [user] = await db.select({ username: usersTable.username }).from(usersTable).where(eq(usersTable.username, target)).limit(1);
   if (!user) { res.status(404).json({ error: "User not found." }); return; }
-  await db.insert(socialFollowsTable).values({ follower: req.session.username!, following: target }).onConflictDoNothing();
+  const [created] = await db.insert(socialFollowsTable).values({ follower: req.session.username!, following: target }).onConflictDoNothing().returning({ id: socialFollowsTable.id });
+  if (created) await db.insert(socialNotificationsTable).values({ username: target, actor: req.session.username!, kind: "follow" });
   res.json({ ok: true, following: true });
 });
 

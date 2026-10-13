@@ -73,7 +73,7 @@ const APPS: AppDefinition[] = [
   { label: 'Polls', type: 'polls', icon: Vote, tone: 'bg-[#91c995]', size: 'medium' },
   { label: 'Users', type: 'userlist', icon: Users, tone: 'bg-[#93c8af]', size: 'medium' },
   { label: 'My Page', type: 'mypage', icon: UserRound, tone: 'bg-[#d5a7dc]', size: 'medium' },
-  { label: 'Web Browser', type: 'browser', icon: Globe, tone: 'bg-[#9ab5e5]', size: 'medium' },
+  { label: 'the Network', type: 'browser', icon: Globe, tone: 'bg-[#9ab5e5]', size: 'medium' },
   { label: 'Settings', type: 'settings', icon: Settings, tone: 'bg-[#9ca9bb]', size: 'medium', subtitle: 'Theme & account' },
   { label: 'Games Manager', type: 'gamesmanager', icon: Gamepad2, tone: 'bg-[#557c68]', size: 'medium', subtitle: 'Launch games & manage icons' },
   { label: 'Drawings', type: 'drawing', icon: Pencil, tone: 'bg-[#e5a279]', size: 'small' },

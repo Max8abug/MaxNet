@@ -35,6 +35,7 @@ export async function ensureSchema(): Promise<void> {
       password_hash text NOT NULL,
       is_admin boolean NOT NULL DEFAULT false,
       avatar_url text,
+      bio text NOT NULL DEFAULT '',
       background_url text,
       dark_background_url text,
       background_color text,
@@ -56,6 +57,7 @@ export async function ensureSchema(): Promise<void> {
     ALTER TABLE users ADD COLUMN IF NOT EXISTS dark_background_url text;
     ALTER TABLE users ADD COLUMN IF NOT EXISTS background_color text;
     ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar_url text;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS bio text NOT NULL DEFAULT '';
     ALTER TABLE users ADD COLUMN IF NOT EXISTS last_seen timestamp NOT NULL DEFAULT now();
     -- NOTE: VAPID columns for site_settings are added further below, AFTER
     -- the CREATE TABLE IF NOT EXISTS site_settings statement. Adding them
@@ -233,6 +235,31 @@ export async function ensureSchema(): Promise<void> {
       created_at timestamp NOT NULL DEFAULT now(),
       CONSTRAINT social_post_likes_pair_unique UNIQUE (post_id, username)
     );
+    CREATE TABLE IF NOT EXISTS social_post_comments (
+      id serial PRIMARY KEY,
+      post_id integer NOT NULL,
+      author text NOT NULL,
+      body text NOT NULL,
+      created_at timestamp NOT NULL DEFAULT now()
+    );
+    CREATE INDEX IF NOT EXISTS social_post_comments_post_created_idx ON social_post_comments (post_id, created_at);
+    CREATE TABLE IF NOT EXISTS social_post_reposts (
+      id serial PRIMARY KEY,
+      post_id integer NOT NULL,
+      username text NOT NULL,
+      created_at timestamp NOT NULL DEFAULT now(),
+      CONSTRAINT social_post_reposts_pair_unique UNIQUE (post_id, username)
+    );
+    CREATE TABLE IF NOT EXISTS social_notifications (
+      id serial PRIMARY KEY,
+      username text NOT NULL,
+      actor text NOT NULL,
+      post_id integer,
+      kind text NOT NULL,
+      created_at timestamp NOT NULL DEFAULT now(),
+      read_at timestamp
+    );
+    CREATE INDEX IF NOT EXISTS social_notifications_user_created_idx ON social_notifications (username, created_at);
 
     CREATE TABLE IF NOT EXISTS wiki_pages (
       slug text PRIMARY KEY,

@@ -3,6 +3,17 @@ import {
   createSocialPost,
   deleteSocialPost,
   fetchSocialFeed,
+  fetchSocialSearch,
+  fetchLikedSocialPosts,
+  fetchSocialNotifications,
+  fetchSocialTrending,
+  fetchNews,
+  fetchSocialComments,
+  createSocialComment,
+  toggleSocialRepost,
+  type SocialNotification,
+  type TrendingTag,
+  type NewsPost,
   fetchSocialProfile,
   migrateLegacyMyPage,
   toggleSocialFollow,
@@ -18,6 +29,7 @@ import "./SocialFeed.css";
 type SocialFeedProps = { username?: string };
 type FeedMode = "for-you" | "following";
 type FeedTheme = "light" | "dark";
+type NetworkView = "for-you" | "following" | "search" | "notifications" | "liked" | "profile";
 const MAX_MEDIA_BYTES = 6 * 1024 * 1024;
 const MAX_BODY_LENGTH = 500;
 
@@ -63,6 +75,9 @@ function PostCard({
   onLike,
   onDelete,
   onOpenUser,
+  onComment,
+  onRepost,
+  onFollow,
 }: {
   post: SocialPost;
   currentUsername?: string;
@@ -72,10 +87,14 @@ function PostCard({
   onLike: (post: SocialPost) => void;
   onDelete: (post: SocialPost) => void;
   onOpenUser: (username: string) => void;
+  onComment: (post: SocialPost) => void;
+  onRepost: (post: SocialPost) => void;
+  onFollow: (username: string, isFollowing: boolean) => void;
 }) {
   const mediaKind = post.mediaType?.toLowerCase().includes("video") || post.mediaUrl?.startsWith("data:video/") ? "video" : "image";
   return (
     <article className="social-post" data-testid={`social-post-${post.id}`}>
+      {post.repostedBy && <div className="network-repost-note">↻ <b>{post.repostedBy}</b> reposted</div>}
       <header className="social-post-header">
         <Avatar username={post.author} size={38} />
         <div className="social-author-copy">
@@ -88,6 +107,7 @@ function PostCard({
           >
             {post.author}
           </button>
+          {currentUsername && currentUsername !== post.author && <button type="button" className="network-inline-follow" onClick={() => onFollow(post.author, post.authorFollowed)} data-testid={`button-follow-${post.id}`}>{post.authorFollowed ? "Following" : "Follow"}</button>}
           <time dateTime={post.createdAt} data-testid={`social-post-time-${post.id}`}>{formatPostTime(post.createdAt)}</time>
         </div>
         {canDelete && (
@@ -129,6 +149,8 @@ function PostCard({
           <span aria-hidden="true" className="social-like-mark">{post.myLike ? "♥" : "♡"}</span>
           <span>{post.likes}</span>
         </button>
+        <button type="button" className="network-action" onClick={() => onComment(post)} data-testid={`button-comment-${post.id}`}>Comment · {post.comments}</button>
+        <button type="button" className={`network-action ${post.myRepost ? "is-active" : ""}`} disabled={!currentUsername} onClick={() => onRepost(post)} data-testid={`button-repost-${post.id}`}>{post.myRepost ? "Reposted" : "Repost"} · {post.reposts}</button>
       </footer>
     </article>
   );
@@ -136,7 +158,16 @@ function PostCard({
 
 export function SocialFeed({ username }: SocialFeedProps) {
   const me = useAuth((state) => state.user);
+  const signedInUsername = me?.username;
   const [mode, setMode] = useState<FeedMode>("for-you");
+  const [view, setView] = useState<NetworkView>("for-you");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [notifications, setNotifications] = useState<SocialNotification[]>([]);
+  const [trending, setTrending] = useState<TrendingTag[]>([]);
+  const [siteNews, setSiteNews] = useState<NewsPost[]>([]);
+  const [networkNews, setNetworkNews] = useState<SocialPost[]>([]);
+  const [newestAvailable, setNewestAvailable] = useState(false);
+  const postsRef = useRef<SocialPost[]>([]);
   const [theme, setTheme] = useState<FeedTheme>(() => {
     try {
       return localStorage.getItem("photo-desktop-social-theme") === "dark" ? "dark" : "light";
@@ -170,15 +201,25 @@ export function SocialFeed({ username }: SocialFeedProps) {
     setLoading(true);
     setError(null);
     try {
-      if (username) {
-        if (me?.username === username) {
+      const profileName = username || (view === "profile" ? signedInUsername : undefined);
+      if (view === "notifications") {
+        setNotifications(await fetchSocialNotifications());
+        setPosts([]);
+      } else if (view === "search") {
+        setPosts(searchQuery.trim() ? await fetchSocialSearch(searchQuery.trim()) : []);
+        setProfile(null);
+      } else if (view === "liked") {
+        setPosts(await fetchLikedSocialPosts());
+        setProfile(null);
+      } else if (profileName) {
+        if (signedInUsername === profileName) {
           try { await migrateLegacyMyPage(); } catch { /* Retry on the next profile refresh. */ }
         }
-        const result = await fetchSocialProfile(username);
+        const result = await fetchSocialProfile(profileName);
         setProfile(result || null);
         setPosts(result?.posts || []);
       } else {
-        if (me) {
+        if (signedInUsername) {
           try { await migrateLegacyMyPage(); } catch { /* Retry on the next feed refresh. */ }
         }
         setProfile(null);
@@ -189,11 +230,30 @@ export function SocialFeed({ username }: SocialFeedProps) {
     } finally {
       setLoading(false);
     }
-  }, [me, mode, username]);
+  }, [signedInUsername, mode, username, view, searchQuery]);
 
   useEffect(() => {
     void load();
   }, [load]);
+  useEffect(() => { postsRef.current = posts; }, [posts]);
+  useEffect(() => {
+    if (username || (view !== "for-you" && view !== "following")) return;
+    const checkForNewPosts = async () => {
+      if (document.visibilityState !== "visible") return;
+      try {
+        const latest = await fetchSocialFeed(view === "following" ? "following" : "for-you");
+        const existingIds = new Set(postsRef.current.map((post) => post.id));
+        if (latest.some((post) => !existingIds.has(post.id))) setNewestAvailable(true);
+      } catch { /* Keep the current feed usable if a background check fails. */ }
+    };
+    const timer = window.setInterval(() => void checkForNewPosts(), 2 * 60 * 1000);
+    return () => window.clearInterval(timer);
+  }, [username, view]);
+  useEffect(() => {
+    void Promise.all([fetchSocialTrending(), fetchNews(), fetchSocialFeed("for-you")]).then(([tags, news, latest]) => {
+      setTrending(tags); setSiteNews(news.slice(0, 4)); setNetworkNews(latest.slice(0, 4));
+    }).catch(() => { setTrending([]); setSiteNews([]); });
+  }, []);
 
   useEffect(() => () => {
     if (mediaPreview) URL.revokeObjectURL(mediaPreview);
@@ -201,6 +261,12 @@ export function SocialFeed({ username }: SocialFeedProps) {
 
   const selectMode = (nextMode: FeedMode) => {
     setMode(nextMode);
+    setView(nextMode);
+    setNewestAvailable(false);
+  };
+  const loadNewestPosts = async () => {
+    await load(mode);
+    setNewestAvailable(false);
   };
 
   const chooseMedia = (file?: File) => {
@@ -314,12 +380,57 @@ export function SocialFeed({ username }: SocialFeedProps) {
     }
   };
 
+  const addComment = async (post: SocialPost) => {
+    if (!me) return;
+    const current = await fetchSocialComments(post.id).catch(() => []);
+    const recent = current.slice(0, 5).map((comment) => `${comment.author}: ${comment.body}`).join("\n");
+    const body = window.prompt(`${recent ? `Recent comments:\n${recent}\n\n` : "No comments yet.\n\n"}Write a comment (up to 500 characters):`)?.trim();
+    if (!body) return;
+    try { await createSocialComment(post.id, body.slice(0, 500)); await load(); }
+    catch (error) { setActionError(error instanceof Error ? error.message : "Comment could not be posted."); }
+  };
+  const repost = async (post: SocialPost) => {
+    if (!me) return;
+    try { await toggleSocialRepost(post.id); await load(); }
+    catch (error) { setActionError(error instanceof Error ? error.message : "Repost could not be saved."); }
+  };
+  const followAuthor = async (author: string, isFollowing: boolean) => {
+    if (!me || me.username === author) return;
+    try { await toggleSocialFollow(author, !isFollowing); await load(); }
+    catch (error) { setActionError(error instanceof Error ? error.message : "Follow could not be saved."); }
+  };
+
   const canDelete = (post: SocialPost) => !!me && (me.username === post.author || me.isAdmin);
-  const isOwner = !!me && me.username === username;
-  const isProfile = !!username;
+  const profileUsername = username || (view === "profile" ? me?.username : undefined);
+  const isOwner = !!me && me.username === profileUsername;
+  const isProfile = !!profileUsername;
 
   return (
     <section className="social-feed" data-theme={theme} data-testid={isProfile ? "social-profile" : "social-feed"}>
+      <div className="network-shell">
+      <aside className="network-left" aria-label="Network navigation">
+        <div className="network-brand"><span className="network-brand-mark">N</span><strong>the Network</strong></div>
+        <form className="network-search" onSubmit={(event) => { event.preventDefault(); setView("search"); }}>
+          <input value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} placeholder="Search posts" aria-label="Search posts" data-testid="input-network-search" />
+          <button type="submit" aria-label="Submit post search" data-testid="button-network-search">⌕</button>
+        </form>
+        {([
+          ["for-you", "⌂", "Home"],
+          ["following", "◎", "Following"],
+          ["notifications", "♧", "Notifications"],
+          ["liked", "♥", "Liked posts"],
+          ["profile", "◉", "Profile"],
+        ] as const).map(([key, icon, label]) => (
+          <button key={key} type="button" className={`network-nav-item ${view === key ? "is-active" : ""}`} onClick={() => { setView(key); if (key === "for-you" || key === "following") setMode(key); }} data-testid={`button-network-${key}`}>
+            <span aria-hidden="true">{icon}</span>{label}
+          </button>
+        ))}
+        <div className="network-left-bottom">
+          <span>{me ? `Signed in as ${me.username}` : "Sign in to post, follow, and like."}</span>
+          <button type="button" onClick={() => setTheme(theme === "dark" ? "light" : "dark")} data-testid="button-network-theme">Switch to {theme === "dark" ? "light" : "dark"} mode</button>
+        </div>
+      </aside>
+      <main className="network-main">
       <div className="social-theme-toolbar" role="group" aria-label="Social feed appearance">
         <span>APPEARANCE</span>
         <button type="button" className={theme === "light" ? "is-active" : ""} onClick={() => setTheme("light")} aria-pressed={theme === "light"} data-testid="button-social-theme-light">Light</button>
@@ -328,11 +439,12 @@ export function SocialFeed({ username }: SocialFeedProps) {
       {isProfile ? (
         <div className="social-profile-banner" data-testid="social-profile-header">
           <div className="social-profile-identity">
-            {profile?.avatarUrl ? <img className="social-profile-avatar" src={profile.avatarUrl} alt={`${username} avatar`} /> : <Avatar username={username} size={54} />}
+            {profile?.avatarUrl ? <img className="social-profile-avatar" src={profile.avatarUrl} alt={`${profileUsername} avatar`} /> : <Avatar username={profileUsername!} size={54} />}
             <div className="social-profile-name">
               <span className="social-eyebrow">MEMBER PROFILE</span>
-              <h2 data-testid="social-profile-username">{profile?.username || username}</h2>
+              <h2 data-testid="social-profile-username">{profile?.username || profileUsername}</h2>
               {profile?.rank && <span className="social-profile-rank" data-testid="social-profile-rank">{profile.rank}</span>}
+              {profile?.bio && <p className="social-profile-bio" data-testid="social-profile-bio">{profile.bio}</p>}
             </div>
           </div>
           <div className="social-profile-stats" data-testid="social-profile-stats">
@@ -356,14 +468,14 @@ export function SocialFeed({ username }: SocialFeedProps) {
           <header className="social-feed-heading">
             <div>
               <span className="social-eyebrow">THE COMMUNITY WIRE</span>
-              <h1 data-testid="social-feed-title">A little corner of the web.</h1>
+              <h1 data-testid="social-feed-title">{view === "following" ? "Following" : view === "liked" ? "Liked posts" : view === "search" ? "Search results" : view === "notifications" ? "Notifications" : view === "profile" ? "Your profile" : "For you"}</h1>
               <p>Posts from people you follow, plus popular and recent finds from everyone.</p>
             </div>
             <div className="social-feed-index" aria-hidden="true"><b>01</b><span> / LIVE</span></div>
           </header>
           <nav className="social-feed-tabs" aria-label="Feed selection" data-testid="social-feed-tabs">
-            <button type="button" className={mode === "for-you" ? "is-active" : ""} onClick={() => selectMode("for-you")} data-testid="button-feed-for-you">For You</button>
-            <button type="button" className={mode === "following" ? "is-active" : ""} onClick={() => selectMode("following")} data-testid="button-feed-following">Following</button>
+            <button type="button" className={view === "for-you" ? "is-active" : ""} onClick={() => selectMode("for-you")} data-testid="button-feed-for-you">For You</button>
+            <button type="button" className={view === "following" ? "is-active" : ""} onClick={() => selectMode("following")} data-testid="button-feed-following">Following</button>
             <span className="social-tab-note">SITE-WIDE / NEW & NOTABLE</span>
           </nav>
         </>
@@ -426,6 +538,13 @@ export function SocialFeed({ username }: SocialFeedProps) {
       {isProfile && actionError && <div className="social-inline-error social-action-error" role="alert" data-testid="status-social-action-error">{actionError}</div>}
       {!isProfile && actionError && me && <div className="social-inline-error social-action-error" role="alert" data-testid="status-social-action-error">{actionError}</div>}
 
+      {newestAvailable && (view === "for-you" || view === "following") && (
+        <div className="network-new-posts-wrap" role="status" aria-live="polite">
+          <button type="button" className="network-new-posts" onClick={() => void loadNewestPosts()} data-testid="button-load-newest-posts">
+            <span aria-hidden="true">↓</span> Load newest posts
+          </button>
+        </div>
+      )}
       <div className="social-timeline" data-testid="social-post-list">
         {loading ? <LoadingPosts /> : error ? (
           <div className="social-state social-state-error" role="alert" data-testid="status-social-error">
@@ -434,7 +553,7 @@ export function SocialFeed({ username }: SocialFeedProps) {
             <p>{error}</p>
             <button type="button" onClick={() => void load()} data-testid="button-social-retry">Try again</button>
           </div>
-        ) : posts.length === 0 ? (
+        ) : view === "notifications" ? notifications.length === 0 ? <div className="social-state">You’re all caught up.</div> : notifications.map((item) => <div className="network-notification" key={item.id}><b>{item.actor}</b> {item.kind === "follow" ? "followed you" : item.kind === "like" ? "liked your post" : item.kind === "comment" ? "commented on your post" : "reposted your post"}<time>{formatPostTime(item.createdAt)}</time></div>) : posts.length === 0 ? (
           <div className="social-state" data-testid="status-social-empty">
             <span className="social-state-mark" aria-hidden="true">—</span>
             <strong>{isProfile ? "No updates here yet." : mode === "following" ? "Your following feed is quiet." : "The wire is quiet for now."}</strong>
@@ -451,13 +570,23 @@ export function SocialFeed({ username }: SocialFeedProps) {
             onLike={(item) => void toggleLike(item)}
             onDelete={(item) => void deletePost(item)}
             onOpenUser={(author) => addWindow(activePage, { type: "userpage", title: `${author}'s posts`, username: author, width: 520, height: 460 })}
+            onComment={(item) => void addComment(item)}
+            onRepost={(item) => void repost(item)}
+            onFollow={(author, followed) => void followAuthor(author, followed)}
           />
         ))}
       </div>
       <footer className="social-feed-footnote" data-testid="social-feed-footnote">
         <span>PHOTO DESKTOP SOCIAL</span>
-        <span>{isProfile ? `POSTS BY ${username?.toUpperCase()}` : mode === "following" ? "YOUR PEOPLE" : "FOR YOU"}</span>
+        <span>{isProfile ? `POSTS BY ${profileUsername?.toUpperCase()}` : view.toUpperCase()}</span>
       </footer>
+      </main>
+      <aside className="network-right" aria-label="Network news and trends">
+        <section className="network-side-card"><h2>Site news</h2>{siteNews.length ? siteNews.map((news) => <article key={news.id}><b>{news.title}</b><small>{news.author} · {formatPostTime(news.createdAt)}</small></article>) : <p>No recent site news.</p>}</section>
+        <section className="network-side-card"><h2>Network news</h2>{networkNews.map((post) => <article key={post.id}><b>@{post.author}</b><small>{post.body.slice(0, 90) || "Shared media"} · {formatPostTime(post.createdAt)}</small></article>)}</section>
+        <section className="network-side-card"><h2>Trending this week</h2>{trending.length ? trending.map((tag) => <button key={tag.tag} type="button" onClick={() => { setSearchQuery(tag.tag); setView("search"); }} data-testid={`button-trending-${tag.tag.slice(1)}`}><b>{tag.tag}</b><small>{tag.count} posts</small></button>) : <p>No hashtags have reached the trend threshold yet.</p>}</section>
+      </aside>
+      </div>
     </section>
   );
 }
