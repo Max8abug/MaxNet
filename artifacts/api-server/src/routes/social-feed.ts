@@ -84,7 +84,11 @@ async function presentPost(row: typeof socialPostsTable.$inferSelect, username?:
 router.get("/social/search", async (req, res) => {
   const q = String(req.query.q || "").trim().slice(0, 80);
   if (!q) { res.json([]); return; }
-  const rows = await db.select().from(socialPostsTable).where(sql`${socialPostsTable.body} ILIKE ${`%${q}%`}`)
+  const authorQuery = q.startsWith("@") ? q.slice(1) : q;
+  const rows = await db.select().from(socialPostsTable).where(sql`
+    ${socialPostsTable.body} ILIKE ${`%${q}%`}
+    OR ${socialPostsTable.author} ILIKE ${`%${authorQuery}%`}
+  `)
     .orderBy(desc(socialPostsTable.createdAt)).limit(40);
   res.json(await Promise.all(rows.map(row => presentPost(row, req.session.username))));
 });

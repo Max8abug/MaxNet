@@ -743,6 +743,13 @@ export function SocialFeed({ username }: SocialFeedProps) {
       </footer>
       </main>
       <aside className="network-right" aria-label="Network news and trends">
+        <form className="network-side-search" role="search" aria-label="Search Network posts" onSubmit={(event) => { event.preventDefault(); setSelectedPost(null); setView("search"); }}>
+          <label htmlFor="network-right-search">Search posts</label>
+          <div className="network-side-search-control">
+            <input id="network-right-search" type="search" value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} placeholder="Text, #tag, or username" aria-label="Search by post text, hashtag, or username" data-testid="input-network-sidebar-search" />
+            <button type="submit" aria-label="Search posts" data-testid="button-network-sidebar-search">⌕</button>
+          </div>
+        </form>
         <section className="network-side-card"><h2>Site news</h2>{siteNews.length ? siteNews.map((news) => <article key={news.id}><b>{news.title}</b><small>{news.author} · {formatPostTime(news.createdAt)}</small></article>) : <p>No recent site news.</p>}</section>
         <section className="network-side-card"><h2>Network news</h2>{networkNews.length ? networkNews.map((item) => <article key={item.id}><b>{item.title}</b><small>{item.body.slice(0, 100)} · {item.author} · {formatPostTime(item.createdAt)}</small></article>) : <p>No Network News yet.</p>}</section>
         <section className="network-side-card"><h2>Trending this week</h2>{trending.length ? trending.map((tag) => <button key={tag.tag} type="button" onClick={() => openHashtag(tag.tag)} data-testid={`button-trending-${tag.tag.slice(1)}`}><b>{tag.tag}</b><small>{tag.count} posts</small></button>) : <p>No hashtags have reached the trend threshold yet.</p>}</section>
