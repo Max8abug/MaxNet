@@ -163,6 +163,7 @@ export function SocialFeed({ username }: SocialFeedProps) {
 
   useEffect(() => {
     try { localStorage.setItem("photo-desktop-social-theme", theme); } catch { /* Use the current session preference. */ }
+    window.dispatchEvent(new CustomEvent("photo-desktop-social-theme-change", { detail: theme }));
   }, [theme]);
 
   const load = useCallback(async (selectedMode: FeedMode = mode) => {

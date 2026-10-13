@@ -5,6 +5,7 @@ import { useDesktopStore } from "../store";
 import { Avatar } from "./Avatar";
 import { WikiBrowser } from "./WikiBrowser";
 import { SocialFeed } from "./SocialFeed";
+import "./UserBrowser.css";
 
 type UserBrowserProps = {
   page?: string;
@@ -54,8 +55,8 @@ function UserCard({
       data-testid={`card-user-${user.username}`}
       title={`Open ${user.username}'s personal page`}
     >
-      <span className="flex h-full w-full flex-col overflow-hidden rounded-xl border border-[#dce3e7] bg-white shadow-[0_2px_8px_rgba(35,59,76,.05)] transition duration-150 group-hover:-translate-y-0.5 group-hover:border-[#a9c9ca] group-hover:shadow-[0_8px_20px_rgba(35,59,76,.1)]">
-        <span className="flex items-center gap-3 bg-[#f7faf9] px-3 py-3">
+      <span className="people-directory-card flex h-full w-full flex-col overflow-hidden rounded-xl border border-[#dce3e7] bg-white shadow-[0_2px_8px_rgba(35,59,76,.05)] transition duration-150 group-hover:-translate-y-0.5 group-hover:border-[#a9c9ca] group-hover:shadow-[0_8px_20px_rgba(35,59,76,.1)]">
+        <span className="people-directory-card-head flex items-center gap-3 bg-[#f7faf9] px-3 py-3">
           <span className="relative shrink-0">
             <Avatar username={user.username} size={44} />
             <span className={`absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full border-2 border-white ${
@@ -64,29 +65,29 @@ function UserCard({
           </span>
           <span className="min-w-0 flex-1">
             <span
-              className={`block truncate text-sm font-bold ${user.isAdmin ? "text-[#9b3944]" : "text-[#203844]"}`}
+              className={`people-directory-user-name block truncate text-sm font-bold ${user.isAdmin ? "is-admin text-[#9b3944]" : "text-[#203844]"}`}
               data-testid={`text-username-${user.username}`}
             >
               {user.username}
             </span>
-            <span className="mt-0.5 block truncate text-[10px] text-[#70818a]">
+            <span className="people-directory-rank mt-0.5 block truncate text-[10px] text-[#70818a]">
               {user.isAdmin ? "Site administrator" : user.rank || "Directory member"}
             </span>
           </span>
           <span className="text-[#9aabb2]" aria-hidden="true">↗</span>
         </span>
         <span className="flex min-h-0 flex-1 flex-col justify-between px-3 py-2.5 text-[10px]">
-          <span className="text-[#76868d]">{hasPersonalContent ? displayActivity(user.lastSeen) : "No personal page yet"}</span>
+          <span className="people-directory-activity text-[#76868d]">{hasPersonalContent ? displayActivity(user.lastSeen) : "No personal page yet"}</span>
           <span className="mt-2 flex items-center justify-between gap-2 border-t border-[#edf0f1] pt-2">
-            <span className="text-[11px] font-semibold text-[#287078] group-hover:underline">
+            <span className="people-directory-profile-link text-[11px] font-semibold text-[#287078] group-hover:underline">
               {hasPersonalContent ? "Open personal page →" : "View profile →"}
             </span>
             <span className="flex shrink-0 items-center gap-1.5">
-            {user.hasHostedSite && <span className="rounded-full bg-[#e8f2ef] px-2 py-1 text-[9px] font-semibold text-[#42776a]">HTML site</span>}
+            {user.hasHostedSite && <span className="people-directory-site-badge rounded-full bg-[#e8f2ef] px-2 py-1 text-[9px] font-semibold text-[#42776a]">HTML site</span>}
             {user.hasPage && (
               <button
                 type="button"
-                className={`rounded-full border border-[#d9e2e5] px-2.5 py-1 text-[10px] font-semibold text-[#375f65] hover:bg-[#eaf4f1] ${user.myVote ? "bg-[#dcefeb]" : "bg-[#f7faf9]"}`}
+                className={`people-directory-vote rounded-full border border-[#d9e2e5] px-2.5 py-1 text-[10px] font-semibold text-[#375f65] hover:bg-[#eaf4f1] ${user.myVote ? "bg-[#dcefeb]" : "bg-[#f7faf9]"}`}
                 disabled={!canVote}
                 onClick={(event) => {
                   event.stopPropagation();
@@ -136,8 +137,33 @@ export function UserBrowser({ page = "/" }: UserBrowserProps) {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [voting, setVoting] = useState<string | null>(null);
+  const [directoryTheme, setDirectoryTheme] = useState<"light" | "dark">(() => {
+    try {
+      return localStorage.getItem("photo-desktop-social-theme") === "dark" ? "dark" : "light";
+    } catch {
+      return "light";
+    }
+  });
   const me = useAuth((state) => state.user);
   const addWindow = useDesktopStore((state) => state.addWindow);
+
+  useEffect(() => {
+    const onThemeChange = (event: Event) => {
+      const nextTheme = (event as CustomEvent<unknown>).detail;
+      if (nextTheme === "light" || nextTheme === "dark") setDirectoryTheme(nextTheme);
+    };
+    const onStorage = (event: StorageEvent) => {
+      if (event.key === "photo-desktop-social-theme") {
+        setDirectoryTheme(event.newValue === "dark" ? "dark" : "light");
+      }
+    };
+    window.addEventListener("photo-desktop-social-theme-change", onThemeChange);
+    window.addEventListener("storage", onStorage);
+    return () => {
+      window.removeEventListener("photo-desktop-social-theme-change", onThemeChange);
+      window.removeEventListener("storage", onStorage);
+    };
+  }, []);
 
   const loadUsers = useCallback(async (isRefresh = false) => {
     if (isRefresh) setRefreshing(true);
@@ -198,8 +224,9 @@ export function UserBrowser({ page = "/" }: UserBrowserProps) {
 
   return (
     <div
-      className="flex h-full min-h-0 w-full flex-col bg-[#f3f6f4] text-xs text-[#203844]"
+      className="user-browser flex h-full min-h-0 w-full flex-col bg-[#f3f6f4] text-xs text-[#203844]"
       data-testid="user-browser"
+      data-theme={directoryTheme}
     >
       <div className="flex shrink-0 flex-wrap items-center gap-1 border-b border-[#808080] bg-[#c0c0c0] p-1">
         <span className="px-1 font-bold text-[#000080]">Web</span>
@@ -252,18 +279,18 @@ export function UserBrowser({ page = "/" }: UserBrowserProps) {
       </div>
 
       {activeView === "wiki" ? <WikiBrowser /> : activeView === "feed" ? <SocialFeed /> : <>
-      <div className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-b border-[#dce4e3] bg-white px-4 py-3">
+      <div className="people-directory-header flex shrink-0 flex-wrap items-center justify-between gap-3 border-b border-[#dce4e3] bg-white px-4 py-3">
         <div>
           <div className="text-[10px] font-bold uppercase tracking-[.16em] text-[#57827c]">Community</div>
-          <div className="mt-1 text-lg font-bold tracking-tight text-[#203844]">People</div>
-          <div className="mt-0.5 text-[10px] text-[#718188]">
+          <div className="people-directory-heading mt-1 text-lg font-bold tracking-tight text-[#203844]">People</div>
+          <div className="people-directory-muted mt-0.5 text-[10px] text-[#718188]">
             Find the people behind the posts and personal sites.
           </div>
         </div>
         {me && (
           <button
             type="button"
-            className="shrink-0 rounded-lg bg-[#286b70] px-3 py-2 text-[11px] font-semibold text-white shadow-sm hover:bg-[#20585d]"
+            className="people-directory-open-button shrink-0 rounded-lg bg-[#286b70] px-3 py-2 text-[11px] font-semibold text-white shadow-sm hover:bg-[#20585d]"
             onClick={() => openUserPage(me.username)}
             data-testid="button-open-my-page"
             title={`Open ${me.username}'s personal page`}
@@ -273,11 +300,11 @@ export function UserBrowser({ page = "/" }: UserBrowserProps) {
         )}
       </div>
 
-      <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-[#e4e9e7] px-4 py-3" role="search">
+      <div className="people-directory-toolbar flex shrink-0 flex-wrap items-center gap-2 border-b border-[#e4e9e7] px-4 py-3" role="search">
         <label className="font-bold" htmlFor="user-browser-search">
           <span className="sr-only">Find</span>
         </label>
-        <div className="flex min-w-[180px] flex-1 items-center gap-2 rounded-lg border border-[#dbe3e2] bg-white px-3 py-2 text-[#6c7e83]">
+        <div className="people-directory-search flex min-w-[180px] flex-1 items-center gap-2 rounded-lg border border-[#dbe3e2] bg-white px-3 py-2 text-[#6c7e83]">
           <span aria-hidden="true">⌕</span>
           <input id="user-browser-search" type="search" className="min-w-0 flex-1 bg-transparent text-[11px] text-[#203844] outline-none placeholder:text-[#91a0a4]" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search people" data-testid="input-search-users" aria-label="Search usernames" />
         </div>
@@ -291,7 +318,7 @@ export function UserBrowser({ page = "/" }: UserBrowserProps) {
             Clear
           </button>
         )}
-        <label className="flex items-center gap-2 rounded-lg border border-[#dbe3e2] bg-white px-3 py-2 text-[10px] text-[#60747a]">
+        <label className="people-directory-sort flex items-center gap-2 rounded-lg border border-[#dbe3e2] bg-white px-3 py-2 text-[10px] text-[#60747a]">
           <span>Sort</span>
           <select className="bg-transparent font-semibold text-[#304c55] outline-none" value={sortMode} onChange={(event) => setSortMode(event.target.value as "popular" | "alphabetical")} aria-label="Sort profiles">
             <option value="popular">Popularity</option>
@@ -302,7 +329,7 @@ export function UserBrowser({ page = "/" }: UserBrowserProps) {
 
       {error && (
         <div
-          className="m-3 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-[#f2c5b8] bg-[#fff4ed] p-3 text-[#8a4937]"
+          className="people-directory-error m-3 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-[#f2c5b8] bg-[#fff4ed] p-3 text-[#8a4937]"
           role="alert"
           data-testid="status-user-browser-error"
         >
@@ -311,7 +338,7 @@ export function UserBrowser({ page = "/" }: UserBrowserProps) {
           </span>
           <button
             type="button"
-            className="rounded-lg border border-[#e6c9bd] bg-white px-3 py-1.5 text-[#573c34]"
+            className="people-directory-retry rounded-lg border border-[#e6c9bd] bg-white px-3 py-1.5 text-[#573c34]"
             onClick={() => void loadUsers(false)}
             data-testid="button-retry-users"
           >
@@ -320,7 +347,7 @@ export function UserBrowser({ page = "/" }: UserBrowserProps) {
         </div>
       )}
 
-      <div className="min-h-0 flex-1 overflow-auto p-3 sm:p-4" data-testid="user-browser-results">
+      <div className="people-directory-results min-h-0 flex-1 overflow-auto p-3 sm:p-4" data-testid="user-browser-results">
         {loading ? (
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
             {[0, 1, 2, 3, 4, 5].map((index) => (
@@ -328,7 +355,7 @@ export function UserBrowser({ page = "/" }: UserBrowserProps) {
             ))}
           </div>
         ) : users.length === 0 && !error ? (
-          <div className="flex min-h-[180px] flex-col items-center justify-center rounded-xl border border-[#dce4e3] bg-white p-5 text-center">
+          <div className="people-directory-empty flex min-h-[180px] flex-col items-center justify-center rounded-xl border border-[#dce4e3] bg-white p-5 text-center">
             <div className="text-base font-bold text-[#287078]" data-testid="status-user-browser-empty">
               This directory is quiet.
             </div>
@@ -345,7 +372,7 @@ export function UserBrowser({ page = "/" }: UserBrowserProps) {
             </button>
           </div>
         ) : visibleUsers.length === 0 ? (
-          <div className="flex min-h-[140px] flex-col items-center justify-center rounded-xl border border-[#dce4e3] bg-white p-5 text-center">
+          <div className="people-directory-empty flex min-h-[140px] flex-col items-center justify-center rounded-xl border border-[#dce4e3] bg-white p-5 text-center">
             <div className="font-bold text-[#287078]" data-testid="status-user-search-empty">
               No matching profiles.
             </div>
@@ -363,7 +390,7 @@ export function UserBrowser({ page = "/" }: UserBrowserProps) {
       </div>
 
       <div
-        className="flex shrink-0 justify-between border-t border-[#dce4e3] bg-white px-4 py-2 text-[10px] text-[#7b8b8f]"
+        className="people-directory-footer flex shrink-0 justify-between border-t border-[#dce4e3] bg-white px-4 py-2 text-[10px] text-[#7b8b8f]"
         data-testid="status-user-browser-count"
       >
         <span>

@@ -1,0 +1,125 @@
+.user-browser[data-theme="dark"] {
+  background: #111820;
+  color: #e3e9ef;
+  color-scheme: dark;
+}
+
+.user-browser[data-theme="dark"] .people-directory-header,
+.user-browser[data-theme="dark"] .people-directory-footer {
+  border-color: #43515d;
+  background: #1a2630;
+}
+
+.user-browser[data-theme="dark"] .people-directory-toolbar {
+  border-color: #43515d;
+  background: #202c36;
+}
+
+.user-browser[data-theme="dark"] .people-directory-heading {
+  color: #e4edf1;
+}
+
+.user-browser[data-theme="dark"] .people-directory-muted,
+.user-browser[data-theme="dark"] .people-directory-footer,
+.user-browser[data-theme="dark"] .people-directory-rank,
+.user-browser[data-theme="dark"] .people-directory-activity,
+.user-browser[data-theme="dark"] .people-directory-sort,
+.user-browser[data-theme="dark"] [class~="text-gray-600"],
+.user-browser[data-theme="dark"] [class~="text-gray-700"] {
+  color: #aab7c1;
+}
+
+.user-browser[data-theme="dark"] .people-directory-search,
+.user-browser[data-theme="dark"] .people-directory-sort {
+  border-color: #53626d;
+  background: #26333e;
+  color: #d3dde3;
+}
+
+.user-browser[data-theme="dark"] .people-directory-search input,
+.user-browser[data-theme="dark"] .people-directory-sort select {
+  color: #e3e9ef;
+}
+
+.user-browser[data-theme="dark"] .people-directory-search input::placeholder {
+  color: #84929e;
+}
+
+.user-browser[data-theme="dark"] .people-directory-card,
+.user-browser[data-theme="dark"] .people-directory-empty {
+  border-color: #475662;
+  background: #1b2630;
+  color: #e3e9ef;
+  box-shadow: 2px 2px 0 rgba(0, 0, 0, .25);
+}
+
+.user-browser[data-theme="dark"] .people-directory-card-head {
+  background: #202c36;
+}
+
+.user-browser[data-theme="dark"] .people-directory-user-name {
+  color: #e4edf1;
+}
+
+.user-browser[data-theme="dark"] .people-directory-user-name.is-admin {
+  color: #f0a28e;
+}
+
+.user-browser[data-theme="dark"] .people-directory-profile-link,
+.user-browser[data-theme="dark"] .people-directory-empty [class*="text-[#287078]"] {
+  color: #8ad8ca;
+}
+
+.user-browser[data-theme="dark"] .people-directory-site-badge {
+  background: #263c3b;
+  color: #a7dfd3;
+}
+
+.user-browser[data-theme="dark"] .people-directory-vote {
+  border-color: #53626d;
+  background: #26333e;
+  color: #d3dde3;
+}
+
+.user-browser[data-theme="dark"] .people-directory-vote:hover,
+.user-browser[data-theme="dark"] .people-directory-vote.bg-\[\#dcefeb\] {
+  background: #304b48;
+  color: #b6eee2;
+}
+
+.user-browser[data-theme="dark"] .people-directory-open-button {
+  border-color: #377c72;
+  background: #245e57;
+  color: #f2fbf8;
+}
+
+.user-browser[data-theme="dark"] .people-directory-open-button:hover {
+  background: #2a6d64;
+}
+
+.user-browser[data-theme="dark"] .people-directory-error {
+  border-color: #a65f4d;
+  background: #392923;
+  color: #f0bba7;
+}
+
+.user-browser[data-theme="dark"] .people-directory-retry {
+  border-color: #78584d;
+  background: #26333e;
+  color: #f1c5b5;
+}
+
+.user-browser[data-theme="dark"] [data-testid^="skeleton-user-"] {
+  border-color: #465560;
+  background: #1b2630;
+}
+
+.user-browser[data-theme="dark"] [data-testid^="skeleton-user-"] [class*="bg-[#e"] {
+  background: #35434e;
+}
+
+.user-browser[data-theme="dark"] .people-directory-card:focus-visible,
+.user-browser[data-theme="dark"] .people-directory-vote:focus-visible {
+  outline: 2px solid #70c5b8;
+  outline-offset: 2px;
+}
