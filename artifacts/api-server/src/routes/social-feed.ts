@@ -8,11 +8,12 @@ import {
   socialPostCommentsTable,
   socialPostRepostsTable,
   socialNotificationsTable,
+  networkNewsTable,
   socialPostsTable,
   userPagesTable,
   usersTable,
 } from "@workspace/db";
-import { requireAuth } from "../lib/auth";
+import { requireAuth, requireAdmin } from "../lib/auth";
 import { appStorage } from "../lib/app-storage";
 import { cleanupAfterMutation } from "../lib/storage-mutations";
 import { logger } from "../lib/logger";
@@ -23,6 +24,29 @@ const router: IRouter = Router();
 const MAX_MEDIA_BYTES = 6 * 1024 * 1024;
 const ALLOWED_MEDIA = new Set(["image/jpeg", "image/png", "image/gif", "image/webp", "video/mp4", "video/webm"]);
 const postCooldowns = new Map<string, number>();
+
+router.get("/social/network-news", async (_req, res) => {
+  const rows = await db.select().from(networkNewsTable).orderBy(desc(networkNewsTable.createdAt)).limit(10);
+  res.json(rows);
+});
+
+router.post("/social/network-news", requireAdmin, async (req, res) => {
+  const title = typeof req.body?.title === "string" ? req.body.title.trim() : "";
+  const body = typeof req.body?.body === "string" ? req.body.body.trim() : "";
+  if (!title || title.length > 100 || !body || body.length > 1000) {
+    res.status(400).json({ error: "Add a title (up to 100 characters) and message (up to 1,000 characters)." });
+    return;
+  }
+  const [row] = await db.insert(networkNewsTable).values({ author: req.session.username!, title, body }).returning();
+  res.status(201).json(row);
+});
+
+router.delete("/social/network-news/:id", requireAdmin, async (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id)) { res.status(400).json({ error: "Invalid Network News item." }); return; }
+  await db.delete(networkNewsTable).where(eq(networkNewsTable.id, id));
+  res.json({ ok: true });
+});
 
 function parseMedia(value: unknown): { type: string; bytes: Buffer } | null {
   if (typeof value !== "string" || value.length > Math.ceil(MAX_MEDIA_BYTES / 3) * 4 + 100) return null;
@@ -63,6 +87,19 @@ router.get("/social/search", async (req, res) => {
   const rows = await db.select().from(socialPostsTable).where(sql`${socialPostsTable.body} ILIKE ${`%${q}%`}`)
     .orderBy(desc(socialPostsTable.createdAt)).limit(40);
   res.json(await Promise.all(rows.map(row => presentPost(row, req.session.username))));
+});
+
+router.get("/social/hashtag/:tag", async (req, res) => {
+  const tag = String(req.params.tag || "");
+  if (!/^[\p{L}\p{N}_]{2,40}$/u.test(tag)) {
+    res.status(400).json({ error: "Invalid hashtag." });
+    return;
+  }
+  const rows = await db.select().from(socialPostsTable)
+    .orderBy(desc(socialPostsTable.createdAt)).limit(2000);
+  const exactTag = new RegExp(`(^|[^\\p{L}\\p{N}_])#${tag}(?![\\p{L}\\p{N}_])`, "iu");
+  const matches = rows.filter((row) => exactTag.test(row.body)).slice(0, 40);
+  res.json(await Promise.all(matches.map((row) => presentPost(row, req.session.username))));
 });
 
 router.get("/social/liked", requireAuth, async (req, res) => {
@@ -188,16 +225,27 @@ router.get("/social/profile/:username", async (req, res) => {
     username: usersTable.username, avatarUrl: usersTable.avatarUrl, rank: usersTable.rank, bio: usersTable.bio,
   }).from(usersTable).where(eq(usersTable.username, username)).limit(1);
   if (!user) { res.status(404).json({ error: "User not found." }); return; }
-  const [posts, followers, following, relation] = await Promise.all([
+  const [authored, reposts, followers, following, relation] = await Promise.all([
     db.select().from(socialPostsTable).where(eq(socialPostsTable.author, username)).orderBy(desc(socialPostsTable.createdAt)).limit(60),
+    db.select({ postId: socialPostRepostsTable.postId, createdAt: socialPostRepostsTable.createdAt })
+      .from(socialPostRepostsTable).where(eq(socialPostRepostsTable.username, username))
+      .orderBy(desc(socialPostRepostsTable.createdAt)).limit(60),
     db.select({ count: sql<number>`count(*)::int` }).from(socialFollowsTable).where(eq(socialFollowsTable.following, username)),
     db.select({ count: sql<number>`count(*)::int` }).from(socialFollowsTable).where(eq(socialFollowsTable.follower, username)),
     req.session.username ? db.select({ id: socialFollowsTable.id }).from(socialFollowsTable)
       .where(and(eq(socialFollowsTable.follower, req.session.username), eq(socialFollowsTable.following, username))).limit(1) : Promise.resolve([]),
   ]);
+  const repostIds = [...new Set(reposts.map((item) => item.postId))];
+  const shared = repostIds.length
+    ? await db.select().from(socialPostsTable).where(inArray(socialPostsTable.id, repostIds))
+    : [];
+  const repostTimes = new Map(reposts.map((item) => [item.postId, item.createdAt.getTime()]));
+  const posts = [...new Map([...authored, ...shared].map((post) => [post.id, post])).values()]
+    .sort((a, b) => Math.max(b.createdAt.getTime(), repostTimes.get(b.id) || 0) - Math.max(a.createdAt.getTime(), repostTimes.get(a.id) || 0))
+    .slice(0, 60);
   res.json({
     ...user, followers: Number(followers[0]?.count || 0), following: Number(following[0]?.count || 0),
-    isFollowing: relation.length > 0, posts: await Promise.all(posts.map(row => presentPost(row, req.session.username))),
+    isFollowing: relation.length > 0, posts: await Promise.all(posts.map(row => presentPost(row, req.session.username, repostTimes.has(row.id) ? username : undefined))),
   });
 });
 

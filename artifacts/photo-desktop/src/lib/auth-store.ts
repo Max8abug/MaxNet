@@ -28,6 +28,7 @@ export const useAuth = create<AuthState>((set, get) => {
   ranks: [],
   siteSettings: {
     logoDataUrl: "",
+    networkIconDataUrl: "",
     darkLogoDataUrl: "",
     backgroundDataUrl: "",
     darkBackgroundDataUrl: "",

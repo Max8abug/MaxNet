@@ -44,6 +44,43 @@
 .network-new-posts-wrap { position:sticky; z-index:3; top:0; display:flex; justify-content:center; padding:8px; pointer-events:none; }
 .network-new-posts { display:flex; align-items:center; gap:7px; padding:7px 13px; border:1px solid #19574f; border-radius:999px; background:#23655f; color:white; font-size:11px; font-weight:750; box-shadow:0 4px 14px #162b2a44; pointer-events:auto; animation:social-arrive .2s ease-out; }
 .network-new-posts:hover { background:#1b554e; }
+.network-brand-icon { width:30px; height:30px; flex:0 0 30px; border-radius:9px; object-fit:cover; }
+.network-admin-panel { display:grid; gap:14px; padding:16px; }
+.network-admin-heading h2 { margin:4px 0; color:var(--social-ink); font-size:20px; }
+.network-admin-heading p,.network-admin-icon p { margin:4px 0 0; color:var(--social-muted); font-size:11px; line-height:1.5; }
+.network-admin-news-form,.network-admin-icon,.network-admin-existing { display:grid; gap:10px; border:1px solid var(--social-border); border-radius:10px; background:var(--social-panel); padding:14px; }
+.network-admin-news-form label { display:grid; gap:5px; color:var(--social-ink); font-size:11px; font-weight:700; }
+.network-admin-news-form input,.network-admin-news-form textarea { width:100%; border:1px solid var(--social-border); background:var(--social-bg); padding:9px; color:var(--social-ink); font:inherit; font-size:12px; }
+.network-admin-news-form textarea { resize:vertical; }
+.network-admin-form-footer { display:flex; justify-content:space-between; align-items:center; gap:8px; color:var(--social-muted); font-size:10px; }
+.network-admin-form-footer button,.network-admin-icon button { border:1px solid #184a47; border-radius:7px; background:var(--social-teal); padding:7px 10px; color:white; font-size:11px; font-weight:700; }
+.network-admin-form-footer button:disabled { opacity:.5; }
+.network-admin-icon h3,.network-admin-existing h3 { margin:0; color:var(--social-ink); font-size:13px; }
+.network-admin-icon img { width:56px; height:56px; border-radius:10px; object-fit:cover; }
+.network-admin-icon button + button { margin-left:8px; background:var(--social-paper); color:var(--social-ink); }
+.network-admin-status { margin:0; color:var(--social-teal); font-size:11px; }
+.network-admin-existing article { display:flex; justify-content:space-between; gap:12px; border-top:1px solid var(--social-border); padding:10px 0; color:var(--social-ink); }
+.network-admin-existing p { margin:4px 0; font-size:11px; white-space:pre-wrap; }
+.network-admin-existing small { color:var(--social-muted); font-size:9px; }
+.network-admin-existing article button { align-self:flex-start; border:1px solid var(--social-border); background:var(--social-paper); padding:5px 8px; color:#9b3b31; font-size:10px; }
+.network-post-detail { display:flex; flex-direction:column; gap:10px; width:100%; }
+.network-back-button { align-self:flex-start; border:1px solid var(--social-border); background:var(--social-panel); padding:7px 10px; color:var(--social-teal); font-size:11px; font-weight:700; }
+.network-comments-panel { border:1px solid var(--social-border); background:var(--social-panel); padding:14px; }
+.network-comments-panel h2 { margin:0 0 10px; color:var(--social-ink); font-size:15px; }
+.network-activity-summary { display:flex; flex-wrap:wrap; gap:8px 16px; border-bottom:1px solid var(--social-border); padding:0 0 12px; color:var(--social-muted); font-size:11px; }
+.network-comment-composer { display:flex; flex-direction:column; gap:7px; padding:12px 0; border-bottom:1px solid var(--social-border); }
+.network-comment-composer label { color:var(--social-ink); font-size:11px; font-weight:700; }
+.network-comment-composer textarea { resize:vertical; border:1px solid var(--social-border); background:var(--social-bg); padding:9px; color:var(--social-ink); font:inherit; font-size:12px; }
+.network-comment-composer > div { display:flex; align-items:center; justify-content:space-between; gap:8px; color:var(--social-muted); font-size:10px; }
+.network-comment-composer button { border:1px solid #184a47; background:var(--social-teal); padding:7px 11px; color:#fff; font-size:11px; font-weight:700; }
+.network-comment-composer button:disabled { opacity:.55; cursor:not-allowed; }
+.network-comment-list { display:flex; flex-direction:column; }
+.network-comment { display:flex; gap:9px; padding:12px 0; border-bottom:1px solid var(--social-border); }
+.network-comment > div { min-width:0; flex:1; }
+.network-comment header { display:flex; flex-wrap:wrap; align-items:center; gap:8px; color:var(--social-ink); font-size:11px; }
+.network-comment time { color:var(--social-muted); font-family:var(--app-font-mono); font-size:9px; }
+.network-comment p { margin:4px 0 0; color:var(--social-ink); font-size:12px; line-height:1.5; white-space:pre-wrap; overflow-wrap:anywhere; }
+.network-comments-empty,.network-comment-signin { margin:12px 0 0; color:var(--social-muted); font-size:11px; }
 .network-notification time { color:var(--social-muted); white-space:nowrap; }
 .social-feed[data-theme="dark"] .network-left,.social-feed[data-theme="dark"] .network-side-card { background:#1b2630; }
 .social-feed[data-theme="dark"] .network-right,.social-feed[data-theme="dark"] .network-search { background:#17212a; }
@@ -430,6 +467,14 @@
   overflow-wrap: anywhere;
   white-space: pre-wrap;
 }
+
+.social-post-open-body { display:block; width:calc(100% - 70px); margin:10px 12px 12px 58px; border:0; background:transparent; padding:0; color:#34423e; font-size:12px; line-height:1.55; text-align:left; overflow-wrap:anywhere; white-space:pre-wrap; cursor:pointer; }
+.social-post-open-body:hover { text-decoration:underline; text-decoration-color:#a8b9af; }
+.social-post-open-media { display:block; width:100%; border:0; background:transparent; padding:0; cursor:pointer; }
+.social-post-open-media img { cursor:zoom-in; }
+.social-post-body-clickable { cursor:pointer; }
+.social-post-body a { color:var(--social-teal); font-weight:700; text-decoration:underline; text-decoration-thickness:1px; text-underline-offset:2px; }
+.social-post-body a:hover { color:var(--social-rust); }
 
 .social-post-media {
   max-height: 390px;

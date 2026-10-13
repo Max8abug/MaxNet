@@ -4,16 +4,22 @@ import {
   deleteSocialPost,
   fetchSocialFeed,
   fetchSocialSearch,
+  fetchSocialHashtag,
   fetchLikedSocialPosts,
   fetchSocialNotifications,
   fetchSocialTrending,
   fetchNews,
+  fetchNetworkNews,
+  createNetworkNews,
+  deleteNetworkNews,
+  updateSiteSettings,
   fetchSocialComments,
   createSocialComment,
   toggleSocialRepost,
   type SocialNotification,
   type TrendingTag,
   type NewsPost,
+  type NetworkNewsItem,
   fetchSocialProfile,
   migrateLegacyMyPage,
   toggleSocialFollow,
@@ -29,7 +35,7 @@ import "./SocialFeed.css";
 type SocialFeedProps = { username?: string };
 type FeedMode = "for-you" | "following";
 type FeedTheme = "light" | "dark";
-type NetworkView = "for-you" | "following" | "search" | "notifications" | "liked" | "profile";
+type NetworkView = "for-you" | "following" | "search" | "hashtag" | "notifications" | "liked" | "profile" | "admin";
 const MAX_MEDIA_BYTES = 6 * 1024 * 1024;
 const MAX_BODY_LENGTH = 500;
 
@@ -76,6 +82,8 @@ function PostCard({
   onDelete,
   onOpenUser,
   onComment,
+  onOpenPost,
+  onHashtag,
   onRepost,
   onFollow,
 }: {
@@ -88,6 +96,8 @@ function PostCard({
   onDelete: (post: SocialPost) => void;
   onOpenUser: (username: string) => void;
   onComment: (post: SocialPost) => void;
+  onOpenPost: (post: SocialPost) => void;
+  onHashtag: (tag: string) => void;
   onRepost: (post: SocialPost) => void;
   onFollow: (username: string, isFollowing: boolean) => void;
 }) {
@@ -124,13 +134,24 @@ function PostCard({
           </button>
         )}
       </header>
-      {post.body && <p className="social-post-body" data-testid={`social-post-body-${post.id}`}>{post.body}</p>}
+      {post.body && (
+        <p className="social-post-body social-post-body-clickable" role="button" tabIndex={0}
+          onClick={() => onOpenPost(post)}
+          onKeyDown={(event) => { if (event.target === event.currentTarget && (event.key === "Enter" || event.key === " ")) { event.preventDefault(); onOpenPost(post); } }}
+          data-testid={`social-post-body-${post.id}`}>
+          {post.body.split(/(#[\p{L}\p{N}_]{2,40})/gu).map((part, index) => /^#[\p{L}\p{N}_]{2,40}$/u.test(part)
+            ? <a key={`${part}-${index}`} href={`?tag=${encodeURIComponent(part.slice(1))}`} onClick={(event) => { event.preventDefault(); event.stopPropagation(); onHashtag(part.slice(1)); }}>{part}</a>
+            : <span key={`${index}-${part.slice(0, 8)}`}>{part}</span>)}
+        </p>
+      )}
       {post.mediaUrl && (
         <div className="social-post-media" data-testid={`social-post-media-${post.id}`}>
           {mediaKind === "video" ? (
             <video src={post.mediaUrl} controls preload="metadata" aria-label={`Video posted by ${post.author}`} />
           ) : (
-            <img src={post.mediaUrl} alt={`Posted by ${post.author}`} />
+            <button type="button" className="social-post-open-media" onClick={() => onOpenPost(post)} aria-label={`Open post by ${post.author}`}>
+              <img src={post.mediaUrl} alt={`Posted by ${post.author}`} />
+            </button>
           )}
         </div>
       )}
@@ -151,6 +172,7 @@ function PostCard({
         </button>
         <button type="button" className="network-action" onClick={() => onComment(post)} data-testid={`button-comment-${post.id}`}>Comment · {post.comments}</button>
         <button type="button" className={`network-action ${post.myRepost ? "is-active" : ""}`} disabled={!currentUsername} onClick={() => onRepost(post)} data-testid={`button-repost-${post.id}`}>{post.myRepost ? "Reposted" : "Repost"} · {post.reposts}</button>
+        <button type="button" className="network-action" onClick={() => onOpenPost(post)} data-testid={`button-view-post-${post.id}`}>View post</button>
       </footer>
     </article>
   );
@@ -162,10 +184,16 @@ export function SocialFeed({ username }: SocialFeedProps) {
   const [mode, setMode] = useState<FeedMode>("for-you");
   const [view, setView] = useState<NetworkView>("for-you");
   const [searchQuery, setSearchQuery] = useState("");
+  const [hashtag, setHashtag] = useState("");
   const [notifications, setNotifications] = useState<SocialNotification[]>([]);
   const [trending, setTrending] = useState<TrendingTag[]>([]);
   const [siteNews, setSiteNews] = useState<NewsPost[]>([]);
-  const [networkNews, setNetworkNews] = useState<SocialPost[]>([]);
+  const [networkNews, setNetworkNews] = useState<NetworkNewsItem[]>([]);
+  const networkIconDataUrl = useAuth((state) => state.siteSettings.networkIconDataUrl);
+  const refreshSiteSettings = useAuth((state) => state.refreshSiteSettings);
+  const [newsTitle, setNewsTitle] = useState("");
+  const [newsBody, setNewsBody] = useState("");
+  const [adminStatus, setAdminStatus] = useState("");
   const [newestAvailable, setNewestAvailable] = useState(false);
   const postsRef = useRef<SocialPost[]>([]);
   const [theme, setTheme] = useState<FeedTheme>(() => {
@@ -176,6 +204,11 @@ export function SocialFeed({ username }: SocialFeedProps) {
     }
   });
   const [posts, setPosts] = useState<SocialPost[]>([]);
+  const [selectedPost, setSelectedPost] = useState<SocialPost | null>(null);
+  const [postComments, setPostComments] = useState<Awaited<ReturnType<typeof fetchSocialComments>>>([]);
+  const [commentBody, setCommentBody] = useState("");
+  const [commentsLoading, setCommentsLoading] = useState(false);
+  const [commentSending, setCommentSending] = useState(false);
   const [profile, setProfile] = useState<SocialProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -189,6 +222,8 @@ export function SocialFeed({ username }: SocialFeedProps) {
   const [busyDeletes, setBusyDeletes] = useState<number[]>([]);
   const [actionError, setActionError] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+  const detailRef = useRef<HTMLDivElement>(null);
+  const networkIconRef = useRef<HTMLInputElement>(null);
   const addWindow = useDesktopStore((state) => state.addWindow);
   const activePage = useDesktopStore((state) => state.activePage);
 
@@ -202,11 +237,17 @@ export function SocialFeed({ username }: SocialFeedProps) {
     setError(null);
     try {
       const profileName = username || (view === "profile" ? signedInUsername : undefined);
-      if (view === "notifications") {
+      if (view === "admin") {
+        setPosts([]);
+        setProfile(null);
+      } else if (view === "notifications") {
         setNotifications(await fetchSocialNotifications());
         setPosts([]);
       } else if (view === "search") {
         setPosts(searchQuery.trim() ? await fetchSocialSearch(searchQuery.trim()) : []);
+        setProfile(null);
+      } else if (view === "hashtag") {
+        setPosts(hashtag ? await fetchSocialHashtag(hashtag) : []);
         setProfile(null);
       } else if (view === "liked") {
         setPosts(await fetchLikedSocialPosts());
@@ -230,7 +271,7 @@ export function SocialFeed({ username }: SocialFeedProps) {
     } finally {
       setLoading(false);
     }
-  }, [signedInUsername, mode, username, view, searchQuery]);
+  }, [signedInUsername, mode, username, view, searchQuery, hashtag]);
 
   useEffect(() => {
     void load();
@@ -250,8 +291,8 @@ export function SocialFeed({ username }: SocialFeedProps) {
     return () => window.clearInterval(timer);
   }, [username, view]);
   useEffect(() => {
-    void Promise.all([fetchSocialTrending(), fetchNews(), fetchSocialFeed("for-you")]).then(([tags, news, latest]) => {
-      setTrending(tags); setSiteNews(news.slice(0, 4)); setNetworkNews(latest.slice(0, 4));
+    void Promise.all([fetchSocialTrending(), fetchNews(), fetchNetworkNews()]).then(([tags, news, networkItems]) => {
+      setTrending(tags); setSiteNews(news.slice(0, 4)); setNetworkNews(networkItems.slice(0, 4));
     }).catch(() => { setTrending([]); setSiteNews([]); });
   }, []);
 
@@ -260,9 +301,44 @@ export function SocialFeed({ username }: SocialFeedProps) {
   }, [mediaPreview]);
 
   const selectMode = (nextMode: FeedMode) => {
+    setSelectedPost(null);
     setMode(nextMode);
     setView(nextMode);
     setNewestAvailable(false);
+  };
+  const openHashtag = (tag: string) => {
+    setSelectedPost(null);
+    setHashtag(tag.replace(/^#/, ""));
+    setView("hashtag");
+  };
+  const publishNetworkNews = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!me?.isAdmin || !newsTitle.trim() || !newsBody.trim()) return;
+    setAdminStatus("");
+    try {
+      const created = await createNetworkNews(newsTitle.trim(), newsBody.trim());
+      setNetworkNews((items) => [created, ...items].slice(0, 10));
+      setNewsTitle(""); setNewsBody(""); setAdminStatus("Network News posted.");
+    } catch (error) { setAdminStatus(error instanceof Error ? error.message : "Could not publish Network News."); }
+  };
+  const removeNetworkNews = async (id: number) => {
+    try {
+      await deleteNetworkNews(id);
+      setNetworkNews((items) => items.filter((item) => item.id !== id));
+      setAdminStatus("Network News item removed.");
+    } catch (error) { setAdminStatus(error instanceof Error ? error.message : "Could not remove Network News."); }
+  };
+  const uploadNetworkIcon = async (file?: File) => {
+    if (!file || !me?.isAdmin) return;
+    if (!file.type.startsWith("image/") || file.size > 280 * 1024) {
+      setAdminStatus("Choose an image smaller than 280 KB.");
+      return;
+    }
+    try {
+      await updateSiteSettings({ networkIconDataUrl: await readFileAsDataUrl(file) });
+      await refreshSiteSettings();
+      setAdminStatus("Network icon updated.");
+    } catch (error) { setAdminStatus(error instanceof Error ? error.message : "Could not update the Network icon."); }
   };
   const loadNewestPosts = async () => {
     await load(mode);
@@ -326,6 +402,9 @@ export function SocialFeed({ username }: SocialFeedProps) {
     setActionError(null);
     try {
       await toggleSocialPostLike(post.id);
+      setSelectedPost((current) => current?.id === post.id ? {
+        ...current, likes: Math.max(0, current.likes + (current.myLike ? -1 : 1)), myLike: !current.myLike,
+      } : current);
       setPosts((current) => current.map((item) => item.id === post.id ? {
         ...item,
         likes: Math.max(0, item.likes + (item.myLike ? -1 : 1)),
@@ -352,6 +431,7 @@ export function SocialFeed({ username }: SocialFeedProps) {
     setActionError(null);
     try {
       await deleteSocialPost(post.id);
+      setSelectedPost((current) => current?.id === post.id ? null : current);
       setPosts((current) => current.filter((item) => item.id !== post.id));
       setProfile((current) => current ? { ...current, posts: current.posts.filter((item) => item.id !== post.id) } : current);
     } catch (deleteError) {
@@ -380,18 +460,38 @@ export function SocialFeed({ username }: SocialFeedProps) {
     }
   };
 
-  const addComment = async (post: SocialPost) => {
-    if (!me) return;
-    const current = await fetchSocialComments(post.id).catch(() => []);
-    const recent = current.slice(0, 5).map((comment) => `${comment.author}: ${comment.body}`).join("\n");
-    const body = window.prompt(`${recent ? `Recent comments:\n${recent}\n\n` : "No comments yet.\n\n"}Write a comment (up to 500 characters):`)?.trim();
-    if (!body) return;
-    try { await createSocialComment(post.id, body.slice(0, 500)); await load(); }
-    catch (error) { setActionError(error instanceof Error ? error.message : "Comment could not be posted."); }
+  const openPost = async (post: SocialPost) => {
+    setSelectedPost(post);
+    setCommentBody("");
+    setCommentsLoading(true);
+    setActionError(null);
+    try { setPostComments(await fetchSocialComments(post.id)); }
+    catch (error) { setActionError(error instanceof Error ? error.message : "Comments could not be loaded."); }
+    finally { setCommentsLoading(false); }
+    requestAnimationFrame(() => detailRef.current?.scrollIntoView({ block: "start", behavior: "smooth" }));
+  };
+  const submitDetailComment = async (event: FormEvent) => {
+    event.preventDefault();
+    if (!me || !selectedPost || !commentBody.trim() || commentSending) return;
+    setCommentSending(true);
+    setActionError(null);
+    try {
+      const comment = await createSocialComment(selectedPost.id, commentBody.trim().slice(0, 500));
+      setPostComments((current) => [comment, ...current]);
+      setCommentBody("");
+      setSelectedPost((current) => current ? { ...current, comments: current.comments + 1 } : current);
+      setPosts((current) => current.map((post) => post.id === selectedPost.id ? { ...post, comments: post.comments + 1 } : post));
+      setProfile((current) => current ? { ...current, posts: current.posts.map((post) => post.id === selectedPost.id ? { ...post, comments: post.comments + 1 } : post) } : current);
+    } catch (error) { setActionError(error instanceof Error ? error.message : "Comment could not be posted."); }
+    finally { setCommentSending(false); }
   };
   const repost = async (post: SocialPost) => {
     if (!me) return;
-    try { await toggleSocialRepost(post.id); await load(); }
+    try {
+      const result = await toggleSocialRepost(post.id);
+      setSelectedPost((current) => current?.id === post.id ? { ...current, myRepost: result.reposted, reposts: Math.max(0, current.reposts + (result.reposted ? 1 : -1)) } : current);
+      await load();
+    }
     catch (error) { setActionError(error instanceof Error ? error.message : "Repost could not be saved."); }
   };
   const followAuthor = async (author: string, isFollowing: boolean) => {
@@ -409,8 +509,11 @@ export function SocialFeed({ username }: SocialFeedProps) {
     <section className="social-feed" data-theme={theme} data-testid={isProfile ? "social-profile" : "social-feed"}>
       <div className="network-shell">
       <aside className="network-left" aria-label="Network navigation">
-        <div className="network-brand"><span className="network-brand-mark">N</span><strong>the Network</strong></div>
-        <form className="network-search" onSubmit={(event) => { event.preventDefault(); setView("search"); }}>
+        <div className="network-brand">
+          {networkIconDataUrl ? <img className="network-brand-icon" src={networkIconDataUrl} alt="" /> : <span className="network-brand-mark">N</span>}
+          <strong>the Network</strong>
+        </div>
+        <form className="network-search" onSubmit={(event) => { event.preventDefault(); setSelectedPost(null); setView("search"); }}>
           <input value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} placeholder="Search posts" aria-label="Search posts" data-testid="input-network-search" />
           <button type="submit" aria-label="Submit post search" data-testid="button-network-search">⌕</button>
         </form>
@@ -421,10 +524,11 @@ export function SocialFeed({ username }: SocialFeedProps) {
           ["liked", "♥", "Liked posts"],
           ["profile", "◉", "Profile"],
         ] as const).map(([key, icon, label]) => (
-          <button key={key} type="button" className={`network-nav-item ${view === key ? "is-active" : ""}`} onClick={() => { setView(key); if (key === "for-you" || key === "following") setMode(key); }} data-testid={`button-network-${key}`}>
+          <button key={key} type="button" className={`network-nav-item ${view === key ? "is-active" : ""}`} onClick={() => { setSelectedPost(null); setView(key); if (key === "for-you" || key === "following") setMode(key); }} data-testid={`button-network-${key}`}>
             <span aria-hidden="true">{icon}</span>{label}
           </button>
         ))}
+        {me?.isAdmin && <button type="button" className={`network-nav-item ${view === "admin" ? "is-active" : ""}`} onClick={() => { setSelectedPost(null); setView("admin"); }} data-testid="button-network-admin"><span aria-hidden="true">⚙</span>Admin menu</button>}
         <div className="network-left-bottom">
           <span>{me ? `Signed in as ${me.username}` : "Sign in to post, follow, and like."}</span>
           <button type="button" onClick={() => setTheme(theme === "dark" ? "light" : "dark")} data-testid="button-network-theme">Switch to {theme === "dark" ? "light" : "dark"} mode</button>
@@ -468,8 +572,8 @@ export function SocialFeed({ username }: SocialFeedProps) {
           <header className="social-feed-heading">
             <div>
               <span className="social-eyebrow">THE COMMUNITY WIRE</span>
-              <h1 data-testid="social-feed-title">{view === "following" ? "Following" : view === "liked" ? "Liked posts" : view === "search" ? "Search results" : view === "notifications" ? "Notifications" : view === "profile" ? "Your profile" : "For you"}</h1>
-              <p>Posts from people you follow, plus popular and recent finds from everyone.</p>
+              <h1 data-testid="social-feed-title">{view === "admin" ? "Network admin" : view === "hashtag" ? `#${hashtag}` : view === "following" ? "Following" : view === "liked" ? "Liked posts" : view === "search" ? "Search results" : view === "notifications" ? "Notifications" : view === "profile" ? "Your profile" : "For you"}</h1>
+              <p>{view === "hashtag" ? `Posts tagged #${hashtag}` : "Posts from people you follow, plus popular and recent finds from everyone."}</p>
             </div>
             <div className="social-feed-index" aria-hidden="true"><b>01</b><span> / LIVE</span></div>
           </header>
@@ -485,7 +589,7 @@ export function SocialFeed({ username }: SocialFeedProps) {
         <div className="social-signin-note" data-testid="social-signin-note">Sign in to follow members and leave a like.</div>
       )}
 
-      {!isProfile && me && (
+      {!isProfile && view !== "admin" && me && !selectedPost && (
         <form className="social-composer" onSubmit={submitPost} data-testid="social-composer">
           <div className="social-composer-top">
             <Avatar username={me.username} size={38} />
@@ -535,10 +639,10 @@ export function SocialFeed({ username }: SocialFeedProps) {
         </form>
       )}
 
-      {isProfile && actionError && <div className="social-inline-error social-action-error" role="alert" data-testid="status-social-action-error">{actionError}</div>}
-      {!isProfile && actionError && me && <div className="social-inline-error social-action-error" role="alert" data-testid="status-social-action-error">{actionError}</div>}
+      {isProfile && !selectedPost && actionError && <div className="social-inline-error social-action-error" role="alert" data-testid="status-social-action-error">{actionError}</div>}
+      {!isProfile && !selectedPost && actionError && me && <div className="social-inline-error social-action-error" role="alert" data-testid="status-social-action-error">{actionError}</div>}
 
-      {newestAvailable && (view === "for-you" || view === "following") && (
+      {!selectedPost && newestAvailable && (view === "for-you" || view === "following") && (
         <div className="network-new-posts-wrap" role="status" aria-live="polite">
           <button type="button" className="network-new-posts" onClick={() => void loadNewestPosts()} data-testid="button-load-newest-posts">
             <span aria-hidden="true">↓</span> Load newest posts
@@ -546,18 +650,73 @@ export function SocialFeed({ username }: SocialFeedProps) {
         </div>
       )}
       <div className="social-timeline" data-testid="social-post-list">
-        {loading ? <LoadingPosts /> : error ? (
+        {loading && !selectedPost ? <LoadingPosts /> : error && !selectedPost ? (
           <div className="social-state social-state-error" role="alert" data-testid="status-social-error">
             <span className="social-state-mark" aria-hidden="true">!</span>
             <strong>Could not open the wire.</strong>
             <p>{error}</p>
             <button type="button" onClick={() => void load()} data-testid="button-social-retry">Try again</button>
           </div>
+        ) : view === "admin" && me?.isAdmin ? (
+          <section className="network-admin-panel" data-testid="network-admin-panel">
+            <div className="network-admin-heading"><span className="social-eyebrow">ADMIN CONTROLS</span><h2>Network News</h2><p>Only admins can publish announcements shown in the Network News sidebar.</p></div>
+            <form className="network-admin-news-form" onSubmit={publishNetworkNews}>
+              <label>Headline<input value={newsTitle} maxLength={100} onChange={(event) => setNewsTitle(event.target.value)} required data-testid="input-network-news-title" /></label>
+              <label>Announcement<textarea value={newsBody} maxLength={1000} rows={5} onChange={(event) => setNewsBody(event.target.value)} required data-testid="input-network-news-body" /></label>
+              <div className="network-admin-form-footer"><small>{newsBody.length}/1000</small><button type="submit" disabled={!newsTitle.trim() || !newsBody.trim()} data-testid="button-publish-network-news">Publish announcement</button></div>
+            </form>
+            <section className="network-admin-icon">
+              <h3>Network icon</h3><p>Upload a PNG, JPEG, GIF, or WebP image, up to 280 KB.</p>
+              {networkIconDataUrl && <img src={networkIconDataUrl} alt="Current Network icon" />}
+              <input ref={networkIconRef} type="file" accept="image/png,image/jpeg,image/gif,image/webp" hidden onChange={(event) => { void uploadNetworkIcon(event.currentTarget.files?.[0]); event.currentTarget.value = ""; }} data-testid="input-network-icon" />
+              <button type="button" onClick={() => networkIconRef.current?.click()} data-testid="button-upload-network-icon">Upload icon…</button>
+              {networkIconDataUrl && <button type="button" onClick={async () => { try { await updateSiteSettings({ networkIconDataUrl: "" }); await refreshSiteSettings(); setAdminStatus("Network icon reset."); } catch (error) { setAdminStatus(error instanceof Error ? error.message : "Could not reset icon."); } }}>Reset icon</button>}
+            </section>
+            {adminStatus && <p className="network-admin-status" role="status">{adminStatus}</p>}
+            <div className="network-admin-existing"><h3>Recent announcements</h3>{networkNews.map((item) => <article key={item.id}><div><b>{item.title}</b><p>{item.body}</p><small>{item.author} · {formatPostTime(item.createdAt)}</small></div><button type="button" onClick={() => void removeNetworkNews(item.id)} aria-label={`Delete ${item.title}`}>Delete</button></article>)}</div>
+          </section>
+        ) : selectedPost ? (
+          <div className="network-post-detail" ref={detailRef} data-testid="network-post-detail">
+            <button type="button" className="network-back-button" onClick={() => setSelectedPost(null)}>← Back to feed</button>
+            <PostCard
+              post={selectedPost} currentUsername={me?.username}
+              busyLike={busyLikes.includes(selectedPost.id)} busyDelete={busyDeletes.includes(selectedPost.id)}
+              canDelete={canDelete(selectedPost)}
+              onLike={(item) => void toggleLike(item)} onDelete={(item) => void deletePost(item)}
+              onOpenUser={(author) => addWindow(activePage, { type: "userpage", title: `${author}'s posts`, username: author, width: 520, height: 460 })}
+              onComment={() => document.getElementById("network-comment-body")?.focus()} onOpenPost={(item) => void openPost(item)}
+              onHashtag={openHashtag}
+              onRepost={(item) => void repost(item)} onFollow={(author, followed) => void followAuthor(author, followed)}
+            />
+            <section className="network-comments-panel" aria-labelledby="network-comments-heading">
+              <h2 id="network-comments-heading">Comments &amp; activity</h2>
+              <div className="network-activity-summary" aria-label="Post activity">
+                <span>♥ {selectedPost.likes} likes</span><span>↻ {selectedPost.reposts} reposts</span><span>▤ {selectedPost.comments} comments</span>
+              </div>
+              {me ? (
+                <form className="network-comment-composer" onSubmit={submitDetailComment}>
+                  <label htmlFor="network-comment-body">Write a comment</label>
+                  <textarea id="network-comment-body" value={commentBody} maxLength={500} rows={3} disabled={commentSending}
+                    onChange={(event) => setCommentBody(event.target.value)} placeholder="Add to the conversation…" data-testid="input-network-comment" />
+                  <div><small>{commentBody.length}/500</small><button type="submit" disabled={!commentBody.trim() || commentSending} data-testid="button-submit-network-comment">{commentSending ? "Posting…" : "Post comment"}</button></div>
+                </form>
+              ) : <p className="network-comment-signin">Sign in to join the conversation.</p>}
+              {actionError && <div className="social-inline-error" role="alert">{actionError}</div>}
+              {commentsLoading ? <p className="network-comments-empty">Loading comments…</p> : postComments.length ? (
+                <div className="network-comment-list">{postComments.map((comment) => (
+                  <article className="network-comment" key={comment.id}>
+                    <Avatar username={comment.author} size={30} />
+                    <div><header><b>{comment.author}</b><time>{formatPostTime(comment.createdAt)}</time></header><p>{comment.body}</p></div>
+                  </article>
+                ))}</div>
+              ) : <p className="network-comments-empty">No comments yet. Start the conversation.</p>}
+            </section>
+          </div>
         ) : view === "notifications" ? notifications.length === 0 ? <div className="social-state">You’re all caught up.</div> : notifications.map((item) => <div className="network-notification" key={item.id}><b>{item.actor}</b> {item.kind === "follow" ? "followed you" : item.kind === "like" ? "liked your post" : item.kind === "comment" ? "commented on your post" : "reposted your post"}<time>{formatPostTime(item.createdAt)}</time></div>) : posts.length === 0 ? (
           <div className="social-state" data-testid="status-social-empty">
             <span className="social-state-mark" aria-hidden="true">—</span>
             <strong>{isProfile ? "No updates here yet." : mode === "following" ? "Your following feed is quiet." : "The wire is quiet for now."}</strong>
-            <p>{isProfile ? "When this member posts, it will show up here." : mode === "following" ? "Follow a few members and their new posts will land here." : "Start the conversation with a small update."}</p>
+            <p>{view === "hashtag" ? `No posts have used #${hashtag} yet.` : isProfile ? "When this member posts, it will show up here." : mode === "following" ? "Follow a few members and their new posts will land here." : "Start the conversation with a small update."}</p>
           </div>
         ) : posts.map((post) => (
           <PostCard
@@ -570,7 +729,9 @@ export function SocialFeed({ username }: SocialFeedProps) {
             onLike={(item) => void toggleLike(item)}
             onDelete={(item) => void deletePost(item)}
             onOpenUser={(author) => addWindow(activePage, { type: "userpage", title: `${author}'s posts`, username: author, width: 520, height: 460 })}
-            onComment={(item) => void addComment(item)}
+            onComment={(item) => void openPost(item)}
+            onOpenPost={(item) => void openPost(item)}
+            onHashtag={openHashtag}
             onRepost={(item) => void repost(item)}
             onFollow={(author, followed) => void followAuthor(author, followed)}
           />
@@ -583,8 +744,8 @@ export function SocialFeed({ username }: SocialFeedProps) {
       </main>
       <aside className="network-right" aria-label="Network news and trends">
         <section className="network-side-card"><h2>Site news</h2>{siteNews.length ? siteNews.map((news) => <article key={news.id}><b>{news.title}</b><small>{news.author} · {formatPostTime(news.createdAt)}</small></article>) : <p>No recent site news.</p>}</section>
-        <section className="network-side-card"><h2>Network news</h2>{networkNews.map((post) => <article key={post.id}><b>@{post.author}</b><small>{post.body.slice(0, 90) || "Shared media"} · {formatPostTime(post.createdAt)}</small></article>)}</section>
-        <section className="network-side-card"><h2>Trending this week</h2>{trending.length ? trending.map((tag) => <button key={tag.tag} type="button" onClick={() => { setSearchQuery(tag.tag); setView("search"); }} data-testid={`button-trending-${tag.tag.slice(1)}`}><b>{tag.tag}</b><small>{tag.count} posts</small></button>) : <p>No hashtags have reached the trend threshold yet.</p>}</section>
+        <section className="network-side-card"><h2>Network news</h2>{networkNews.length ? networkNews.map((item) => <article key={item.id}><b>{item.title}</b><small>{item.body.slice(0, 100)} · {item.author} · {formatPostTime(item.createdAt)}</small></article>) : <p>No Network News yet.</p>}</section>
+        <section className="network-side-card"><h2>Trending this week</h2>{trending.length ? trending.map((tag) => <button key={tag.tag} type="button" onClick={() => openHashtag(tag.tag)} data-testid={`button-trending-${tag.tag.slice(1)}`}><b>{tag.tag}</b><small>{tag.count} posts</small></button>) : <p>No hashtags have reached the trend threshold yet.</p>}</section>
       </aside>
       </div>
     </section>

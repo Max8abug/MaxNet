@@ -207,6 +207,7 @@ export async function submitDrawing(dataUrl: string, author: string): Promise<Dr
 }
 export interface SiteSettings {
   logoDataUrl: string;
+  networkIconDataUrl: string;
   darkLogoDataUrl: string;
   backgroundDataUrl: string;
   darkBackgroundDataUrl: string;
@@ -879,6 +880,16 @@ export interface SocialPost {
 }
 export interface SocialComment { id: number; postId: number; author: string; body: string; createdAt: string; }
 export interface SocialNotification { id: number; username: string; actor: string; postId: number | null; kind: string; createdAt: string; readAt: string | null; }
+export interface NetworkNewsItem { id: number; author: string; title: string; body: string; createdAt: string; }
+export async function fetchNetworkNews(): Promise<NetworkNewsItem[]> {
+  return jsonOrThrow(await fetch(`${BASE}/social/network-news`, opts));
+}
+export async function createNetworkNews(title: string, body: string): Promise<NetworkNewsItem> {
+  return jsonOrThrow(await fetch(`${BASE}/social/network-news`, { ...opts, method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ title, body }) }));
+}
+export async function deleteNetworkNews(id: number): Promise<void> {
+  await jsonOrThrow(await fetch(`${BASE}/social/network-news/${id}`, { ...opts, method: "DELETE" }));
+}
 export interface TrendingTag { tag: string; count: number; }
 export interface SocialProfile {
   username: string;
@@ -895,6 +906,9 @@ export async function fetchSocialFeed(mode: "for-you" | "following"): Promise<So
 }
 export async function fetchSocialSearch(q: string): Promise<SocialPost[]> {
   return jsonOrThrow(await fetch(`${BASE}/social/search?q=${encodeURIComponent(q)}`, opts));
+}
+export async function fetchSocialHashtag(tag: string): Promise<SocialPost[]> {
+  return jsonOrThrow(await fetch(`${BASE}/social/hashtag/${encodeURIComponent(tag)}`, opts));
 }
 export async function fetchLikedSocialPosts(): Promise<SocialPost[]> {
   return jsonOrThrow(await fetch(`${BASE}/social/liked`, opts));

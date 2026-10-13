@@ -203,6 +203,14 @@ export const wikiPagesTable = pgTable("wiki_pages", {
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 
+export const networkNewsTable = pgTable("network_news", {
+  id: serial("id").primaryKey(),
+  author: text("author").notNull(),
+  title: text("title").notNull(),
+  body: text("body").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => [index("network_news_created_idx").on(table.createdAt)]);
+
 export const wikiAssetsTable = pgTable("wiki_assets", {
   id: serial("id").primaryKey(),
   pageSlug: text("page_slug").notNull(),
@@ -427,6 +435,7 @@ export const newsCommentsTable = pgTable("news_comments", {
 export const siteSettingsTable = pgTable("site_settings", {
   id: serial("id").primaryKey(),
   logoDataUrl: text("logo_data_url").notNull().default(""),
+  networkIconDataUrl: text("network_icon_data_url").notNull().default(""),
   darkLogoDataUrl: text("dark_logo_data_url").notNull().default(""),
   backgroundDataUrl: text("background_data_url").notNull().default(""),
   darkBackgroundDataUrl: text("dark_background_data_url").notNull().default(""),

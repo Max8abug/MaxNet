@@ -260,6 +260,14 @@ export async function ensureSchema(): Promise<void> {
       read_at timestamp
     );
     CREATE INDEX IF NOT EXISTS social_notifications_user_created_idx ON social_notifications (username, created_at);
+    CREATE TABLE IF NOT EXISTS network_news (
+      id serial PRIMARY KEY,
+      author text NOT NULL,
+      title text NOT NULL,
+      body text NOT NULL,
+      created_at timestamp NOT NULL DEFAULT now()
+    );
+    CREATE INDEX IF NOT EXISTS network_news_created_idx ON network_news (created_at);
 
     CREATE TABLE IF NOT EXISTS wiki_pages (
       slug text PRIMARY KEY,
@@ -465,6 +473,7 @@ export async function ensureSchema(): Promise<void> {
     CREATE TABLE IF NOT EXISTS site_settings (
       id serial PRIMARY KEY,
       logo_data_url text NOT NULL DEFAULT '',
+      network_icon_data_url text NOT NULL DEFAULT '',
       dark_logo_data_url text NOT NULL DEFAULT '',
       background_data_url text NOT NULL DEFAULT '',
       dark_background_data_url text NOT NULL DEFAULT '',
@@ -480,6 +489,7 @@ export async function ensureSchema(): Promise<void> {
       updated_at timestamp NOT NULL DEFAULT now()
     );
     ALTER TABLE site_settings ADD COLUMN IF NOT EXISTS dark_logo_data_url text NOT NULL DEFAULT '';
+    ALTER TABLE site_settings ADD COLUMN IF NOT EXISTS network_icon_data_url text NOT NULL DEFAULT '';
     ALTER TABLE site_settings ADD COLUMN IF NOT EXISTS background_data_url text NOT NULL DEFAULT '';
     ALTER TABLE site_settings ADD COLUMN IF NOT EXISTS dark_background_data_url text NOT NULL DEFAULT '';
     ALTER TABLE site_settings ADD COLUMN IF NOT EXISTS mobile_background_data_url text NOT NULL DEFAULT '';

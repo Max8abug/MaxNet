@@ -314,6 +314,7 @@ router.get("/site-settings", async (_req, res) => {
   const row = await ensureRow();
   res.json({
     logoDataUrl: row.logoDataUrl || "",
+    networkIconDataUrl: row.networkIconDataUrl || "",
     darkLogoDataUrl: row.darkLogoDataUrl || "",
     backgroundDataUrl: row.backgroundDataUrl || "",
     darkBackgroundDataUrl: row.darkBackgroundDataUrl || "",
@@ -332,6 +333,14 @@ router.get("/site-settings", async (_req, res) => {
 router.put("/site-settings", requireAdmin, async (req, res) => {
   const row = await ensureRow();
   const update: Record<string, any> = {};
+  if (Object.prototype.hasOwnProperty.call(req.body || {}, "networkIconDataUrl")) {
+    const icon = req.body.networkIconDataUrl;
+    if (typeof icon !== "string" || icon.length > 400_000 || (icon !== "" && !/^data:image\/(?:png|jpeg|gif|webp);base64,[A-Za-z0-9+/]+=*$/.test(icon))) {
+      res.status(400).json({ error: "Network icon must be a PNG, JPEG, GIF, or WebP image smaller than 400 KB." });
+      return;
+    }
+    update.networkIconDataUrl = icon;
+  }
   for (const key of [
     "logoDataUrl",
     "darkLogoDataUrl",
@@ -380,6 +389,7 @@ router.put("/site-settings", requireAdmin, async (req, res) => {
     res.json({
       ok: true,
       logoDataUrl: row.logoDataUrl,
+      networkIconDataUrl: row.networkIconDataUrl,
       darkLogoDataUrl: row.darkLogoDataUrl,
       backgroundDataUrl: row.backgroundDataUrl,
       darkBackgroundDataUrl: row.darkBackgroundDataUrl,
@@ -401,6 +411,7 @@ router.put("/site-settings", requireAdmin, async (req, res) => {
   res.json({
     ok: true,
     logoDataUrl: fresh!.logoDataUrl,
+    networkIconDataUrl: fresh!.networkIconDataUrl,
     darkLogoDataUrl: fresh!.darkLogoDataUrl,
     backgroundDataUrl: fresh!.backgroundDataUrl,
     darkBackgroundDataUrl: fresh!.darkBackgroundDataUrl,
