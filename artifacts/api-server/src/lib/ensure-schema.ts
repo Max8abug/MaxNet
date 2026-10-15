@@ -238,8 +238,14 @@ export async function ensureSchema(): Promise<void> {
       initialized_at timestamptz NOT NULL,
       last_new_photo_at timestamptz NOT NULL,
       rollout_ends_at timestamptz NOT NULL,
-      next_random_post_at timestamptz NOT NULL
+      next_random_post_at timestamptz NOT NULL,
+      backlog_day date NOT NULL DEFAULT CURRENT_DATE,
+      backlog_daily_target integer NOT NULL DEFAULT 4,
+      backlog_posted_today integer NOT NULL DEFAULT 0
     );
+    ALTER TABLE network_bot_schedule ADD COLUMN IF NOT EXISTS backlog_day date NOT NULL DEFAULT CURRENT_DATE;
+    ALTER TABLE network_bot_schedule ADD COLUMN IF NOT EXISTS backlog_daily_target integer NOT NULL DEFAULT 4;
+    ALTER TABLE network_bot_schedule ADD COLUMN IF NOT EXISTS backlog_posted_today integer NOT NULL DEFAULT 0;
     CREATE TABLE IF NOT EXISTS social_follows (
       id serial PRIMARY KEY,
       follower text NOT NULL,

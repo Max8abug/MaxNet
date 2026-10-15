@@ -58,14 +58,29 @@ function randomDailyDelay(): number {
   return (20 + Math.random() * 8) * 60 * 60_000;
 }
 
-async function publishPhoto(url: string): Promise<boolean> {
+async function publishPhoto(url: string, mode: "unique" | "backlog" | "repeat" = "unique"): Promise<boolean> {
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
+    if (mode === "backlog") {
+      await client.query(`
+        UPDATE network_bot_schedule
+        SET backlog_day = CURRENT_DATE, backlog_daily_target = 3 + floor(random() * 3)::int, backlog_posted_today = 0
+        WHERE id = 1 AND backlog_day <> CURRENT_DATE
+      `);
+      const dailyLimit = await client.query<{ backlog_daily_target: number; backlog_posted_today: number }>(
+        "SELECT backlog_daily_target, backlog_posted_today FROM network_bot_schedule WHERE id = 1 FOR UPDATE",
+      );
+      const quota = dailyLimit.rows[0];
+      if (!quota || quota.backlog_posted_today >= quota.backlog_daily_target) {
+        await client.query("ROLLBACK");
+        return false;
+      }
+    }
     const row = await client.query<{ posted_at: Date | null; is_new: boolean }>(
       "SELECT posted_at, is_new FROM network_bot_photos WHERE source_url = $1 FOR UPDATE", [url],
     );
-    if (!row.rows[0] || row.rows[0].posted_at) {
+    if (!row.rows[0] || (row.rows[0].posted_at && mode !== "repeat")) {
       await client.query("ROLLBACK");
       return false;
     }
@@ -74,6 +89,9 @@ async function publishPhoto(url: string): Promise<boolean> {
       [BOT, row.rows[0].is_new ? `${TAGS} #new` : TAGS, url],
     );
     await client.query("UPDATE network_bot_photos SET posted_at = now() WHERE source_url = $1", [url]);
+    if (mode === "backlog") {
+      await client.query("UPDATE network_bot_schedule SET backlog_posted_today = backlog_posted_today + 1 WHERE id = 1");
+    }
     await client.query("COMMIT");
     logger.info({ sourceUrl: url }, "Network bot published a source photo");
     return true;
@@ -135,18 +153,22 @@ async function pollAndPost(): Promise<void> {
   );
   for (const photo of pendingNew.rows) await publishPhoto(photo.source_url);
   const dueRollout = await pool.query<{ source_url: string }>(
-    "SELECT source_url FROM network_bot_photos WHERE is_new = false AND posted_at IS NULL AND scheduled_at <= now() ORDER BY scheduled_at LIMIT 5",
+    "SELECT source_url FROM network_bot_photos WHERE is_new = false AND posted_at IS NULL AND scheduled_at <= now() ORDER BY random() LIMIT 5",
   );
-  for (const photo of dueRollout.rows) await publishPhoto(photo.source_url);
+  for (const photo of dueRollout.rows) await publishPhoto(photo.source_url, "backlog");
 
   const state = await pool.query<{
-    initialized_at: Date; rollout_ends_at: Date; last_new_photo_at: Date; next_random_post_at: Date;
-  }>("SELECT initialized_at, rollout_ends_at, last_new_photo_at, next_random_post_at FROM network_bot_schedule WHERE id = 1");
+    rollout_ends_at: Date; last_new_photo_at: Date; next_random_post_at: Date;
+  }>("SELECT rollout_ends_at, last_new_photo_at, next_random_post_at FROM network_bot_schedule WHERE id = 1");
   const schedule = state.rows[0];
   if (!schedule) return;
   const timestamp = Date.now();
   const rolloutActive = timestamp < schedule.rollout_ends_at.getTime();
   const quietForAWeek = timestamp - schedule.last_new_photo_at.getTime() >= WEEK_MS;
+  const backlog = await pool.query<{ count: number }>(
+    "SELECT count(*)::int AS count FROM network_bot_photos WHERE is_new = false AND posted_at IS NULL",
+  );
+  if (Number(backlog.rows[0]?.count || 0) > 0) return;
   if (rolloutActive) return;
   if (!quietForAWeek) {
     if (timestamp >= schedule.next_random_post_at.getTime()) {
@@ -162,7 +184,7 @@ async function pollAndPost(): Promise<void> {
   const fallback = (await pool.query<{ source_url: string }>(
     "SELECT source_url FROM network_bot_photos WHERE is_new = false ORDER BY random() LIMIT 1",
   )).rows[0];
-  if (fallback) await publishPhoto(fallback.source_url);
+  if (fallback) await publishPhoto(fallback.source_url, "repeat");
   await pool.query(
     "UPDATE network_bot_schedule SET next_random_post_at = now() + ($1 * interval '1 millisecond') WHERE id = 1",
     [randomDailyDelay()],
