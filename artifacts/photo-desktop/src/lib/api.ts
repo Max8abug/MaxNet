@@ -208,6 +208,8 @@ export async function submitDrawing(dataUrl: string, author: string): Promise<Dr
 export interface SiteSettings {
   logoDataUrl: string;
   networkIconDataUrl: string;
+  networkBotBio: string;
+  networkBotAvatarDataUrl: string;
   darkLogoDataUrl: string;
   backgroundDataUrl: string;
   darkBackgroundDataUrl: string;

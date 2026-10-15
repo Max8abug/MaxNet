@@ -77,6 +77,7 @@ function LoadingPosts() {
 function PostCard({
   post,
   currentUsername,
+  networkBotAvatarDataUrl,
   busyLike,
   busyDelete,
   canDelete,
@@ -91,6 +92,7 @@ function PostCard({
 }: {
   post: SocialPost;
   currentUsername?: string;
+  networkBotAvatarDataUrl?: string;
   busyLike: boolean;
   busyDelete: boolean;
   canDelete: boolean;
@@ -108,7 +110,9 @@ function PostCard({
     <article className="social-post" data-testid={`social-post-${post.id}`}>
       {post.repostedBy && <div className="network-repost-note">↻ <b>{post.repostedBy}</b> reposted</div>}
       <header className="social-post-header">
-        <Avatar username={post.author} size={38} />
+        {post.author === "SladenatorEatsOfficial" && networkBotAvatarDataUrl
+          ? <img className="social-post-avatar" src={networkBotAvatarDataUrl} alt="" />
+          : <Avatar username={post.author} size={38} />}
         <div className="social-author-copy">
           <button
             type="button"
@@ -192,7 +196,10 @@ export function SocialFeed({ username }: SocialFeedProps) {
   const [siteNews, setSiteNews] = useState<NewsPost[]>([]);
   const [networkNews, setNetworkNews] = useState<NetworkNewsItem[]>([]);
   const networkIconDataUrl = useAuth((state) => state.siteSettings.networkIconDataUrl);
+  const networkBotBio = useAuth((state) => state.siteSettings.networkBotBio);
+  const networkBotAvatarDataUrl = useAuth((state) => state.siteSettings.networkBotAvatarDataUrl);
   const refreshSiteSettings = useAuth((state) => state.refreshSiteSettings);
+  const [networkBotBioDraft, setNetworkBotBioDraft] = useState("");
   const [newsTitle, setNewsTitle] = useState("");
   const [newsBody, setNewsBody] = useState("");
   const [adminStatus, setAdminStatus] = useState("");
@@ -229,6 +236,7 @@ export function SocialFeed({ username }: SocialFeedProps) {
   const fileRef = useRef<HTMLInputElement>(null);
   const detailRef = useRef<HTMLDivElement>(null);
   const networkIconRef = useRef<HTMLInputElement>(null);
+  const networkBotAvatarRef = useRef<HTMLInputElement>(null);
   const addWindow = useDesktopStore((state) => state.addWindow);
   const activePage = useDesktopStore((state) => state.activePage);
 
@@ -236,6 +244,7 @@ export function SocialFeed({ username }: SocialFeedProps) {
     try { localStorage.setItem("photo-desktop-social-theme", theme); } catch { /* Use the current session preference. */ }
     window.dispatchEvent(new CustomEvent("photo-desktop-social-theme-change", { detail: theme }));
   }, [theme]);
+  useEffect(() => setNetworkBotBioDraft(networkBotBio || ""), [networkBotBio]);
 
   const load = useCallback(async (selectedMode: FeedMode = mode) => {
     setLoading(true);
@@ -344,6 +353,26 @@ export function SocialFeed({ username }: SocialFeedProps) {
       await refreshSiteSettings();
       setAdminStatus("Network icon updated.");
     } catch (error) { setAdminStatus(error instanceof Error ? error.message : "Could not update the Network icon."); }
+  };
+  const uploadNetworkBotAvatar = async (file?: File) => {
+    if (!file || !me?.isAdmin) return;
+    if (!["image/png", "image/jpeg", "image/gif", "image/webp"].includes(file.type) || file.size > 280 * 1024) {
+      setAdminStatus("Choose a PNG, JPEG, GIF, or WebP image smaller than 280 KB.");
+      return;
+    }
+    try {
+      await updateSiteSettings({ networkBotAvatarDataUrl: await readFileAsDataUrl(file) });
+      await refreshSiteSettings();
+      setAdminStatus("Bot profile picture updated.");
+    } catch (error) { setAdminStatus(error instanceof Error ? error.message : "Could not update bot profile picture."); }
+  };
+  const saveNetworkBotProfile = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    try {
+      await updateSiteSettings({ networkBotBio: networkBotBioDraft.trim().slice(0, 280) });
+      await refreshSiteSettings();
+      setAdminStatus("Bot profile saved.");
+    } catch (error) { setAdminStatus(error instanceof Error ? error.message : "Could not save bot profile."); }
   };
   const loadNewestPosts = async () => {
     await load(mode);
@@ -745,6 +774,18 @@ export function SocialFeed({ username }: SocialFeedProps) {
               <button type="button" onClick={() => networkIconRef.current?.click()} data-testid="button-upload-network-icon">Upload icon…</button>
               {networkIconDataUrl && <button type="button" onClick={async () => { try { await updateSiteSettings({ networkIconDataUrl: "" }); await refreshSiteSettings(); setAdminStatus("Network icon reset."); } catch (error) { setAdminStatus(error instanceof Error ? error.message : "Could not reset icon."); } }}>Reset icon</button>}
             </section>
+            <form className="network-admin-bot" onSubmit={saveNetworkBotProfile} data-testid="network-admin-bot-profile">
+              <h3>SladenatorEatsOfficial profile</h3>
+              <p>Set the bot’s public profile description and picture. The bot appears under this name in the Network.</p>
+              {networkBotAvatarDataUrl && <img src={networkBotAvatarDataUrl} alt="Current bot profile picture" />}
+              <input ref={networkBotAvatarRef} type="file" accept="image/png,image/jpeg,image/gif,image/webp" hidden onChange={(event) => { void uploadNetworkBotAvatar(event.currentTarget.files?.[0]); event.currentTarget.value = ""; }} data-testid="input-network-bot-avatar" />
+              <div className="network-admin-bot-actions">
+                <button type="button" onClick={() => networkBotAvatarRef.current?.click()} data-testid="button-upload-network-bot-avatar">Upload profile picture…</button>
+                {networkBotAvatarDataUrl && <button type="button" onClick={async () => { try { await updateSiteSettings({ networkBotAvatarDataUrl: "" }); await refreshSiteSettings(); setAdminStatus("Bot profile picture reset."); } catch (error) { setAdminStatus(error instanceof Error ? error.message : "Could not reset bot profile picture."); } }}>Reset picture</button>}
+              </div>
+              <label>Profile description<textarea value={networkBotBioDraft} maxLength={280} rows={3} onChange={(event) => setNetworkBotBioDraft(event.target.value)} placeholder="Describe what this bot posts…" data-testid="input-network-bot-bio" /></label>
+              <div className="network-admin-form-footer"><small>{networkBotBioDraft.length}/280</small><button type="submit" data-testid="button-save-network-bot-profile">Save bot profile</button></div>
+            </form>
             {adminStatus && <p className="network-admin-status" role="status">{adminStatus}</p>}
             <div className="network-admin-existing"><h3>Recent announcements</h3>{networkNews.map((item) => <article key={item.id}><div><b>{item.title}</b><p>{item.body}</p><small>{item.author} · {formatPostTime(item.createdAt)}</small></div><button type="button" onClick={() => void removeNetworkNews(item.id)} aria-label={`Delete ${item.title}`}>Delete</button></article>)}</div>
           </section>
@@ -752,7 +793,7 @@ export function SocialFeed({ username }: SocialFeedProps) {
           <div className="network-post-detail" ref={detailRef} data-testid="network-post-detail">
             <button type="button" className="network-back-button" onClick={() => setSelectedPost(null)}>← Back to feed</button>
             <PostCard
-              post={selectedPost} currentUsername={me?.username}
+              post={selectedPost} currentUsername={me?.username} networkBotAvatarDataUrl={networkBotAvatarDataUrl}
               busyLike={busyLikes.includes(selectedPost.id)} busyDelete={busyDeletes.includes(selectedPost.id)}
               canDelete={canDelete(selectedPost)}
               onLike={(item) => void toggleLike(item)} onDelete={(item) => void deletePost(item)}
@@ -791,6 +832,7 @@ export function SocialFeed({ username }: SocialFeedProps) {
             key={post.id}
             post={post}
             currentUsername={me?.username}
+            networkBotAvatarDataUrl={networkBotAvatarDataUrl}
             busyLike={busyLikes.includes(post.id)}
             busyDelete={busyDeletes.includes(post.id)}
             canDelete={canDelete(post)}

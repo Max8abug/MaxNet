@@ -315,6 +315,8 @@ router.get("/site-settings", async (_req, res) => {
   res.json({
     logoDataUrl: row.logoDataUrl || "",
     networkIconDataUrl: row.networkIconDataUrl || "",
+    networkBotBio: row.networkBotBio || "",
+    networkBotAvatarDataUrl: row.networkBotAvatarDataUrl || "",
     darkLogoDataUrl: row.darkLogoDataUrl || "",
     backgroundDataUrl: row.backgroundDataUrl || "",
     darkBackgroundDataUrl: row.darkBackgroundDataUrl || "",
@@ -340,6 +342,21 @@ router.put("/site-settings", requireAdmin, async (req, res) => {
       return;
     }
     update.networkIconDataUrl = icon;
+  }
+  if (Object.prototype.hasOwnProperty.call(req.body || {}, "networkBotBio")) {
+    if (typeof req.body.networkBotBio !== "string") {
+      res.status(400).json({ error: "Bot profile description must be text." });
+      return;
+    }
+    update.networkBotBio = req.body.networkBotBio.trim().slice(0, 280);
+  }
+  if (Object.prototype.hasOwnProperty.call(req.body || {}, "networkBotAvatarDataUrl")) {
+    const avatar = req.body.networkBotAvatarDataUrl;
+    if (typeof avatar !== "string" || avatar.length > 400_000 || (avatar !== "" && !/^data:image\/(?:png|jpeg|gif|webp);base64,[A-Za-z0-9+/]+=*$/.test(avatar))) {
+      res.status(400).json({ error: "Bot avatar must be a PNG, JPEG, GIF, or WebP image smaller than 400 KB." });
+      return;
+    }
+    update.networkBotAvatarDataUrl = avatar;
   }
   for (const key of [
     "logoDataUrl",
@@ -390,6 +407,8 @@ router.put("/site-settings", requireAdmin, async (req, res) => {
       ok: true,
       logoDataUrl: row.logoDataUrl,
       networkIconDataUrl: row.networkIconDataUrl,
+      networkBotBio: row.networkBotBio || "",
+      networkBotAvatarDataUrl: row.networkBotAvatarDataUrl || "",
       darkLogoDataUrl: row.darkLogoDataUrl,
       backgroundDataUrl: row.backgroundDataUrl,
       darkBackgroundDataUrl: row.darkBackgroundDataUrl,
@@ -412,6 +431,8 @@ router.put("/site-settings", requireAdmin, async (req, res) => {
     ok: true,
     logoDataUrl: fresh!.logoDataUrl,
     networkIconDataUrl: fresh!.networkIconDataUrl,
+    networkBotBio: fresh!.networkBotBio || "",
+    networkBotAvatarDataUrl: fresh!.networkBotAvatarDataUrl || "",
     darkLogoDataUrl: fresh!.darkLogoDataUrl,
     backgroundDataUrl: fresh!.backgroundDataUrl,
     darkBackgroundDataUrl: fresh!.darkBackgroundDataUrl,

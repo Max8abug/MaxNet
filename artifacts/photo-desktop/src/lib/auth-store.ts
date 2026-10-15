@@ -29,6 +29,8 @@ export const useAuth = create<AuthState>((set, get) => {
   siteSettings: {
     logoDataUrl: "",
     networkIconDataUrl: "",
+    networkBotBio: "",
+    networkBotAvatarDataUrl: "",
     darkLogoDataUrl: "",
     backgroundDataUrl: "",
     darkBackgroundDataUrl: "",

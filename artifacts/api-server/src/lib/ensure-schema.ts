@@ -506,6 +506,8 @@ export async function ensureSchema(): Promise<void> {
     );
     ALTER TABLE site_settings ADD COLUMN IF NOT EXISTS dark_logo_data_url text NOT NULL DEFAULT '';
     ALTER TABLE site_settings ADD COLUMN IF NOT EXISTS network_icon_data_url text NOT NULL DEFAULT '';
+    ALTER TABLE site_settings ADD COLUMN IF NOT EXISTS network_bot_bio text NOT NULL DEFAULT '';
+    ALTER TABLE site_settings ADD COLUMN IF NOT EXISTS network_bot_avatar_data_url text NOT NULL DEFAULT '';
     ALTER TABLE site_settings ADD COLUMN IF NOT EXISTS background_data_url text NOT NULL DEFAULT '';
     ALTER TABLE site_settings ADD COLUMN IF NOT EXISTS dark_background_data_url text NOT NULL DEFAULT '';
     ALTER TABLE site_settings ADD COLUMN IF NOT EXISTS mobile_background_data_url text NOT NULL DEFAULT '';

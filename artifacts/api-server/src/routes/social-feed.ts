@@ -10,6 +10,7 @@ import {
   socialCommentRepostsTable,
   socialPostRepostsTable,
   socialNotificationsTable,
+  siteSettingsTable,
   networkNewsTable,
   socialPostsTable,
   userPagesTable,
@@ -293,6 +294,26 @@ router.get("/social/feed", async (req, res) => {
 
 router.get("/social/profile/:username", async (req, res) => {
   const username = String(req.params.username || "").slice(0, 40);
+  if (username === "SladenatorEatsOfficial") {
+    const [settings] = await db.select({
+      bio: siteSettingsTable.networkBotBio,
+      avatarUrl: siteSettingsTable.networkBotAvatarDataUrl,
+    }).from(siteSettingsTable).limit(1);
+    const [authored, followers, following, relation] = await Promise.all([
+      db.select().from(socialPostsTable).where(eq(socialPostsTable.author, username))
+        .orderBy(desc(socialPostsTable.createdAt)).limit(60),
+      db.select({ count: sql<number>`count(*)::int` }).from(socialFollowsTable).where(eq(socialFollowsTable.following, username)),
+      db.select({ count: sql<number>`count(*)::int` }).from(socialFollowsTable).where(eq(socialFollowsTable.follower, username)),
+      req.session.username ? db.select({ id: socialFollowsTable.id }).from(socialFollowsTable)
+        .where(and(eq(socialFollowsTable.follower, req.session.username), eq(socialFollowsTable.following, username))).limit(1) : Promise.resolve([]),
+    ]);
+    res.json({
+      username, avatarUrl: settings?.avatarUrl || null, rank: "Bot", bio: settings?.bio || "",
+      followers: Number(followers[0]?.count || 0), following: Number(following[0]?.count || 0),
+      isFollowing: relation.length > 0, posts: await Promise.all(authored.map((row) => presentPost(row, req.session.username))),
+    });
+    return;
+  }
   const [user] = await db.select({
     username: usersTable.username, avatarUrl: usersTable.avatarUrl, rank: usersTable.rank, bio: usersTable.bio,
   }).from(usersTable).where(eq(usersTable.username, username)).limit(1);
@@ -405,10 +426,12 @@ router.post("/social/posts/:id/like", requireAuth, async (req, res) => {
 router.post("/social/follow/:username", requireAuth, async (req, res) => {
   const target = String(req.params.username || "").slice(0, 40);
   if (target === req.session.username) { res.status(400).json({ error: "You cannot follow yourself." }); return; }
-  const [user] = await db.select({ username: usersTable.username }).from(usersTable).where(eq(usersTable.username, target)).limit(1);
-  if (!user) { res.status(404).json({ error: "User not found." }); return; }
+  if (target !== "SladenatorEatsOfficial") {
+    const [user] = await db.select({ username: usersTable.username }).from(usersTable).where(eq(usersTable.username, target)).limit(1);
+    if (!user) { res.status(404).json({ error: "User not found." }); return; }
+  }
   const [created] = await db.insert(socialFollowsTable).values({ follower: req.session.username!, following: target }).onConflictDoNothing().returning({ id: socialFollowsTable.id });
-  if (created) await db.insert(socialNotificationsTable).values({ username: target, actor: req.session.username!, kind: "follow" });
+  if (created && target !== "SladenatorEatsOfficial") await db.insert(socialNotificationsTable).values({ username: target, actor: req.session.username!, kind: "follow" });
   res.json({ ok: true, following: true });
 });
 

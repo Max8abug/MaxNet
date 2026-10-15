@@ -451,6 +451,8 @@ export const siteSettingsTable = pgTable("site_settings", {
   id: serial("id").primaryKey(),
   logoDataUrl: text("logo_data_url").notNull().default(""),
   networkIconDataUrl: text("network_icon_data_url").notNull().default(""),
+  networkBotBio: text("network_bot_bio").notNull().default(""),
+  networkBotAvatarDataUrl: text("network_bot_avatar_data_url").notNull().default(""),
   darkLogoDataUrl: text("dark_logo_data_url").notNull().default(""),
   backgroundDataUrl: text("background_data_url").notNull().default(""),
   darkBackgroundDataUrl: text("dark_background_data_url").notNull().default(""),
