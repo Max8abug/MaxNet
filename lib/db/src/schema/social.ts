@@ -150,6 +150,7 @@ export const socialPostsTable = pgTable("social_posts", {
   author: text("author").notNull(),
   body: text("body").notNull().default(""),
   mediaObjectKey: text("media_object_key"),
+  externalMediaUrl: text("external_media_url"),
   mediaType: text("media_type"),
   sourcePageUsername: text("source_page_username").unique(),
   createdAt: timestamp("created_at").defaultNow().notNull(),

@@ -216,10 +216,12 @@ export async function ensureSchema(): Promise<void> {
       author text NOT NULL,
       body text NOT NULL DEFAULT '',
       media_object_key text,
+      external_media_url text,
       media_type text,
       source_page_username text UNIQUE,
       created_at timestamp NOT NULL DEFAULT now()
     );
+    ALTER TABLE social_posts ADD COLUMN IF NOT EXISTS external_media_url text;
     CREATE INDEX IF NOT EXISTS social_posts_author_created_idx ON social_posts (author, created_at);
     CREATE TABLE IF NOT EXISTS social_follows (
       id serial PRIMARY KEY,

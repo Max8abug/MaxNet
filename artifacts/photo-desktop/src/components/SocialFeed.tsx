@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 import {
   createSocialPost,
+  createSladenatorBotTestPost,
   deleteSocialPost,
   fetchSocialFeed,
   fetchSocialSearch,
@@ -200,6 +201,7 @@ export function SocialFeed({ username }: SocialFeedProps) {
   const networkBotAvatarDataUrl = useAuth((state) => state.siteSettings.networkBotAvatarDataUrl);
   const refreshSiteSettings = useAuth((state) => state.refreshSiteSettings);
   const [networkBotBioDraft, setNetworkBotBioDraft] = useState("");
+  const [botTestBusy, setBotTestBusy] = useState(false);
   const [newsTitle, setNewsTitle] = useState("");
   const [newsBody, setNewsBody] = useState("");
   const [adminStatus, setAdminStatus] = useState("");
@@ -373,6 +375,16 @@ export function SocialFeed({ username }: SocialFeedProps) {
       await refreshSiteSettings();
       setAdminStatus("Bot profile saved.");
     } catch (error) { setAdminStatus(error instanceof Error ? error.message : "Could not save bot profile."); }
+  };
+  const testSladenatorBot = async () => {
+    if (!me?.isAdmin || botTestBusy) return;
+    setBotTestBusy(true);
+    setAdminStatus("");
+    try {
+      const post = await createSladenatorBotTestPost();
+      setAdminStatus(`Test post published (post ${post.id}).`);
+    } catch (error) { setAdminStatus(error instanceof Error ? error.message : "Could not publish the bot test post."); }
+    finally { setBotTestBusy(false); }
   };
   const loadNewestPosts = async () => {
     await load(mode);
@@ -785,6 +797,10 @@ export function SocialFeed({ username }: SocialFeedProps) {
               </div>
               <label>Profile description<textarea value={networkBotBioDraft} maxLength={280} rows={3} onChange={(event) => setNetworkBotBioDraft(event.target.value)} placeholder="Describe what this bot posts…" data-testid="input-network-bot-bio" /></label>
               <div className="network-admin-form-footer"><small>{networkBotBioDraft.length}/280</small><button type="submit" data-testid="button-save-network-bot-profile">Save bot profile</button></div>
+              <div className="network-admin-bot-actions">
+                <button type="button" onClick={() => void testSladenatorBot()} disabled={botTestBusy} data-testid="button-test-network-bot-post">{botTestBusy ? "Finding image…" : "Test post random image"}</button>
+                <button type="button" onClick={() => addWindow(activePage, { type: "userpage", title: "SladenatorEatsOfficial's posts", username: "SladenatorEatsOfficial", width: 520, height: 460 })}>Open bot page</button>
+              </div>
             </form>
             {adminStatus && <p className="network-admin-status" role="status">{adminStatus}</p>}
             <div className="network-admin-existing"><h3>Recent announcements</h3>{networkNews.map((item) => <article key={item.id}><div><b>{item.title}</b><p>{item.body}</p><small>{item.author} · {formatPostTime(item.createdAt)}</small></div><button type="button" onClick={() => void removeNetworkNews(item.id)} aria-label={`Delete ${item.title}`}>Delete</button></article>)}</div>

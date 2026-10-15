@@ -956,6 +956,9 @@ export async function createSocialPost(body: string, mediaDataUrl?: string): Pro
     body: JSON.stringify({ body, mediaDataUrl }),
   }));
 }
+export async function createSladenatorBotTestPost(): Promise<SocialPost> {
+  return jsonOrThrow(await fetch(`${BASE}/social/bot/test-post`, { ...opts, method: "POST" }));
+}
 export async function deleteSocialPost(id: number): Promise<void> {
   await jsonOrThrow(await fetch(`${BASE}/social/posts/${id}`, { ...opts, method: "DELETE" }));
 }

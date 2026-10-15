@@ -51,12 +51,67 @@ router.delete("/social/network-news/:id", requireAdmin, async (req, res) => {
   res.json({ ok: true });
 });
 
+router.post("/social/bot/test-post", requireAdmin, async (req, res) => {
+  try {
+    const imageUrl = await pickRandomSladenatorImage();
+    const [post] = await db.insert(socialPostsTable).values({
+      author: "SladenatorEatsOfficial",
+      body: "#sladenator #ai #slop",
+      externalMediaUrl: imageUrl,
+      mediaType: "image",
+    }).returning();
+    res.status(201).json(await presentPost(post, req.session.username));
+  } catch (error) {
+    logger.warn({ err: error }, "Sladenator bot test post could not be created");
+    res.status(502).json({ error: error instanceof Error ? error.message : "Could not find an image on sladenator.org." });
+  }
+});
+
 function parseMedia(value: unknown): { type: string; bytes: Buffer } | null {
   if (typeof value !== "string" || value.length > Math.ceil(MAX_MEDIA_BYTES / 3) * 4 + 100) return null;
   const match = /^data:([a-z0-9/+.-]+);base64,([A-Za-z0-9+/]*={0,2})$/i.exec(value);
   if (!match || !ALLOWED_MEDIA.has(match[1].toLowerCase())) return null;
   const bytes = Buffer.from(match[2], "base64");
   return bytes.length > 0 && bytes.length <= MAX_MEDIA_BYTES ? { type: match[1].toLowerCase(), bytes } : null;
+}
+
+function readHtmlAttribute(tag: string, attribute: string): string | null {
+  const escaped = attribute.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const match = new RegExp(`\\b${escaped}\\s*=\\s*(?:"([^"]*)"|'([^']*)'|([^\\s>]+))`, "i").exec(tag);
+  return match?.[1] || match?.[2] || match?.[3] || null;
+}
+
+async function pickRandomSladenatorImage(): Promise<string> {
+  const response = await fetch("https://sladenator.org", {
+    headers: { Accept: "text/html", "User-Agent": "Portfolio98-NetworkBot/1.0" },
+    signal: AbortSignal.timeout(10_000),
+  });
+  if (!response.ok) throw new Error(`sladenator.org returned HTTP ${response.status}.`);
+  if (!(response.headers.get("content-type") || "").includes("text/html")) {
+    throw new Error("sladenator.org did not return an HTML page.");
+  }
+  const html = (await response.text()).slice(0, 2_000_000);
+  const candidates = new Set<string>();
+  const addCandidate = (raw: string | null) => {
+    if (!raw || raw.startsWith("data:")) return;
+    try {
+      const url = new URL(raw, "https://sladenator.org");
+      if (url.protocol !== "https:" || (url.hostname !== "sladenator.org" && !url.hostname.endsWith(".sladenator.org"))) return;
+      candidates.add(url.toString());
+    } catch { /* Ignore invalid image links. */ }
+  };
+  for (const tag of html.match(/<img\b[^>]*>/gi) || []) {
+    addCandidate(readHtmlAttribute(tag, "src") || readHtmlAttribute(tag, "data-src") || readHtmlAttribute(tag, "data-lazy-src"));
+    const srcset = readHtmlAttribute(tag, "srcset");
+    if (srcset) addCandidate(srcset.split(",")[0]?.trim().split(/\s+/)[0] || null);
+  }
+  for (const tag of html.match(/<meta\b[^>]*>/gi) || []) {
+    const key = `${readHtmlAttribute(tag, "property") || ""} ${readHtmlAttribute(tag, "name") || ""}`.toLowerCase();
+    if (key.includes("image")) addCandidate(readHtmlAttribute(tag, "content"));
+  }
+  const pool = [...candidates];
+  if (!pool.length) throw new Error("No public images hosted on sladenator.org were found on its home page.");
+  return pool[Math.floor(Math.random() * pool.length)]!;
 }
 
 async function presentPost(row: typeof socialPostsTable.$inferSelect, username?: string, repostedBy?: string) {
@@ -75,7 +130,7 @@ async function presentPost(row: typeof socialPostsTable.$inferSelect, username?:
   ]);
   return {
     id: row.id, author: row.author, body: row.body,
-    mediaUrl: row.mediaObjectKey ? `/api/social/media/${row.id}` : null,
+    mediaUrl: row.externalMediaUrl || (row.mediaObjectKey ? `/api/social/media/${row.id}` : null),
     mediaType: row.mediaType, createdAt: row.createdAt,
     likes: Number(likes[0]?.count || 0), myLike: mine.length > 0,
     comments: Number(comments[0]?.count || 0), reposts: Number(reposts[0]?.count || 0), myRepost: myRepost.length > 0,
