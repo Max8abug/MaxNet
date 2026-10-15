@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState, type FormEvent } from "react"
 import {
   createSocialPost,
   createSladenatorBotTestPost,
+  fetchNetworkBotRuntimeStatus,
   deleteSocialPost,
   fetchSocialFeed,
   fetchSocialSearch,
@@ -23,6 +24,7 @@ import {
   type TrendingTag,
   type NewsPost,
   type NetworkNewsItem,
+  type NetworkBotRuntimeStatus,
   fetchSocialProfile,
   migrateLegacyMyPage,
   toggleSocialFollow,
@@ -202,6 +204,8 @@ export function SocialFeed({ username }: SocialFeedProps) {
   const refreshSiteSettings = useAuth((state) => state.refreshSiteSettings);
   const [networkBotBioDraft, setNetworkBotBioDraft] = useState("");
   const [botTestBusy, setBotTestBusy] = useState(false);
+  const [botRuntimeStatus, setBotRuntimeStatus] = useState<NetworkBotRuntimeStatus | null>(null);
+  const [botRuntimeStatusError, setBotRuntimeStatusError] = useState("");
   const [newsTitle, setNewsTitle] = useState("");
   const [newsBody, setNewsBody] = useState("");
   const [adminStatus, setAdminStatus] = useState("");
@@ -247,6 +251,25 @@ export function SocialFeed({ username }: SocialFeedProps) {
     window.dispatchEvent(new CustomEvent("photo-desktop-social-theme-change", { detail: theme }));
   }, [theme]);
   useEffect(() => setNetworkBotBioDraft(networkBotBio || ""), [networkBotBio]);
+  useEffect(() => {
+    if (view !== "admin" || !me?.isAdmin) {
+      setBotRuntimeStatus(null);
+      setBotRuntimeStatusError("");
+      return;
+    }
+    let active = true;
+    const refresh = async () => {
+      try {
+        const status = await fetchNetworkBotRuntimeStatus();
+        if (active) { setBotRuntimeStatus(status); setBotRuntimeStatusError(""); }
+      } catch (error) {
+        if (active) setBotRuntimeStatusError(error instanceof Error ? error.message : "Could not load bot status.");
+      }
+    };
+    void refresh();
+    const timer = window.setInterval(() => void refresh(), 30_000);
+    return () => { active = false; window.clearInterval(timer); };
+  }, [view, me?.isAdmin]);
 
   const load = useCallback(async (selectedMode: FeedMode = mode) => {
     setLoading(true);
@@ -785,6 +808,21 @@ export function SocialFeed({ username }: SocialFeedProps) {
               <input ref={networkIconRef} type="file" accept="image/png,image/jpeg,image/gif,image/webp" hidden onChange={(event) => { void uploadNetworkIcon(event.currentTarget.files?.[0]); event.currentTarget.value = ""; }} data-testid="input-network-icon" />
               <button type="button" onClick={() => networkIconRef.current?.click()} data-testid="button-upload-network-icon">Upload icon…</button>
               {networkIconDataUrl && <button type="button" onClick={async () => { try { await updateSiteSettings({ networkIconDataUrl: "" }); await refreshSiteSettings(); setAdminStatus("Network icon reset."); } catch (error) { setAdminStatus(error instanceof Error ? error.message : "Could not reset icon."); } }}>Reset icon</button>}
+            </section>
+            <section className="network-admin-bot-runtime" data-testid="network-bot-runtime-status" aria-live="polite">
+              <h3>Photo bot status</h3>
+              {botRuntimeStatusError
+                ? <p className="network-bot-runtime-error">Status unavailable: {botRuntimeStatusError}</p>
+                : !botRuntimeStatus
+                  ? <p>Checking status…</p>
+                  : <>
+                    <p className={botRuntimeStatus.schedulerActive ? "network-bot-runtime-active" : "network-bot-runtime-inactive"}>
+                      {botRuntimeStatus.schedulerActive ? (botRuntimeStatus.checking ? "Active · checking the gallery now" : "Active · waiting for the next check") : "Not running"}
+                    </p>
+                    <p>Last check started: {botRuntimeStatus.lastCheckAt ? new Date(botRuntimeStatus.lastCheckAt).toLocaleString() : "Not yet"}</p>
+                    <p>Last successful check: {botRuntimeStatus.lastSuccessfulCheckAt ? new Date(botRuntimeStatus.lastSuccessfulCheckAt).toLocaleString() : "Not yet"}</p>
+                    {botRuntimeStatus.lastError && <p className="network-bot-runtime-error">Last check error: {botRuntimeStatus.lastError}</p>}
+                  </>}
             </section>
             <form className="network-admin-bot" onSubmit={saveNetworkBotProfile} data-testid="network-admin-bot-profile">
               <h3>SladenatorEatsOfficial profile</h3>

@@ -65,6 +65,12 @@
 .network-admin-bot-actions { display:flex; flex-wrap:wrap; gap:8px; }
 .network-admin-bot-actions button { border:1px solid #184a47; border-radius:7px; background:var(--social-teal); padding:7px 10px; color:white; font-size:11px; font-weight:700; }
 .network-admin-bot-actions button + button { background:var(--social-paper); color:var(--social-ink); border-color:var(--social-border); }
+.network-admin-bot-runtime { display:grid; gap:5px; border:1px solid var(--social-border); border-radius:10px; background:var(--social-panel); padding:14px; }
+.network-admin-bot-runtime h3 { margin:0; color:var(--social-ink); font-size:13px; }
+.network-admin-bot-runtime p { margin:0; color:var(--social-muted); font-size:11px; line-height:1.45; overflow-wrap:anywhere; }
+.network-admin-bot-runtime .network-bot-runtime-active { color:#16804a; font-weight:700; }
+.network-admin-bot-runtime .network-bot-runtime-inactive,
+.network-admin-bot-runtime .network-bot-runtime-error { color:#b34637; font-weight:700; }
 .network-admin-news-form label { display:grid; gap:5px; color:var(--social-ink); font-size:11px; font-weight:700; }
 .network-admin-news-form input,.network-admin-news-form textarea { width:100%; border:1px solid var(--social-border); background:var(--social-bg); padding:9px; color:var(--social-ink); font:inherit; font-size:12px; }
 .network-admin-news-form textarea { resize:vertical; }

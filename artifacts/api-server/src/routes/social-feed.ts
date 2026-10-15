@@ -21,6 +21,7 @@ import { appStorage } from "../lib/app-storage";
 import { cleanupAfterMutation } from "../lib/storage-mutations";
 import { logger } from "../lib/logger";
 import { findBlockedPhrase, getBlockedPhrases } from "../lib/content-filter";
+import { getNetworkBotStatus } from "../lib/network-bot";
 import { audit, isBanned } from "./social";
 
 const router: IRouter = Router();
@@ -65,6 +66,10 @@ router.post("/social/bot/test-post", requireAdmin, async (req, res) => {
     logger.warn({ err: error }, "Sladenator bot test post could not be created");
     res.status(502).json({ error: error instanceof Error ? error.message : "Could not find an image on sladenator.org." });
   }
+});
+
+router.get("/social/bot/status", requireAdmin, (_req, res) => {
+  res.json(getNetworkBotStatus());
 });
 
 function parseMedia(value: unknown): { type: string; bytes: Buffer } | null {

@@ -223,6 +223,23 @@ export async function ensureSchema(): Promise<void> {
     );
     ALTER TABLE social_posts ADD COLUMN IF NOT EXISTS external_media_url text;
     CREATE INDEX IF NOT EXISTS social_posts_author_created_idx ON social_posts (author, created_at);
+    CREATE TABLE IF NOT EXISTS network_bot_photos (
+      source_url text PRIMARY KEY,
+      source_uploaded_at timestamptz,
+      first_seen_at timestamptz NOT NULL DEFAULT now(),
+      posted_at timestamptz,
+      scheduled_at timestamptz,
+      is_new boolean NOT NULL DEFAULT false
+    );
+    ALTER TABLE network_bot_photos ADD COLUMN IF NOT EXISTS is_new boolean NOT NULL DEFAULT false;
+    ALTER TABLE network_bot_photos ADD COLUMN IF NOT EXISTS scheduled_at timestamptz;
+    CREATE TABLE IF NOT EXISTS network_bot_schedule (
+      id smallint PRIMARY KEY CHECK (id = 1),
+      initialized_at timestamptz NOT NULL,
+      last_new_photo_at timestamptz NOT NULL,
+      rollout_ends_at timestamptz NOT NULL,
+      next_random_post_at timestamptz NOT NULL
+    );
     CREATE TABLE IF NOT EXISTS social_follows (
       id serial PRIMARY KEY,
       follower text NOT NULL,

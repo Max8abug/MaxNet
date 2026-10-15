@@ -959,6 +959,17 @@ export async function createSocialPost(body: string, mediaDataUrl?: string): Pro
 export async function createSladenatorBotTestPost(): Promise<SocialPost> {
   return jsonOrThrow(await fetch(`${BASE}/social/bot/test-post`, { ...opts, method: "POST" }));
 }
+export interface NetworkBotRuntimeStatus {
+  schedulerActive: boolean;
+  checking: boolean;
+  startedAt: string | null;
+  lastCheckAt: string | null;
+  lastSuccessfulCheckAt: string | null;
+  lastError: string | null;
+}
+export async function fetchNetworkBotRuntimeStatus(): Promise<NetworkBotRuntimeStatus> {
+  return jsonOrThrow(await fetch(`${BASE}/social/bot/status`, opts));
+}
 export async function deleteSocialPost(id: number): Promise<void> {
   await jsonOrThrow(await fetch(`${BASE}/social/posts/${id}`, { ...opts, method: "DELETE" }));
 }

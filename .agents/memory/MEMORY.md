@@ -21,3 +21,4 @@
 - [Path-based game hosting](ported-game-path-sandbox.md) — serve game ports under the main site path, but keep their frames sandboxed without same-origin access.
 - [Game port hosting permission](game-port-permission.md) — user says repository creators explicitly permitted self-hosting the supplied port files.
 - [Social feed migration scope](social-feed-migration.md) — keep the standalone Drawpad and its drawings; migrate only legacy My Page artwork into the owner's first post.
+- [Sladenator bot posting](network-bot-posting.md) — use the public photo collection for prompt new-photo posts and the requested random older-photo cadence.
