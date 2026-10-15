@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#b9e3dc">
+    <meta name="description" content="A personal homepage with social links and a photo gallery.">
+    <title>Sladenator Eats</title>
+    <link rel="stylesheet" href="[/styles.css](https://sladenator.org/styles.css)">
+    <script src="[/app.js](https://sladenator.org/app.js)" defer></script>
+  </head>
+  <body>
+    <div class="site-shell">
+      <header class="site-header">
+        <a class="wordmark" href="[#home](https://sladenator.org/#home)" aria-label="Back to the top">///</a>
+        <nav aria-label="Main navigation">
+          <a href="[#home](https://sladenator.org/#home)">HOME</a>
+          <a href="[#photos](https://sladenator.org/#photos)">PHOTO WALL</a>
+          <a href="[/games](https://sladenator.org/games)">GAMES</a>
+          <a href="[#links](https://sladenator.org/#links)">OTHER LINKS</a>
+          <a id="nav-tiktok" href="https://www.tiktok.com/@yourhandle" target="_blank" rel="noreferrer">MY TIKTOK <span>↗</span></a>
+        </nav>
+      </header>
+
+      <main id="home">
+        <section class="intro" aria-labelledby="page-title">
+          <div class="intro-copy">
+            <p class="eyebrow"><span class="status-dot"></span> i am food</p>
+            <h1 id="page-title">YOUR<br>NAME<span class="title-dot">.</span></h1>
+            <div class="intro-bottom">
+              <p id="intro-text">A little corner of the internet.</p>
+              <a class="round-link" href="[#photos](https://sladenator.org/#photos)" aria-label="Scroll to the photo wall">↓</a>
+            </div>
+          </div>
+          <figure class="feature-image">
+            <img id="hero-image" alt="Your uploaded main photo" hidden>
+            <div id="hero-placeholder" class="hero-placeholder"><strong>YOUR MAIN PHOTO</strong><span>Place a photo in uploads/hero</span></div>
+            <figcaption><span>FEATURED PICTURE OF THE WEEK</span><span></span></figcaption>
+            <span class="image-sticker" aria-hidden="true">LIFE<br>IN<br>FRAME</span>
+          </figure>
+          <div class="intro-ribbon" aria-hidden="true"><span>Sladenator</span><span>Eats</span><span>Presents</span></div>
+        </section>
+
+        <section class="photo-section" id="photos" aria-labelledby="photos-title">
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">AI SLOP & PHOTO COLLECTION</p>
+              <h2 id="photos-title">WE LOVE SLOP<span class="title-dot">.</span></h2>
+            </div>
+            <button id="add-photos-button" class="add-button" type="button"><span aria-hidden="true">+</span> ADD PHOTOS</button>
+            <input id="photo-picker" class="visually-hidden" type="file" accept="image/jpeg,image/png,image/gif,image/webp,image/avif" multiple>
+          </div>
+          <div id="upload-status" class="upload-status" role="status" aria-live="polite"></div>
+          <div id="photo-grid" class="photo-grid" aria-live="polite"></div>
+          <div id="empty-state" class="empty-state" hidden>
+            <div class="empty-mark" aria-hidden="true">+</div>
+            <p>It's a little quiet in here.</p>
+            <button id="empty-upload-button" class="empty-upload-button" type="button">Drop in a few photos to get things going.</button>
+          </div>
+          <p class="photo-note">JPEG, PNG, GIF, WebP or AVIF · up to 10 MB each</p>
+        </section>
+
+        <dialog id="upload-dialog" class="upload-dialog" aria-labelledby="upload-dialog-title">
+          <form id="upload-password-form">
+            <h2 id="upload-dialog-title">OWNER CHECK</h2>
+            <p>Enter the upload password to choose photos from your device.</p>
+            <label for="upload-password">UPLOAD PASSWORD</label>
+            <input id="upload-password" type="password" autocomplete="current-password" required>
+            <p id="upload-dialog-status" role="status" aria-live="polite"></p>
+            <div class="upload-dialog-actions">
+              <button id="cancel-upload" type="button">CANCEL</button>
+              <button class="add-button" type="submit">CONTINUE</button>
+            </div>
+          </form>
+        </dialog>
+
+        <section class="links-section" id="links" aria-labelledby="links-title">
+          <p class="eyebrow">TOTALLY IMPORTANT LINKS</p>
+          <h2 id="links-title">AROUND THE WEB<span class="title-dot">.</span></h2>
+          <div class="link-list">
+            <article class="info-link">
+              <h3>Sam's Site</h3>
+              <a href="https://moonbat.ddns.net" target="_blank" rel="noreferrer">moonbat.ddns.net <span aria-hidden="true">↗</span></a>
+            </article>
+            <article class="info-link">
+              <h3>MY MINECRAFT SERVER -Eaglercraft-</h3>
+              <p class="server-address">s1.sladenator.org</p>
+              <p class="server-version">Minecraft Java Edition <strong>1.12.2</strong></p>
+            </article>
+          </div>
+        </section>
+
+        <footer class="site-footer">
+          <span>Property of Sladenator Eats</span>
+          <a id="footer-tiktok" href="https://www.tiktok.com/@yourhandle" target="_blank" rel="noreferrer">FIND ME ON TIKTOK <span aria-hidden="true">↗</span></a>
+          <span id="footer-name">YOUR NAME © 2026</span>
+        </footer>
+      </main>
+    </div>
+  <script type="module" src="https://static.cloudflareinsights.com/beacon.min.js/v4bc70e2c01a94c73b74392e4234840661791215815920" integrity="sha512-L0ha0OXavK/8okipN9F8BtP84dg9DUhPERbBXzwI6dgTA55d2+yweo3pn5CSFYs45/r8md2+xvUPtTdvTNRfjA==" data-cf-beacon='{"version":"2024.11.0","token":"eb4af2653f474d05be6a342a1ff30f13","r":1,"spa":2}' crossorigin="anonymous"></script>
+</body>
+</html>

@@ -75,42 +75,34 @@ function parseMedia(value: unknown): { type: string; bytes: Buffer } | null {
   return bytes.length > 0 && bytes.length <= MAX_MEDIA_BYTES ? { type: match[1].toLowerCase(), bytes } : null;
 }
 
-function readHtmlAttribute(tag: string, attribute: string): string | null {
-  const escaped = attribute.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const match = new RegExp(`\\b${escaped}\\s*=\\s*(?:"([^"]*)"|'([^']*)'|([^\\s>]+))`, "i").exec(tag);
-  return match?.[1] || match?.[2] || match?.[3] || null;
-}
-
 async function pickRandomSladenatorImage(): Promise<string> {
-  const response = await fetch("https://sladenator.org", {
-    headers: { Accept: "text/html", "User-Agent": "Portfolio98-NetworkBot/1.0" },
+  const response = await fetch("https://sladenator.org/api/photos", {
+    headers: { Accept: "application/json", "User-Agent": "Portfolio98-NetworkBot/1.0" },
     signal: AbortSignal.timeout(10_000),
+    redirect: "error",
   });
-  if (!response.ok) throw new Error(`sladenator.org returned HTTP ${response.status}.`);
-  if (!(response.headers.get("content-type") || "").includes("text/html")) {
-    throw new Error("sladenator.org did not return an HTML page.");
+  if (!response.ok) throw new Error(`sladenator.org photo collection returned HTTP ${response.status}.`);
+  if (!(response.headers.get("content-type") || "").includes("application/json")) {
+    throw new Error("sladenator.org photo collection did not return JSON.");
   }
-  const html = (await response.text()).slice(0, 2_000_000);
+  const payload = await response.text();
+  if (payload.length > 2_000_000) throw new Error("sladenator.org photo collection response is unexpectedly large.");
+  const photos: unknown = JSON.parse(payload);
+  if (!Array.isArray(photos)) throw new Error("sladenator.org returned an invalid photo collection.");
   const candidates = new Set<string>();
-  const addCandidate = (raw: string | null) => {
-    if (!raw || raw.startsWith("data:")) return;
+  for (const photo of photos) {
+    if (!photo || typeof photo !== "object" || !("url" in photo) || typeof photo.url !== "string") continue;
     try {
-      const url = new URL(raw, "https://sladenator.org");
-      if (url.protocol !== "https:" || (url.hostname !== "sladenator.org" && !url.hostname.endsWith(".sladenator.org"))) return;
+      const url = new URL(photo.url, "https://sladenator.org");
+      if (url.protocol !== "https:"
+        || (url.hostname !== "sladenator.org" && !url.hostname.endsWith(".sladenator.org"))
+        || !url.pathname.startsWith("/photos/")
+        || !/\.(?:jpe?g|png|gif|webp|avif)$/i.test(url.pathname)) continue;
       candidates.add(url.toString());
-    } catch { /* Ignore invalid image links. */ }
-  };
-  for (const tag of html.match(/<img\b[^>]*>/gi) || []) {
-    addCandidate(readHtmlAttribute(tag, "src") || readHtmlAttribute(tag, "data-src") || readHtmlAttribute(tag, "data-lazy-src"));
-    const srcset = readHtmlAttribute(tag, "srcset");
-    if (srcset) addCandidate(srcset.split(",")[0]?.trim().split(/\s+/)[0] || null);
-  }
-  for (const tag of html.match(/<meta\b[^>]*>/gi) || []) {
-    const key = `${readHtmlAttribute(tag, "property") || ""} ${readHtmlAttribute(tag, "name") || ""}`.toLowerCase();
-    if (key.includes("image")) addCandidate(readHtmlAttribute(tag, "content"));
+    } catch { /* Ignore malformed photo entries. */ }
   }
   const pool = [...candidates];
-  if (!pool.length) throw new Error("No public images hosted on sladenator.org were found on its home page.");
+  if (!pool.length) throw new Error("No usable photos were found in sladenator.org's photo collection.");
   return pool[Math.floor(Math.random() * pool.length)]!;
 }
 
