@@ -6,6 +6,8 @@ import {
   socialFollowsTable,
   socialPostLikesTable,
   socialPostCommentsTable,
+  socialCommentLikesTable,
+  socialCommentRepostsTable,
   socialPostRepostsTable,
   socialNotificationsTable,
   networkNewsTable,
@@ -138,23 +140,89 @@ router.get("/social/notifications", requireAuth, async (req, res) => {
 router.get("/social/posts/:id/comments", async (req, res) => {
   const postId = Number(req.params.id);
   if (!Number.isInteger(postId)) { res.status(400).json({ error: "Invalid post." }); return; }
-  const rows = await db.select().from(socialPostCommentsTable).where(eq(socialPostCommentsTable.postId, postId))
-    .orderBy(desc(socialPostCommentsTable.createdAt)).limit(100);
-  res.json(rows);
+  const newestFirst = await db.select().from(socialPostCommentsTable).where(eq(socialPostCommentsTable.postId, postId))
+    .orderBy(desc(socialPostCommentsTable.createdAt), desc(socialPostCommentsTable.id)).limit(200);
+  const rows = newestFirst.reverse();
+  const ids = rows.map((row) => row.id);
+  if (!ids.length) { res.json([]); return; }
+  const [likes, reposts, mineLikes, mineReposts] = await Promise.all([
+    db.select({ commentId: socialCommentLikesTable.commentId, count: sql<number>`count(*)::int` })
+      .from(socialCommentLikesTable).where(inArray(socialCommentLikesTable.commentId, ids)).groupBy(socialCommentLikesTable.commentId),
+    db.select({ commentId: socialCommentRepostsTable.commentId, count: sql<number>`count(*)::int` })
+      .from(socialCommentRepostsTable).where(inArray(socialCommentRepostsTable.commentId, ids)).groupBy(socialCommentRepostsTable.commentId),
+    req.session.username ? db.select({ commentId: socialCommentLikesTable.commentId }).from(socialCommentLikesTable)
+      .where(and(inArray(socialCommentLikesTable.commentId, ids), eq(socialCommentLikesTable.username, req.session.username))) : Promise.resolve([]),
+    req.session.username ? db.select({ commentId: socialCommentRepostsTable.commentId }).from(socialCommentRepostsTable)
+      .where(and(inArray(socialCommentRepostsTable.commentId, ids), eq(socialCommentRepostsTable.username, req.session.username))) : Promise.resolve([]),
+  ]);
+  const likeCounts = new Map(likes.map((row) => [row.commentId, Number(row.count)]));
+  const repostCounts = new Map(reposts.map((row) => [row.commentId, Number(row.count)]));
+  const liked = new Set(mineLikes.map((row) => row.commentId));
+  const reposted = new Set(mineReposts.map((row) => row.commentId));
+  res.json(rows.map((row) => ({
+    ...row,
+    likes: likeCounts.get(row.id) || 0,
+    myLike: liked.has(row.id),
+    reposts: repostCounts.get(row.id) || 0,
+    myRepost: reposted.has(row.id),
+  })));
 });
 
 router.post("/social/posts/:id/comments", requireAuth, async (req, res) => {
   const postId = Number(req.params.id);
   const body = typeof req.body?.body === "string" ? req.body.body.trim().slice(0, 500) : "";
+  const parentCommentId = req.body?.parentCommentId == null ? null : Number(req.body.parentCommentId);
   if (!Number.isInteger(postId) || !body) { res.status(400).json({ error: "Write a comment first." }); return; }
+  if (parentCommentId !== null && !Number.isInteger(parentCommentId)) { res.status(400).json({ error: "Invalid reply target." }); return; }
   const author = req.session.username!;
   if (await isBanned(author)) { res.status(403).json({ error: "Your account cannot comment." }); return; }
   if (findBlockedPhrase(body, await getBlockedPhrases("chat"))) { res.status(400).json({ error: "Your comment contains a blocked word or phrase." }); return; }
   const [post] = await db.select({ author: socialPostsTable.author }).from(socialPostsTable).where(eq(socialPostsTable.id, postId)).limit(1);
   if (!post) { res.status(404).json({ error: "Post not found." }); return; }
-  const [comment] = await db.insert(socialPostCommentsTable).values({ postId, author, body }).returning();
+  let parentAuthor: string | null = null;
+  if (parentCommentId !== null) {
+    const [parent] = await db.select({ id: socialPostCommentsTable.id, author: socialPostCommentsTable.author })
+      .from(socialPostCommentsTable)
+      .where(and(eq(socialPostCommentsTable.id, parentCommentId), eq(socialPostCommentsTable.postId, postId))).limit(1);
+    if (!parent) { res.status(404).json({ error: "Reply target not found." }); return; }
+    parentAuthor = parent.author;
+  }
+  const [comment] = await db.insert(socialPostCommentsTable).values({ postId, parentCommentId, author, body }).returning();
   if (post.author !== author) await db.insert(socialNotificationsTable).values({ username: post.author, actor: author, postId, kind: "comment" });
-  res.status(201).json(comment);
+  if (parentAuthor && parentAuthor !== author && parentAuthor !== post.author) {
+    await db.insert(socialNotificationsTable).values({ username: parentAuthor, actor: author, postId, kind: "comment" });
+  }
+  res.status(201).json({ ...comment, likes: 0, myLike: false, reposts: 0, myRepost: false });
+});
+
+router.post("/social/comments/:id/like", requireAuth, async (req, res) => {
+  const commentId = Number(req.params.id);
+  const username = req.session.username!;
+  if (!Number.isInteger(commentId)) { res.status(400).json({ error: "Invalid comment." }); return; }
+  if (await isBanned(username)) { res.status(403).json({ error: "Your account cannot like comments." }); return; }
+  const [comment] = await db.select({ id: socialPostCommentsTable.id }).from(socialPostCommentsTable)
+    .where(eq(socialPostCommentsTable.id, commentId)).limit(1);
+  if (!comment) { res.status(404).json({ error: "Comment not found." }); return; }
+  const [existing] = await db.select({ id: socialCommentLikesTable.id }).from(socialCommentLikesTable)
+    .where(and(eq(socialCommentLikesTable.commentId, commentId), eq(socialCommentLikesTable.username, username))).limit(1);
+  if (existing) await db.delete(socialCommentLikesTable).where(eq(socialCommentLikesTable.id, existing.id));
+  else await db.insert(socialCommentLikesTable).values({ commentId, username }).onConflictDoNothing();
+  res.json({ liked: !existing });
+});
+
+router.post("/social/comments/:id/repost", requireAuth, async (req, res) => {
+  const commentId = Number(req.params.id);
+  const username = req.session.username!;
+  if (!Number.isInteger(commentId)) { res.status(400).json({ error: "Invalid comment." }); return; }
+  if (await isBanned(username)) { res.status(403).json({ error: "Your account cannot repost comments." }); return; }
+  const [comment] = await db.select({ id: socialPostCommentsTable.id }).from(socialPostCommentsTable)
+    .where(eq(socialPostCommentsTable.id, commentId)).limit(1);
+  if (!comment) { res.status(404).json({ error: "Comment not found." }); return; }
+  const [existing] = await db.select({ id: socialCommentRepostsTable.id }).from(socialCommentRepostsTable)
+    .where(and(eq(socialCommentRepostsTable.commentId, commentId), eq(socialCommentRepostsTable.username, username))).limit(1);
+  if (existing) await db.delete(socialCommentRepostsTable).where(eq(socialCommentRepostsTable.id, existing.id));
+  else await db.insert(socialCommentRepostsTable).values({ commentId, username }).onConflictDoNothing();
+  res.json({ reposted: !existing });
 });
 
 router.post("/social/posts/:id/repost", requireAuth, async (req, res) => {

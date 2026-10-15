@@ -15,6 +15,8 @@ import {
   updateSiteSettings,
   fetchSocialComments,
   createSocialComment,
+  toggleSocialCommentLike,
+  toggleSocialCommentRepost,
   toggleSocialRepost,
   type SocialNotification,
   type TrendingTag,
@@ -207,6 +209,9 @@ export function SocialFeed({ username }: SocialFeedProps) {
   const [selectedPost, setSelectedPost] = useState<SocialPost | null>(null);
   const [postComments, setPostComments] = useState<Awaited<ReturnType<typeof fetchSocialComments>>>([]);
   const [commentBody, setCommentBody] = useState("");
+  const [replyBody, setReplyBody] = useState("");
+  const [replyingToId, setReplyingToId] = useState<number | null>(null);
+  const [busyCommentActions, setBusyCommentActions] = useState<number[]>([]);
   const [commentsLoading, setCommentsLoading] = useState(false);
   const [commentSending, setCommentSending] = useState(false);
   const [profile, setProfile] = useState<SocialProfile | null>(null);
@@ -463,6 +468,8 @@ export function SocialFeed({ username }: SocialFeedProps) {
   const openPost = async (post: SocialPost) => {
     setSelectedPost(post);
     setCommentBody("");
+    setReplyBody("");
+    setReplyingToId(null);
     setCommentsLoading(true);
     setActionError(null);
     try { setPostComments(await fetchSocialComments(post.id)); }
@@ -479,11 +486,48 @@ export function SocialFeed({ username }: SocialFeedProps) {
       const comment = await createSocialComment(selectedPost.id, commentBody.trim().slice(0, 500));
       setPostComments((current) => [comment, ...current]);
       setCommentBody("");
+      setReplyingToId(null);
       setSelectedPost((current) => current ? { ...current, comments: current.comments + 1 } : current);
       setPosts((current) => current.map((post) => post.id === selectedPost.id ? { ...post, comments: post.comments + 1 } : post));
       setProfile((current) => current ? { ...current, posts: current.posts.map((post) => post.id === selectedPost.id ? { ...post, comments: post.comments + 1 } : post) } : current);
     } catch (error) { setActionError(error instanceof Error ? error.message : "Comment could not be posted."); }
     finally { setCommentSending(false); }
+  };
+  const submitCommentReply = async (parentCommentId: number, event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!me || !selectedPost || !replyBody.trim() || commentSending) return;
+    setCommentSending(true);
+    setActionError(null);
+    try {
+      const comment = await createSocialComment(selectedPost.id, replyBody.trim().slice(0, 500), parentCommentId);
+      setPostComments((current) => [...current, comment]);
+      setReplyBody("");
+      setReplyingToId(null);
+      setSelectedPost((current) => current ? { ...current, comments: current.comments + 1 } : current);
+      setPosts((current) => current.map((post) => post.id === selectedPost.id ? { ...post, comments: post.comments + 1 } : post));
+      setProfile((current) => current ? { ...current, posts: current.posts.map((post) => post.id === selectedPost.id ? { ...post, comments: post.comments + 1 } : post) } : current);
+    } catch (error) { setActionError(error instanceof Error ? error.message : "Reply could not be posted."); }
+    finally { setCommentSending(false); }
+  };
+  const toggleCommentLike = async (comment: Awaited<ReturnType<typeof fetchSocialComments>>[number]) => {
+    if (!me || busyCommentActions.includes(comment.id)) return;
+    setBusyCommentActions((current) => [...current, comment.id]);
+    try {
+      const result = await toggleSocialCommentLike(comment.id);
+      setPostComments((current) => current.map((item) => item.id === comment.id
+        ? { ...item, myLike: result.liked, likes: Math.max(0, item.likes + (result.liked ? 1 : -1)) } : item));
+    } catch (error) { setActionError(error instanceof Error ? error.message : "Comment like could not be saved."); }
+    finally { setBusyCommentActions((current) => current.filter((id) => id !== comment.id)); }
+  };
+  const toggleCommentRepost = async (comment: Awaited<ReturnType<typeof fetchSocialComments>>[number]) => {
+    if (!me || busyCommentActions.includes(comment.id)) return;
+    setBusyCommentActions((current) => [...current, comment.id]);
+    try {
+      const result = await toggleSocialCommentRepost(comment.id);
+      setPostComments((current) => current.map((item) => item.id === comment.id
+        ? { ...item, myRepost: result.reposted, reposts: Math.max(0, item.reposts + (result.reposted ? 1 : -1)) } : item));
+    } catch (error) { setActionError(error instanceof Error ? error.message : "Comment repost could not be saved."); }
+    finally { setBusyCommentActions((current) => current.filter((id) => id !== comment.id)); }
   };
   const repost = async (post: SocialPost) => {
     if (!me) return;
@@ -504,6 +548,35 @@ export function SocialFeed({ username }: SocialFeedProps) {
   const profileUsername = username || (view === "profile" ? me?.username : undefined);
   const isOwner = !!me && me.username === profileUsername;
   const isProfile = !!profileUsername;
+  const commentsByParent = new Map<number | null, typeof postComments>();
+  for (const comment of postComments) {
+    const parentId = comment.parentCommentId && postComments.some((item) => item.id === comment.parentCommentId)
+      ? comment.parentCommentId : null;
+    commentsByParent.set(parentId, [...(commentsByParent.get(parentId) || []), comment]);
+  }
+  const renderCommentThread = (comment: typeof postComments[number], depth = 0) => (
+    <article className={`network-comment-thread ${depth ? "is-reply" : ""}`} key={comment.id} style={{ marginLeft: `${Math.min(depth, 5) * 14}px` }} data-testid={`network-comment-${comment.id}`}>
+      <div className="network-comment">
+        <Avatar username={comment.author} size={30} />
+        <div className="network-comment-content">
+          <header><b>{comment.author}</b><time>{formatPostTime(comment.createdAt)}</time></header>
+          <p>{comment.body}</p>
+          <div className="network-comment-actions">
+            <button type="button" className={comment.myLike ? "is-active" : ""} disabled={!me || busyCommentActions.includes(comment.id)} onClick={() => void toggleCommentLike(comment)} aria-label={`${comment.myLike ? "Unlike" : "Like"} comment by ${comment.author}`} data-testid={`button-like-comment-${comment.id}`}>♥ {comment.likes}</button>
+            <button type="button" disabled={!me || busyCommentActions.includes(comment.id)} onClick={() => { setReplyingToId(replyingToId === comment.id ? null : comment.id); setReplyBody(""); }} data-testid={`button-reply-comment-${comment.id}`}>Reply</button>
+            <button type="button" className={comment.myRepost ? "is-active" : ""} disabled={!me || busyCommentActions.includes(comment.id)} onClick={() => void toggleCommentRepost(comment)} aria-label={`${comment.myRepost ? "Undo repost" : "Repost"} comment by ${comment.author}`} data-testid={`button-repost-comment-${comment.id}`}>↻ {comment.reposts}</button>
+          </div>
+        </div>
+      </div>
+      {replyingToId === comment.id && me && (
+        <form className="network-comment-reply-form" onSubmit={(event) => void submitCommentReply(comment.id, event)}>
+          <textarea value={replyBody} maxLength={500} rows={2} onChange={(event) => setReplyBody(event.target.value)} placeholder={`Reply to ${comment.author}…`} aria-label={`Reply to ${comment.author}`} autoFocus />
+          <div><small>{replyBody.length}/500</small><button type="submit" disabled={!replyBody.trim() || commentSending}>{commentSending ? "Replying…" : "Reply"}</button></div>
+        </form>
+      )}
+      {(commentsByParent.get(comment.id) || []).map((reply) => renderCommentThread(reply, depth + 1))}
+    </article>
+  );
 
   return (
     <section className="social-feed" data-theme={theme} data-testid={isProfile ? "social-profile" : "social-feed"}>
@@ -703,12 +776,7 @@ export function SocialFeed({ username }: SocialFeedProps) {
               ) : <p className="network-comment-signin">Sign in to join the conversation.</p>}
               {actionError && <div className="social-inline-error" role="alert">{actionError}</div>}
               {commentsLoading ? <p className="network-comments-empty">Loading comments…</p> : postComments.length ? (
-                <div className="network-comment-list">{postComments.map((comment) => (
-                  <article className="network-comment" key={comment.id}>
-                    <Avatar username={comment.author} size={30} />
-                    <div><header><b>{comment.author}</b><time>{formatPostTime(comment.createdAt)}</time></header><p>{comment.body}</p></div>
-                  </article>
-                ))}</div>
+                <div className="network-comment-list">{(commentsByParent.get(null) || []).map((comment) => renderCommentThread(comment))}</div>
               ) : <p className="network-comments-empty">No comments yet. Start the conversation.</p>}
             </section>
           </div>

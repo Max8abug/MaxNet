@@ -878,7 +878,18 @@ export interface SocialPost {
   repostedBy?: string | null;
   createdAt: string;
 }
-export interface SocialComment { id: number; postId: number; author: string; body: string; createdAt: string; }
+export interface SocialComment {
+  id: number;
+  postId: number;
+  parentCommentId: number | null;
+  author: string;
+  body: string;
+  createdAt: string;
+  likes: number;
+  myLike: boolean;
+  reposts: number;
+  myRepost: boolean;
+}
 export interface SocialNotification { id: number; username: string; actor: string; postId: number | null; kind: string; createdAt: string; readAt: string | null; }
 export interface NetworkNewsItem { id: number; author: string; title: string; body: string; createdAt: string; }
 export async function fetchNetworkNews(): Promise<NetworkNewsItem[]> {
@@ -922,8 +933,14 @@ export async function fetchSocialTrending(): Promise<TrendingTag[]> {
 export async function fetchSocialComments(id: number): Promise<SocialComment[]> {
   return jsonOrThrow(await fetch(`${BASE}/social/posts/${id}/comments`, opts));
 }
-export async function createSocialComment(id: number, body: string): Promise<SocialComment> {
-  return jsonOrThrow(await fetch(`${BASE}/social/posts/${id}/comments`, { ...opts, method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ body }) }));
+export async function createSocialComment(id: number, body: string, parentCommentId?: number): Promise<SocialComment> {
+  return jsonOrThrow(await fetch(`${BASE}/social/posts/${id}/comments`, { ...opts, method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ body, parentCommentId }) }));
+}
+export async function toggleSocialCommentLike(id: number): Promise<{ liked: boolean }> {
+  return jsonOrThrow(await fetch(`${BASE}/social/comments/${id}/like`, { ...opts, method: "POST" }));
+}
+export async function toggleSocialCommentRepost(id: number): Promise<{ reposted: boolean }> {
+  return jsonOrThrow(await fetch(`${BASE}/social/comments/${id}/repost`, { ...opts, method: "POST" }));
 }
 export async function toggleSocialRepost(id: number): Promise<{ reposted: boolean }> {
   return jsonOrThrow(await fetch(`${BASE}/social/posts/${id}/repost`, { ...opts, method: "POST" }));

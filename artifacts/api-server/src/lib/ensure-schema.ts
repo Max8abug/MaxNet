@@ -238,11 +238,27 @@ export async function ensureSchema(): Promise<void> {
     CREATE TABLE IF NOT EXISTS social_post_comments (
       id serial PRIMARY KEY,
       post_id integer NOT NULL,
+      parent_comment_id integer,
       author text NOT NULL,
       body text NOT NULL,
       created_at timestamp NOT NULL DEFAULT now()
     );
+    ALTER TABLE social_post_comments ADD COLUMN IF NOT EXISTS parent_comment_id integer;
     CREATE INDEX IF NOT EXISTS social_post_comments_post_created_idx ON social_post_comments (post_id, created_at);
+    CREATE TABLE IF NOT EXISTS social_comment_likes (
+      id serial PRIMARY KEY,
+      comment_id integer NOT NULL,
+      username text NOT NULL,
+      created_at timestamp NOT NULL DEFAULT now(),
+      CONSTRAINT social_comment_likes_pair_unique UNIQUE (comment_id, username)
+    );
+    CREATE TABLE IF NOT EXISTS social_comment_reposts (
+      id serial PRIMARY KEY,
+      comment_id integer NOT NULL,
+      username text NOT NULL,
+      created_at timestamp NOT NULL DEFAULT now(),
+      CONSTRAINT social_comment_reposts_pair_unique UNIQUE (comment_id, username)
+    );
     CREATE TABLE IF NOT EXISTS social_post_reposts (
       id serial PRIMARY KEY,
       post_id integer NOT NULL,

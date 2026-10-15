@@ -83,10 +83,20 @@
 .network-comment-composer button:disabled { opacity:.55; cursor:not-allowed; }
 .network-comment-list { display:flex; flex-direction:column; }
 .network-comment { display:flex; gap:9px; padding:12px 0; border-bottom:1px solid var(--social-border); }
+.network-comment-thread.is-reply { margin-top:2px; padding-left:9px; border-left:2px solid color-mix(in srgb, var(--social-teal) 34%, var(--social-border)); }
 .network-comment > div { min-width:0; flex:1; }
+.network-comment-content { min-width:0; flex:1; }
 .network-comment header { display:flex; flex-wrap:wrap; align-items:center; gap:8px; color:var(--social-ink); font-size:11px; }
 .network-comment time { color:var(--social-muted); font-family:var(--app-font-mono); font-size:9px; }
 .network-comment p { margin:4px 0 0; color:var(--social-ink); font-size:12px; line-height:1.5; white-space:pre-wrap; overflow-wrap:anywhere; }
+.network-comment-actions { display:flex; flex-wrap:wrap; gap:5px 12px; margin-top:6px; }
+.network-comment-actions button { padding:2px 0; border:0; background:transparent; color:var(--social-muted); font-size:10px; }
+.network-comment-actions button:hover,.network-comment-actions button.is-active { color:var(--social-teal); }
+.network-comment-reply-form { display:grid; gap:6px; margin:0 0 8px 39px; padding:8px; border:1px solid var(--social-border); border-radius:8px; background:var(--social-paper); }
+.network-comment-reply-form textarea { width:100%; resize:vertical; border:1px solid var(--social-border); background:var(--social-panel); padding:7px; color:var(--social-ink); font:inherit; font-size:11px; }
+.network-comment-reply-form > div { display:flex; align-items:center; justify-content:space-between; gap:8px; color:var(--social-muted); font-size:9px; }
+.network-comment-reply-form button { border:1px solid #184a47; border-radius:6px; background:var(--social-teal); padding:5px 9px; color:#fff; font-size:10px; font-weight:700; }
+.network-comment-reply-form button:disabled { opacity:.55; cursor:not-allowed; }
 .network-comments-empty,.network-comment-signin { margin:12px 0 0; color:var(--social-muted); font-size:11px; }
 .network-notification time { color:var(--social-muted); white-space:nowrap; }
 .social-feed[data-theme="dark"] .network-left,.social-feed[data-theme="dark"] .network-side-card { background:#1b2630; }

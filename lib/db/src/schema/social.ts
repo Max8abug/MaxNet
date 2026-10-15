@@ -172,10 +172,25 @@ export const socialPostLikesTable = pgTable("social_post_likes", {
 export const socialPostCommentsTable = pgTable("social_post_comments", {
   id: serial("id").primaryKey(),
   postId: integer("post_id").notNull(),
+  parentCommentId: integer("parent_comment_id"),
   author: text("author").notNull(),
   body: text("body").notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 }, (table) => [index("social_post_comments_post_created_idx").on(table.postId, table.createdAt)]);
+
+export const socialCommentLikesTable = pgTable("social_comment_likes", {
+  id: serial("id").primaryKey(),
+  commentId: integer("comment_id").notNull(),
+  username: text("username").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => [uniqueIndex("social_comment_likes_pair_idx").on(table.commentId, table.username)]);
+
+export const socialCommentRepostsTable = pgTable("social_comment_reposts", {
+  id: serial("id").primaryKey(),
+  commentId: integer("comment_id").notNull(),
+  username: text("username").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => [uniqueIndex("social_comment_reposts_pair_idx").on(table.commentId, table.username)]);
 
 export const socialPostRepostsTable = pgTable("social_post_reposts", {
   id: serial("id").primaryKey(),
