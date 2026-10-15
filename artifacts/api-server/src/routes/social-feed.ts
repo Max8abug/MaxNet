@@ -371,8 +371,15 @@ router.delete("/social/posts/:id", requireAuth, async (req, res) => {
   const [post] = await db.select().from(socialPostsTable).where(eq(socialPostsTable.id, id)).limit(1);
   if (!post) { res.status(404).json({ error: "Post not found." }); return; }
   if (post.author !== req.session.username && !req.session.isAdmin) { res.status(403).json({ error: "You cannot delete this post." }); return; }
+  const commentRows = await db.select({ id: socialPostCommentsTable.id }).from(socialPostCommentsTable)
+    .where(eq(socialPostCommentsTable.postId, id));
+  const commentIds = commentRows.map((comment) => comment.id);
   await db.delete(socialPostsTable).where(eq(socialPostsTable.id, id));
   await db.delete(socialPostLikesTable).where(eq(socialPostLikesTable.postId, id));
+  if (commentIds.length) {
+    await db.delete(socialCommentLikesTable).where(inArray(socialCommentLikesTable.commentId, commentIds));
+    await db.delete(socialCommentRepostsTable).where(inArray(socialCommentRepostsTable.commentId, commentIds));
+  }
   await db.delete(socialPostCommentsTable).where(eq(socialPostCommentsTable.postId, id));
   await db.delete(socialPostRepostsTable).where(eq(socialPostRepostsTable.postId, id));
   await db.delete(socialNotificationsTable).where(eq(socialNotificationsTable.postId, id));
