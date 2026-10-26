@@ -10,8 +10,12 @@ import {
 } from "../src/lib/ported-game-assets";
 
 const assetDirectory = await mkdtemp(path.join(tmpdir(), "ported-game-assets-"));
+const gameDataDirectory = await mkdtemp(path.join(tmpdir(), "ported-game-data-"));
 const app = express();
-const gameAssets = createPortedGameAssetsRouter(assetDirectory);
+const gameAssets = createPortedGameAssetsRouter(assetDirectory, {
+  gameDataDirectory,
+  isGameApproved: async gameId => gameId === "duke3d",
+});
 app.use((request, response, next) => {
   if (!shouldServePortedGameRequest(request.hostname, request.path)) return next();
   return gameAssets(request, response, next);
@@ -29,6 +33,8 @@ try {
   await mkdir(path.join(assetDirectory, "deltarune"), { recursive: true });
   await mkdir(path.join(assetDirectory, "hill-climb-racing"), { recursive: true });
   await mkdir(path.join(assetDirectory, "quake3"), { recursive: true });
+  await mkdir(path.join(gameDataDirectory, "belgian-chocolate-duke3d"), { recursive: true });
+  await mkdir(path.join(gameDataDirectory, "fallout1-ce"), { recursive: true });
   await writeFile(
     path.join(assetDirectory, "asset-manifest.json"),
     JSON.stringify({ version: 1, games: { pvz: { installed: true } } }),
@@ -47,6 +53,8 @@ try {
   );
   await writeFile(path.join(assetDirectory, "hill-climb-racing", "hcr.wasm.part1"), Buffer.from([0, 1, 2]));
   await writeFile(path.join(assetDirectory, "hill-climb-racing", "hcr.wasm.part2"), Buffer.from([3, 4]));
+  await writeFile(path.join(gameDataDirectory, "belgian-chocolate-duke3d", "DUKE3D.GRP"), Buffer.from("game data"));
+  await writeFile(path.join(gameDataDirectory, "fallout1-ce", "master.dat"), Buffer.from("private until approved"));
 
   assert.equal(
     shouldServePortedGameRequest(
@@ -117,6 +125,12 @@ try {
   assert.equal(response.headers.get("content-length"), "5");
   assert.deepEqual(Buffer.from(await response.arrayBuffer()), Buffer.from([0, 1, 2, 3, 4]));
 
+  response = await fetch(`${baseUrl}/ported-games/belgian-chocolate-duke3d/DUKE3D.GRP`);
+  assert.equal(response.status, 200, "approved games can fetch uploaded user data");
+  assert.equal(await response.text(), "game data");
+  response = await fetch(`${baseUrl}/ported-games/fallout1-ce/master.dat`);
+  assert.equal(response.status, 404, "unapproved game uploads are not public");
+
   response = await fetch(`${baseUrl}/ported-games/missing/index.html`);
   assert.equal(response.status, 404);
   assert.equal(await response.text(), "Game asset not found");
@@ -133,4 +147,5 @@ try {
   server.close();
   await once(server, "close");
   await rm(assetDirectory, { recursive: true, force: true });
+  await rm(gameDataDirectory, { recursive: true, force: true });
 }

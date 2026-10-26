@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import pinoHttp from "pino-http";
 import router from "./routes";
 import { logger } from "./lib/logger";
+import { db, siteSettingsTable } from "@workspace/db";
 import { sessionMiddleware, trackPresence } from "./lib/auth";
 import { ensureDeviceCookie } from "./lib/device-tracking";
 import { recordError, describeError } from "./lib/error-buffer";
@@ -12,6 +13,7 @@ import {
   createPortedGameAssetsRouter,
   shouldServePortedGameRequest,
 } from "./lib/ported-game-assets";
+import { GAME_PORT_DATA_ROOT } from "./lib/game-port-data";
 
 const app: Express = express();
 app.set("trust proxy", 1);
@@ -44,6 +46,15 @@ const staticDir = path.resolve(repoRoot, "artifacts/photo-desktop/dist/public");
 if (isSelfHostedStatic) {
   const gameAssetsOnly = createPortedGameAssetsRouter(
     path.join(repoRoot, "selfhost", "data", "ported-games"),
+    {
+      gameDataDirectory: GAME_PORT_DATA_ROOT,
+      isGameApproved: async gameId => {
+        const [row] = await db.select({
+          gamePortApprovals: siteSettingsTable.gamePortApprovals,
+        }).from(siteSettingsTable).limit(1);
+        return Array.isArray(row?.gamePortApprovals) && row.gamePortApprovals.includes(gameId);
+      },
+    },
   );
 
   // Public game files are served before device cookies, sessions, API routes,

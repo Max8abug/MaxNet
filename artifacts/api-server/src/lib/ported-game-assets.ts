@@ -1,9 +1,10 @@
 import express, { type Router } from "express";
 import { createReadStream } from "node:fs";
-import { readFile, readdir, stat } from "node:fs/promises";
+import { lstat, readFile, readdir, stat } from "node:fs/promises";
 import path from "node:path";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
+import { GAME_PORT_DATA_CATALOG, GAME_PORT_DATA_ROOT, safeGameDataPath } from "./game-port-data";
 
 const GAME_CONTENT_SECURITY_POLICY = [
   "sandbox allow-forms allow-modals allow-pointer-lock allow-downloads allow-scripts",
@@ -159,9 +160,16 @@ export function shouldServePortedGameRequest(
   return isLegacyGameHost || isGameAssetPath;
 }
 
-export function createPortedGameAssetsRouter(assetDirectory: string): Router {
+export function createPortedGameAssetsRouter(
+  assetDirectory: string,
+  options: {
+    gameDataDirectory?: string;
+    isGameApproved?: (gameId: string) => Promise<boolean>;
+  } = {},
+): Router {
   const router = express.Router();
   const resolvedAssetDirectory = path.resolve(assetDirectory);
+  const gameDataDirectory = path.resolve(options.gameDataDirectory ?? GAME_PORT_DATA_ROOT);
 
   router.use("/ported-games", async (request, response, next) => {
     if (!/\.html?$/i.test(request.path)) return next();
@@ -272,6 +280,43 @@ export function createPortedGameAssetsRouter(assetDirectory: string): Router {
       },
     }),
   );
+
+  router.use("/ported-games", async (request, response, next) => {
+    if (request.method !== "GET" && request.method !== "HEAD") return next();
+    let parts: string[];
+    try {
+      parts = decodeURIComponent(request.path).split("/").filter(Boolean);
+    } catch {
+      return response.status(400).type("text/plain").send("Invalid game path");
+    }
+    if (parts.length < 2) return next();
+    const [assetId, ...pathParts] = parts;
+    const game = GAME_PORT_DATA_CATALOG.find(item => item.assetId === assetId);
+    const relativePath = safeGameDataPath(pathParts.join("/"));
+    if (!game || !relativePath || !options.isGameApproved) return next();
+    if (!await options.isGameApproved(game.id)) return next();
+
+    const filePath = path.resolve(gameDataDirectory, game.assetId, ...relativePath.split("/"));
+    if (!filePath.startsWith(`${path.resolve(gameDataDirectory, game.assetId)}${path.sep}`)) return next();
+    try {
+      const info = await lstat(filePath);
+      if (!info.isFile() || info.isSymbolicLink()) return next();
+      response.status(200).set({
+        "Content-Type": "application/octet-stream",
+        "Content-Length": String(info.size),
+        "Access-Control-Allow-Origin": "*",
+        "X-Content-Type-Options": "nosniff",
+        "Cache-Control": "public, max-age=3600",
+      });
+      if (request.method === "HEAD") return response.end();
+      await pipeline(createReadStream(filePath), response);
+      return;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") return next();
+      if (response.headersSent) return response.destroy(error as Error);
+      return next(error);
+    }
+  });
 
   router.use((_request, response) => {
     response.status(404).type("text/plain").send("Game asset not found");

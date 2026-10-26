@@ -254,6 +254,41 @@ export async function setPortedGameApproved(gameId: string, approved: boolean): 
   }));
 }
 
+export type GamePortDataFile = { path: string; bytes: number };
+export type GamePortDataGame = {
+  id: string;
+  assetId: string;
+  title: string;
+  needs: string;
+  uploadable: boolean;
+  files: GamePortDataFile[];
+};
+export async function fetchGamePortData(): Promise<{ games: GamePortDataGame[] }> {
+  return jsonOrThrow(await fetch(`${BASE}/site-settings/game-data`, {
+    ...opts, cache: "no-store",
+  }));
+}
+export async function uploadGamePortData(
+  gameId: string,
+  relativePath: string,
+  file: File,
+): Promise<GamePortDataFile> {
+  const response = await fetch(
+    `${BASE}/site-settings/game-data/${encodeURIComponent(gameId)}/upload?path=${encodeURIComponent(relativePath)}`,
+    {
+      ...opts,
+      method: "POST",
+      headers: {
+        "Content-Type": "application/octet-stream",
+        "X-Game-File-Size": String(file.size),
+      },
+      body: file,
+    },
+  );
+  const result = await jsonOrThrow(response) as GamePortDataFile;
+  return result;
+}
+
 export async function fetchGameIcons(): Promise<{ gameIcons: Record<string, string> }> {
   return jsonOrThrow(await fetch(`${BASE}/site-settings/game-icons`, { cache: "no-store" }));
 }

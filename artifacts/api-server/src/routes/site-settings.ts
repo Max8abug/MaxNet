@@ -1,5 +1,10 @@
 import { Router, type IRouter } from "express";
 import { createHash, randomUUID } from "node:crypto";
+import { createWriteStream } from "node:fs";
+import { lstat, mkdir, readdir, rename, rm, stat } from "node:fs/promises";
+import path from "node:path";
+import { Transform } from "node:stream";
+import { pipeline } from "node:stream/promises";
 import { db, siteSettingsTable } from "@workspace/db";
 import { eq, sql } from "drizzle-orm";
 import { requireAdmin } from "../lib/auth";
@@ -8,6 +13,14 @@ import { normalizeBlockedPhrases } from "../lib/content-filter";
 import { cleanArchivedFeatures, isArchivableFeatureId } from "@workspace/feature-registry";
 import { cleanupAfterMutation, lockStorage, queueCleanup, trackUpload } from "../lib/storage-mutations";
 import { logger } from "../lib/logger";
+import {
+  GAME_PORT_DATA_CATALOG,
+  GAME_PORT_DATA_ROOT,
+  MAX_GAME_PORT_DATA_FILE_BYTES,
+  MAX_GAME_PORT_DATA_TOTAL_BYTES,
+  gameDataPort,
+  safeGameDataPath,
+} from "../lib/game-port-data";
 
 const router: IRouter = Router();
 
@@ -59,6 +72,110 @@ router.put("/site-settings/game-ports/:gameId", requireAdmin, async (req, res) =
   res.set("Cache-Control", "no-store").json({
     approvedGamePorts: cleanGamePortApprovals(updated?.gamePortApprovals),
   });
+});
+
+async function listGameDataFiles(gameId: string) {
+  const port = gameDataPort(gameId);
+  if (!port) return [];
+  const root = path.join(GAME_PORT_DATA_ROOT, port.assetId);
+  const files: Array<{ path: string; bytes: number }> = [];
+  async function visit(directory: string, prefix = "") {
+    let entries;
+    try { entries = await readdir(directory, { withFileTypes: true }); }
+    catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") return;
+      throw error;
+    }
+    for (const entry of entries) {
+      if (entry.isSymbolicLink() || entry.name.startsWith(".")) continue;
+      const relative = prefix ? `${prefix}/${entry.name}` : entry.name;
+      if (!safeGameDataPath(relative)) continue;
+      const absolute = path.join(directory, entry.name);
+      if (entry.isDirectory()) await visit(absolute, relative);
+      else if (entry.isFile()) files.push({ path: relative, bytes: (await stat(absolute)).size });
+    }
+  }
+  await visit(root);
+  return files.sort((left, right) => left.path.localeCompare(right.path));
+}
+
+router.get("/site-settings/game-data", requireAdmin, async (_req, res) => {
+  const games = await Promise.all(GAME_PORT_DATA_CATALOG.map(async game => ({
+    ...game,
+    files: await listGameDataFiles(game.id),
+  })));
+  res.set("Cache-Control", "no-store").json({ games });
+});
+
+router.post("/site-settings/game-data/:gameId/upload", requireAdmin, async (req, res) => {
+  const game = gameDataPort(String(req.params.gameId));
+  const relativePath = safeGameDataPath(String(req.query.path ?? ""));
+  if (process.env["SERVE_STATIC"] !== "1") {
+    res.status(503).json({ error: "Game data uploads are available on the self-hosted site only." });
+    return;
+  }
+  if (!req.is("application/octet-stream")) {
+    res.status(415).json({ error: "Send one game data file as application/octet-stream." });
+    return;
+  }
+  if (!game || !relativePath) {
+    res.status(400).json({ error: "Choose a supported game and a safe relative file path." });
+    return;
+  }
+  const contentLength = Number(req.get("x-game-file-size") ?? req.get("content-length") ?? 0);
+  if (contentLength > MAX_GAME_PORT_DATA_FILE_BYTES) {
+    res.status(413).json({ error: "A game data file cannot exceed 8 GB." });
+    return;
+  }
+
+  const gameRoot = path.join(GAME_PORT_DATA_ROOT, game.assetId);
+  const destination = path.resolve(gameRoot, ...relativePath.split("/"));
+  if (!destination.startsWith(`${path.resolve(gameRoot)}${path.sep}`)) {
+    res.status(400).json({ error: "Invalid game data path." });
+    return;
+  }
+  const files = await listGameDataFiles(game.id);
+  const existing = files.find(file => file.path === relativePath)?.bytes ?? 0;
+  if (
+    !Number.isFinite(contentLength) ||
+    contentLength <= 0 ||
+    files.reduce((total, file) => total + file.bytes, 0) - existing + contentLength > MAX_GAME_PORT_DATA_TOTAL_BYTES
+  ) {
+    res.status(413).json({ error: "Game data storage is limited to 12 GB per game." });
+    return;
+  }
+
+  const temporary = `${destination}.${randomUUID()}.upload`;
+  let bytes = 0;
+  const digest = createHash("sha256");
+  const limit = new Transform({
+    transform(chunk: Buffer, _encoding, callback) {
+      bytes += chunk.length;
+      if (bytes > MAX_GAME_PORT_DATA_FILE_BYTES) {
+        callback(new Error("A game data file cannot exceed 8 GB."));
+        return;
+      }
+      digest.update(chunk);
+      callback(null, chunk);
+    },
+  });
+  try {
+    await mkdir(path.dirname(destination), { recursive: true });
+    await pipeline(req, limit, createWriteStream(temporary, { flags: "wx", mode: 0o600 }));
+    if (bytes !== contentLength) throw new Error("Upload ended before the complete file arrived.");
+    const info = await lstat(destination).catch(() => null);
+    if (info?.isSymbolicLink() || (info && !info.isFile())) throw new Error("Destination is not a regular file.");
+    await rename(temporary, destination);
+    res.status(201).set("Cache-Control", "no-store").json({
+      path: relativePath,
+      bytes,
+      sha256: digest.digest("hex"),
+    });
+  } catch (error) {
+    await rm(temporary, { force: true }).catch(() => {});
+    logger.warn({ err: error, gameId: game.id, path: relativePath }, "Game data upload failed");
+    if (!res.headersSent) res.status(400).json({ error: error instanceof Error ? error.message : "Upload failed." });
+  }
 });
 
 function cleanGamePortIcons(value: unknown): Record<string, string> {

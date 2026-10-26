@@ -106,6 +106,16 @@ Replit previews use their App Storage bucket instead. Creating a bucket in
 Replit does not provision storage on your own server or transfer files there.
 Development and self-hosted production uploads remain separate.
 
+Admin-supplied game data is stored separately at
+`selfhost/data/game-user-files` (override with `GAME_PORT_DATA_DIR`). It is
+excluded from Git and deployment bundles; back it up separately. Each file is
+limited to 8 GB and each game's folder to 12 GB. Files are served at the game's
+normal `/ported-games/<asset-id>/...` path only after that game is approved.
+Approval makes uploaded files downloadable by all visitors who can open the
+game. Only upload files you have the right to publish. Some engines still need
+a compatible browser build or a port-specific loader before uploaded data can
+be used.
+
 For developers, the opt-in storage regression checks create unique disposable
 users, ranks, pages, and files in the configured database and both storage
 backends, then remove them:
@@ -431,9 +441,10 @@ run `backup.sh` against the owner's `.env` or create any real schedule.
 The full restore suite currently exposes the planner foreign-key limitation
 noted above; `--scheduled-only` validates the export command, not full restore.
 
-When using nginx, add `client_max_body_size 10m;` inside the `server` block to
-permit the app's 6 MB per-file uploads (JSON base64 encoding increases the request
-size). The default nginx limit is too small for these uploads.
+When using nginx, add `client_max_body_size 8g;` inside the `server` block if
+you intend to accept the maximum game-data upload size. The default nginx limit
+is too small. Existing small media uploads need only the lower limit stated by
+their individual forms.
 
 ### Pulling updates
 
