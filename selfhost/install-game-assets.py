@@ -26,7 +26,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 ASSET_ROOT = REPO_ROOT / "selfhost" / "data" / "ported-games"
 MANIFEST_PATH = ASSET_ROOT / "asset-manifest.json"
 USER_AGENT = "Portfolio98-selfhost-game-assets/1.0"
-MAX_TOTAL_BYTES = 10_600_000_000
+MAX_TOTAL_BYTES = 15_000_000_000
 MAX_WORKERS = 6
 RUFFLE_VERSION = "0.7.1"
 RUFFLE_ARCHIVE_URL = (
@@ -261,6 +261,66 @@ GAMES = (
         "entry": "index.html",
         "ruffle": True,
     },
+    {
+        "id": "bendy",
+        "repo": "genizy/web-port",
+        "commit": "a8bea5fd11f88e5a9192857f434e299c40efe7e6",
+        "path": "bendy",
+        "remote_base_href": "https://cdn.jsdelivr.net/gh/genizy/web-port@main/bendy/",
+        "expected_files": 14,
+        "expected_bytes": 136_025_330,
+        "entry": "index.html",
+    },
+    {
+        "id": "duck-8",
+        "repo": "web-ports/duck-8",
+        "commit": "e383317e834db183a3893b0303b4d7d9be2a473b",
+        "path": "",
+        "remote_base_href": "",
+        "expected_files": 21,
+        "expected_bytes": 187_434_672,
+        "entry": "index.html",
+    },
+    {
+        "id": "inside",
+        "repo": "web-ports/milk-bag-games",
+        "commit": "b807a5dbb662c604418d9484820522f597c3d810",
+        "path": "inside",
+        "remote_base_href": "",
+        "expected_files": 35,
+        "expected_bytes": 176_756_632,
+        "entry": "index.html",
+    },
+    {
+        "id": "outside",
+        "repo": "web-ports/milk-bag-games",
+        "commit": "b807a5dbb662c604418d9484820522f597c3d810",
+        "path": "outside",
+        "remote_base_href": "",
+        "expected_files": 59,
+        "expected_bytes": 696_890_477,
+        "entry": "index.html",
+    },
+    {
+        "id": "tfs",
+        "repo": "AlexBoops/TFS",
+        "commit": "9b6be0e00f0c5a65228d8aed9fee4e0cb5a7ab88",
+        "path": "",
+        "remote_base_href": "",
+        "expected_files": 1_021,
+        "expected_bytes": 1_136_856_008,
+        "entry": "index.html",
+    },
+    {
+        "id": "tru",
+        "repo": "AlexBoops/tru",
+        "commit": "bba8426e8e3d02e6a85b5091f7fdbad3baf9490e",
+        "path": "",
+        "remote_base_href": "",
+        "expected_files": 1_056,
+        "expected_bytes": 1_217_512_058,
+        "entry": "index.html",
+    },
 )
 
 PVZ_CACHE_FUNCTION_ORIGINAL = b"""    async function mergeFiles(fileParts, cacheKey) {
@@ -389,6 +449,28 @@ CLASS09_RENPY_PRE_URL_ORIGINAL = b'https://cdn.jsdelivr.net/gh/genizy/web-port@7
 CLASS09_RENPY_PRE_URL_SANDBOX_SAFE = b'./renpy-pre.js'
 CLASS09_RENPY_URL_ORIGINAL = b'https://cdn.jsdelivr.net/gh/genizy/web-port@725a19f20c3f376529284c9f86299581719e8d19/class-of-09/renpy.js'
 CLASS09_RENPY_URL_SANDBOX_SAFE = b'./renpy.js'
+
+RENPY_SERVICE_WORKER_ORIGINAL = b"""// Register the service worker.
+      if (navigator.serviceWorker) {
+          if (!navigator.serviceWorker.controller) {
+              navigator.serviceWorker.register('./service-worker.js', { updateViaCache: 'all' });
+          }
+      }"""
+RENPY_SERVICE_WORKER_SANDBOX_SAFE = b"// Service worker disabled in the sandboxed game frame."
+MILKBAG_SERVICE_WORKER_ORIGINAL = b"""// Register the service worker.
+        if (navigator.serviceWorker) {
+            if (!navigator.serviceWorker.controller) {
+                navigator.serviceWorker.register('./service-worker.js', {
+                    updateViaCache: 'all'
+                });
+            }
+        }"""
+MILKBAG_SERVICE_WORKER_SANDBOX_SAFE = b"// Service worker disabled in the sandboxed game frame."
+MILKBAG_WASM_URL_ORIGINAL = {
+    "inside": b"https://raw.githubusercontent.com/web-ports/milk-bag-games/refs/heads/main/inside/renpy.wasm",
+    "outside": b"https://raw.githubusercontent.com/web-ports/milk-bag-games/refs/heads/main/outside/renpy.wasm",
+}
+MILKBAG_WASM_URL_SANDBOX_SAFE = b"./renpy.wasm"
 
 HILL_CLIMB_JSPI_CHECK_ORIGINAL = b"""const supported = 'Suspending' in WebAssembly;
   if (!supported) status('This browser lacks WebAssembly JavaScript Promise Integration: use Chrome or Edge 137 or newer.');"""
@@ -616,6 +698,24 @@ def expected_local_bytes(game: dict) -> int:
         if game["id"] == "tattletail"
         else 0
     )
+    renpy_service_worker_patch_delta = (
+        len(RENPY_SERVICE_WORKER_SANDBOX_SAFE)
+        - len(RENPY_SERVICE_WORKER_ORIGINAL)
+        if game["id"] in {"tfs", "tru"}
+        else 0
+    )
+    milkbag_service_worker_patch_delta = (
+        len(MILKBAG_SERVICE_WORKER_SANDBOX_SAFE)
+        - len(MILKBAG_SERVICE_WORKER_ORIGINAL)
+        if game["id"] in {"inside", "outside"}
+        else 0
+    )
+    milkbag_wasm_url_patch_delta = (
+        len(MILKBAG_WASM_URL_SANDBOX_SAFE)
+        - len(MILKBAG_WASM_URL_ORIGINAL[game["id"]])
+        if game["id"] in MILKBAG_WASM_URL_ORIGINAL
+        else 0
+    )
     if game["remote_base_href"]:
         base_href_delta = (
             -len(game["remote_base_href"].encode("utf-8"))
@@ -647,6 +747,9 @@ def expected_local_bytes(game: dict) -> int:
         + tabs_cache_patch_delta
         + nitw_cdn_patch_delta
         + tattletail_data_url_patch_delta
+        + renpy_service_worker_patch_delta
+        + milkbag_service_worker_patch_delta
+        + milkbag_wasm_url_patch_delta
     )
 
 
@@ -691,6 +794,10 @@ def localize_base_href(game: dict, index_path: Path) -> None:
         "ac-gamecube",
         "hill-climb-racing",
         "night-in-the-woods",
+        "tfs",
+        "tru",
+        "inside",
+        "outside",
     }:
         return
     content = index_path.read_bytes()
@@ -771,6 +878,23 @@ def localize_base_href(game: dict, index_path: Path) -> None:
             CLASS09_SERVICE_WORKER_ORIGINAL,
             CLASS09_SERVICE_WORKER_SANDBOX_SAFE,
             "Class of '09 service worker registration",
+        )
+    if game["id"] in {"tfs", "tru"}:
+        apply_patch(
+            RENPY_SERVICE_WORKER_ORIGINAL,
+            RENPY_SERVICE_WORKER_SANDBOX_SAFE,
+            "Ren'Py service worker registration",
+        )
+    if game["id"] in {"inside", "outside"}:
+        apply_patch(
+            MILKBAG_SERVICE_WORKER_ORIGINAL,
+            MILKBAG_SERVICE_WORKER_SANDBOX_SAFE,
+            "Milk Bag game service worker registration",
+        )
+        apply_patch(
+            MILKBAG_WASM_URL_ORIGINAL[game["id"]],
+            MILKBAG_WASM_URL_SANDBOX_SAFE,
+            "Milk Bag game external WebAssembly URL",
         )
     if game["id"] == "hill-climb-racing":
         apply_patch(

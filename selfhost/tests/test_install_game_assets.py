@@ -91,6 +91,12 @@ class GamePortInventoryTests(unittest.TestCase):
             "quake3": (11, 50_937_513),
             "hit-and-run-web": (12_568, 1_228_679_250),
             "dumb-ways-to-die": (3, 25_836_728),
+            "bendy": (14, 136_025_330),
+            "duck-8": (21, 187_434_672),
+            "inside": (35, 176_756_632),
+            "outside": (59, 696_890_477),
+            "tfs": (1_021, 1_136_856_008),
+            "tru": (1_056, 1_217_512_058),
         }
         games = {game["id"]: game for game in installer.GAMES}
         for game_id, (files, size) in expected.items():
@@ -99,6 +105,49 @@ class GamePortInventoryTests(unittest.TestCase):
                 self.assertEqual(games[game_id]["expected_bytes"], size)
                 self.assertTrue(games[game_id]["commit"])
         self.assertGreater(sum(game["expected_bytes"] for game in installer.GAMES), 8_000_000_000)
+        self.assertLess(
+            sum(game["expected_bytes"] for game in installer.GAMES)
+            + installer.RUFFLE_BYTES,
+            installer.MAX_TOTAL_BYTES,
+        )
+
+    def test_renpy_ports_disable_service_workers_in_the_sandbox(self):
+        game = next(game for game in installer.GAMES if game["id"] == "tfs")
+        source = installer.RENPY_SERVICE_WORKER_ORIGINAL
+        with tempfile.TemporaryDirectory() as temporary:
+            index_path = Path(temporary) / "index.html"
+            index_path.write_bytes(source)
+            installer.localize_base_href(game, index_path)
+            localized = index_path.read_bytes()
+
+        self.assertNotIn(b"navigator.serviceWorker.register", localized)
+        self.assertIn(b"Service worker disabled", localized)
+        self.assertEqual(
+            len(localized) - len(source),
+            installer.expected_local_bytes(game) - game["expected_bytes"],
+        )
+
+    def test_milk_bag_ports_use_local_wasm_and_disable_service_workers(self):
+        game = next(game for game in installer.GAMES if game["id"] == "inside")
+        source = (
+            installer.MILKBAG_SERVICE_WORKER_ORIGINAL
+            + b'\nconst changelater = "'
+            + installer.MILKBAG_WASM_URL_ORIGINAL["inside"]
+            + b'";'
+        )
+        with tempfile.TemporaryDirectory() as temporary:
+            index_path = Path(temporary) / "index.html"
+            index_path.write_bytes(source)
+            installer.localize_base_href(game, index_path)
+            localized = index_path.read_bytes()
+
+        self.assertNotIn(b"navigator.serviceWorker.register", localized)
+        self.assertNotIn(b"raw.githubusercontent.com", localized)
+        self.assertIn(b'const changelater = "./renpy.wasm";', localized)
+        self.assertEqual(
+            len(localized) - len(source),
+            installer.expected_local_bytes(game) - game["expected_bytes"],
+        )
 
     def test_nonstandard_game_entry_is_recorded_in_manifest(self):
         game = next(game for game in installer.GAMES if game["id"] == "minesweeperplus")

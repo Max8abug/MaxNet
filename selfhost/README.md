@@ -447,14 +447,17 @@ still checks and installs any missing game files without stopping the site. It
 then asks whether to force a code rebuild; answer **no** to finish an assets-only
 install.
 
-Setup and updates fetch the selected game-port folders (about 8.1 GB total on a
+Setup and updates fetch the selected game-port folders (about 13.9 GB total on a
 fresh install) into the ignored `selfhost/data/ported-games` directory. Only the
 pinned game folders are downloaded; the binaries are not added to Git and can
-be fetched again if removed. All pending ports, including these six new
-browser-ready additions, remain hidden until an administrator approves each in
-the site's Pending Game Ports folder. Wolf4SDL and KSPWeb are not included: the
-former is native source without a browser build or game data, and the latter's
-repository does not contain its multi-gigabyte game files.
+be fetched again if removed. The new browser-ready additions are Bendy, Duck-8,
+Inside, Outside, TFS, and TRU. These remain hidden until an administrator
+approves each in the site's Pending Game Ports folder. Other pending entries
+remain listed for review but are not installed when their repository contains
+only source code, is missing its game data, or depends on a separate game file.
+Wolf4SDL and KSPWeb are not included: the former is native source without a
+browser build or game data, and the latter's repository does not contain its
+multi-gigabyte game files.
 The files are served directly, without duplicating them into the frontend build.
 Downloads finish before the updater stops the running site.
 
