@@ -447,10 +447,13 @@ still checks and installs any missing game files without stopping the site. It
 then asks whether to force a code rebuild; answer **no** to finish an assets-only
 install.
 
-Setup and updates fetch the selected game-port files (about 14.4 GB total on a
+Setup and updates fetch the selected game-port files (about 15.0 GB total on a
 fresh install) into the ignored `selfhost/data/ported-games` directory. Only the
 pinned game folders are downloaded; the binaries are not added to Git and can
-be fetched again if removed. The browser-ready additions are Bendy, Duck-8,
+be fetched again if removed. Stardew Valley is included with a sandbox
+compatibility patch: it uses in-memory downloads when browser-private storage
+is unavailable, so its content is fetched again on launch and progress may not
+persist. The browser-ready additions are Bendy, Duck-8,
 Inside, Outside, TFS, TRU, Geometry Dash Web Port, the Doom WASM demo, and the
 OpenJKDF2 demo. OpenJKDF2's files are fetched from the demo linked by its README
 and pinned individually by Git blob hashes. These ports remain hidden until an

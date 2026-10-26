@@ -383,7 +383,33 @@ GAMES = (
             },
         ],
     },
+    {
+        "id": "stardew-wasm",
+        "repo": "degloved-net/stardew-wasm",
+        "commit": "a664842611f09771f9155b9718046649bcaded33",
+        "path": "",
+        "remote_base_href": "",
+        "expected_files": 96,
+        "expected_bytes": 640_053_043,
+        "entry": "index.html",
+    },
 )
+
+STARDEW_OPFS_SETUP_ORIGINAL = (
+    b"const opfs = await navigator.storage.getDirectory();"
+)
+STARDEW_OPFS_SETUP_SANDBOX_SAFE = b"""const opfs = await (async () => {
+try { return await navigator.storage?.getDirectory?.(); } catch { return null; }
+})();"""
+STARDEW_OPFS_PERSIST_ORIGINAL = b"navigator.storage.persist?.().catch(() => false)"
+STARDEW_OPFS_PERSIST_SANDBOX_SAFE = b"navigator.storage?.persist?.().catch(() => false)"
+STARDEW_OPFS_READ_ORIGINAL = b"""async function opfsRead(name) {
+\treturn new Uint8Array(await (await (await opfs.getFileHandle(name)).getFile()).arrayBuffer());
+}"""
+STARDEW_OPFS_READ_SANDBOX_SAFE = b"""async function opfsRead(name) {
+\tif (!opfs) throw new DOMException("Persistent storage unavailable", "NotFoundError");
+\treturn new Uint8Array(await (await (await opfs.getFileHandle(name)).getFile()).arrayBuffer());
+}"""
 
 PVZ_CACHE_FUNCTION_ORIGINAL = b"""    async function mergeFiles(fileParts, cacheKey) {
       const cache = await caches.open("pvz-cache");
@@ -828,6 +854,16 @@ def expected_local_bytes(game: dict) -> int:
         if game["id"] == "geometry-dash-webport"
         else 0
     )
+    stardew_opfs_patch_delta = (
+        len(STARDEW_OPFS_SETUP_SANDBOX_SAFE)
+        - len(STARDEW_OPFS_SETUP_ORIGINAL)
+        + len(STARDEW_OPFS_PERSIST_SANDBOX_SAFE)
+        - len(STARDEW_OPFS_PERSIST_ORIGINAL)
+        + len(STARDEW_OPFS_READ_SANDBOX_SAFE)
+        - len(STARDEW_OPFS_READ_ORIGINAL)
+        if game["id"] == "stardew-wasm"
+        else 0
+    )
     if game["remote_base_href"]:
         base_href_delta = (
             -len(game["remote_base_href"].encode("utf-8"))
@@ -864,7 +900,24 @@ def expected_local_bytes(game: dict) -> int:
         + milkbag_wasm_url_patch_delta
         + geometry_dash_cdn_patch_delta
         + geometry_dash_service_worker_patch_delta
+        + stardew_opfs_patch_delta
     )
+
+
+def patch_stardew_game_js(game: dict, game_root: Path) -> None:
+    if game["id"] != "stardew-wasm":
+        return
+    game_js = game_root / "game.js"
+    source = game_js.read_bytes()
+    for original, replacement, label in (
+        (STARDEW_OPFS_SETUP_ORIGINAL, STARDEW_OPFS_SETUP_SANDBOX_SAFE, "OPFS setup"),
+        (STARDEW_OPFS_PERSIST_ORIGINAL, STARDEW_OPFS_PERSIST_SANDBOX_SAFE, "storage persistence"),
+        (STARDEW_OPFS_READ_ORIGINAL, STARDEW_OPFS_READ_SANDBOX_SAFE, "OPFS reads"),
+    ):
+        if source.count(original) != 1:
+            raise RuntimeError(f"Unexpected Stardew {label} code; refusing to patch")
+        source = source.replace(original, replacement, 1)
+    game_js.write_bytes(source)
 
 
 def expected_local_files(game: dict) -> int:
@@ -1280,6 +1333,7 @@ def install_game(game: dict, files: list[dict]) -> None:
             index_path.write_bytes(html)
         elif (staging / "index.html").is_file():
             localize_base_href(game, staging / "index.html")
+        patch_stardew_game_js(game, staging)
         if game.get("ruffle"):
             install_ruffle_assets(staging)
         installed_files = [path for path in staging.rglob("*") if path.is_file()]

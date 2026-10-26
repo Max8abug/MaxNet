@@ -100,6 +100,7 @@ class GamePortInventoryTests(unittest.TestCase):
             "geometry-dash-webport": (29, 387_802_365),
             "doom-wasm": (5, 4_573_731),
             "openjkdf2": (5, 67_286_014),
+            "stardew-wasm": (96, 640_053_043),
         }
         games = {game["id"]: game for game in installer.GAMES}
         for game_id, (files, size) in expected.items():
@@ -119,6 +120,28 @@ class GamePortInventoryTests(unittest.TestCase):
         openjkdf2 = next(game for game in installer.GAMES if game["id"] == "openjkdf2")
         self.assertEqual(len(installer.source_tree(openjkdf2)), 5)
         self.assertTrue(all(file["url"].startswith("https://") for file in installer.source_tree(openjkdf2)))
+
+    def test_stardew_uses_memory_when_opaque_sandbox_denies_opfs(self):
+        game = next(game for game in installer.GAMES if game["id"] == "stardew-wasm")
+        source = b"\n".join((
+            installer.STARDEW_OPFS_SETUP_ORIGINAL,
+            installer.STARDEW_OPFS_PERSIST_ORIGINAL,
+            installer.STARDEW_OPFS_READ_ORIGINAL,
+        ))
+        with tempfile.TemporaryDirectory() as temporary:
+            game_root = Path(temporary)
+            game_js = game_root / "game.js"
+            game_js.write_bytes(source)
+            installer.patch_stardew_game_js(game, game_root)
+            patched = game_js.read_bytes()
+
+        self.assertIn(b"catch { return null; }", patched)
+        self.assertIn(b"navigator.storage?.persist?.()", patched)
+        self.assertIn(b'if (!opfs) throw new DOMException("Persistent storage unavailable", "NotFoundError")', patched)
+        self.assertEqual(
+            len(patched) - len(source),
+            installer.expected_local_bytes(game) - game["expected_bytes"],
+        )
 
     def test_renpy_ports_disable_service_workers_in_the_sandbox(self):
         game = next(game for game in installer.GAMES if game["id"] == "tfs")
