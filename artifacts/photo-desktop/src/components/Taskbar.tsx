@@ -26,6 +26,11 @@ export function Taskbar({ page }: { page: string }) {
   const { addWindow, isStringMode, setStringMode, resetState, windows, toggleWindowState, bringToFront } = useDesktopStore();
   const [startOpen, setStartOpen] = useState(false);
   const [loginOpen, setLoginOpen] = useState(false);
+  useEffect(() => {
+    const openLogin = () => setLoginOpen(true);
+    window.addEventListener("maxnet:open-login", openLogin);
+    return () => window.removeEventListener("maxnet:open-login", openLogin);
+  }, []);
   const [overviewOpen, setOverviewOpen] = useState(false);
   const setProfileOpen = useProfileDialogStore(state => state.setProfileOpen);
   const [, setLocation] = useLocation();

@@ -30,6 +30,7 @@ export interface WindowData {
   dmPeer?: string;
   gameId?: NewGamePortId;
   gamePreview?: boolean;
+  browserView?: "feed" | "people" | "wiki";
 }
 
 export interface StringConnection {

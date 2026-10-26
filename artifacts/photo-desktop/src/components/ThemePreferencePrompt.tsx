@@ -4,7 +4,9 @@ import { THEME_OPTIONS, useThemeMode } from '../lib/theme';
 export function ThemePreferencePrompt() {
   const { needsInitialChoice, chooseInitialTheme } = useThemeMode();
 
-  if (!needsInitialChoice) return null;
+  const requestedTheme = new URLSearchParams(window.location.search).get("maxnet-theme");
+  const hasOsTheme = THEME_OPTIONS.some((option) => option.value === requestedTheme);
+  if (!needsInitialChoice || hasOsTheme) return null;
 
   return (
     <div
@@ -15,7 +17,7 @@ export function ThemePreferencePrompt() {
     >
       <div className="theme-preference-dialog win98-window w-[420px] max-w-full bg-[#c0c0c0]">
         <div className="win98-titlebar px-2 py-1 text-sm">
-          <span>Welcome to Photo Desktop</span>
+          <span>Welcome to MaxNet OS</span>
         </div>
         <div className="flex flex-col gap-3 p-3 text-sm">
           <div>

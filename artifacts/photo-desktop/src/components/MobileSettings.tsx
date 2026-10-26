@@ -1,4 +1,4 @@
-import { LogIn, Moon, Palette, UserRound } from 'lucide-react';
+import { LogIn, Moon, MonitorUp, Palette, UserRound } from 'lucide-react';
 import { useAuth } from '../lib/auth-store';
 import { THEME_OPTIONS, useThemeMode } from '../lib/theme';
 import { LoginDialog } from './LoginDialog';
@@ -9,6 +9,7 @@ export function MobileSettings({ onRequestLogin }: { onRequestLogin: () => void 
   const user = useAuth((state) => state.user);
   const { theme, setTheme, themeSaving, themeError } = useThemeMode();
   const setProfileOpen = useProfileDialogStore(state => state.setProfileOpen);
+  const isMaxNetOS = window.localStorage.getItem('maxnet-os-mode') === '1';
 
   return (
     <div className="mobile-settings flex h-full flex-col gap-3 overflow-y-auto p-3 text-sm">
@@ -46,6 +47,21 @@ export function MobileSettings({ onRequestLogin }: { onRequestLogin: () => void 
           {themeSaving ? "Saving theme…" : themeError ? "Your previous theme has been restored." : user ? "Saved to your account and synced to your signed-in devices." : "Applies across the desktop. Sign in to save it to your account."}
         </p>
         {themeError && <p className="mt-1 text-xs text-red-700" role="alert">{themeError}</p>}
+        {user && isMaxNetOS && (
+          <div className="mt-3 flex flex-col gap-1">
+            <button
+              type="button"
+              disabled={themeSaving}
+              onClick={() => { window.location.href = "maxnet-os://theme/" + theme; }}
+              className="win98-button inline-flex min-h-9 items-center justify-center gap-2 px-3 py-2 font-bold disabled:opacity-50"
+              data-testid="button-sync-maxnet-os-theme"
+            >
+              <MonitorUp className="h-4 w-4" />
+              Sync theme to Linux Mint
+            </button>
+            <p className="text-xs text-gray-600">Linux Mint will ask before applying this theme on this device.</p>
+          </div>
+        )}
       </section>
 
       {user && <section className="mobile-settings-card win98-inset p-3">

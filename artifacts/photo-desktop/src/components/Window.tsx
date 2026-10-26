@@ -356,7 +356,7 @@ export function Window({
         {w.type === 'gamesmanager' && !isEditing && <GamesManager page={page} />}
         {w.type === 'dms' && !isEditing && <DMs initialPeer={w.dmPeer} />}
         {w.type === 'userpage' && !isEditing && <UserPage username={w.username || ''} />}
-        {w.type === 'browser' && !isEditing && <UserBrowser page={page} />}
+        {w.type === 'browser' && !isEditing && <UserBrowser page={page} initialView={w.browserView} />}
         {w.type === 'mypage' && !isEditing && <MyPageRouter />}
         {w.type === 'settings' && !isEditing && <MobileSettings onRequestLogin={() => setShowLogin(true)} />}
         {w.type === 'ranksadmin' && !isEditing && <RanksAdmin />}
