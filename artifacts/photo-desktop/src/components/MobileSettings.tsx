@@ -49,14 +49,16 @@ export function MobileSettings({ onRequestLogin }: { onRequestLogin: () => void 
         {themeError && <p className="mt-1 text-xs text-red-700" role="alert">{themeError}</p>}
         {user && isMaxNetOS && (
           <div className="mt-3 flex flex-col gap-1">
-            <a
-              href={"maxnet-os://theme/" + theme}
-              className="win98-button inline-flex min-h-9 items-center justify-center gap-2 px-3 py-2 font-bold"
+            <button
+              type="button"
+              disabled={themeSaving}
+              onClick={() => { window.location.href = "maxnet-os://theme/" + theme; }}
+              className="win98-button inline-flex min-h-9 items-center justify-center gap-2 px-3 py-2 font-bold disabled:opacity-50"
               data-testid="button-sync-maxnet-os-theme"
             >
               <MonitorUp className="h-4 w-4" />
               Sync theme to Linux Mint
-            </a>
+            </button>
             <p className="text-xs text-gray-600">Linux Mint will ask before applying this theme on this device.</p>
           </div>
         )}
