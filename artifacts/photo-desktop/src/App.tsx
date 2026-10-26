@@ -76,7 +76,10 @@ function AppLayout() {
       settings: { type: "settings", title: "MaxNet Display Settings", width: 480, height: 520 },
     };
     const launchWindow = windowIntents[intent];
-    if (launchWindow) addWindow(page, launchWindow);
+    if (launchWindow) {
+      if (intent === "news") window.localStorage.setItem("pd-news-opened", "1");
+      addWindow(page, launchWindow);
+    }
   }, [addWindow, authLoading, page, setTheme]);
   useEffect(() => {
     setProfileOpen(false);
