@@ -16,8 +16,14 @@ const REVIEWABLE_GAME_PORT_IDS = new Set([
   "amongus", "acgamecube", "classof09", "cuphead", "deltatraveler", "deltarune",
   "gangbeasts", "hillclimb", "untitledgoose", "oneshot",
   "minesweeperplus", "nightinthewoods", "tattletail", "tabs", "daddygame",
-    "webbalatro", "chocolatedoom", "ducklifeadventure", "duke3d", "dumbways",
-    "qwasm", "qwasm2", "quake3", "hitandrun", "wolf4sdl",
+  "webbalatro", "chocolatedoom", "ducklifeadventure", "duke3d", "dumbways",
+  "qwasm", "qwasm2", "quake3", "hitandrun", "wolf4sdl",
+  "doomwasm", "eduke32wasm", "biomesgame", "wwasm", "spacecadetpinball",
+  "bendy", "tfs", "tru", "claudeofduty", "webxash3d", "goldenballoon",
+  "duck8", "fallout1ce", "fallout2ce", "geometrydashwebport", "jsdos",
+  "lttp", "islepizza", "legolandport", "webcompiled", "inside", "outside",
+  "pokeemerald3d", "sourceengine", "98corbins", "stardewwasm", "openjkdf2",
+  "smgwebport", "ssbuportweb", "openlara", "wowser",
 ]);
 
 function cleanGamePortApprovals(value: unknown): string[] {
