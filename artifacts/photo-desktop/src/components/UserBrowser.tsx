@@ -9,6 +9,7 @@ import "./UserBrowser.css";
 
 type UserBrowserProps = {
   page?: string;
+  initialView?: "feed" | "people" | "wiki";
 };
 
 function displayActivity(lastSeen: string | null | undefined): string {
@@ -128,11 +129,11 @@ function LoadingCard({ index }: { index: number }) {
   );
 }
 
-export function UserBrowser({ page = "/" }: UserBrowserProps) {
+export function UserBrowser({ page = "/", initialView }: UserBrowserProps) {
   const [users, setUsers] = useState<PublicUser[]>([]);
   const [query, setQuery] = useState("");
   const [sortMode, setSortMode] = useState<"popular" | "alphabetical">("popular");
-  const [activeView, setActiveView] = useState<"feed" | "people" | "wiki">("feed");
+  const [activeView, setActiveView] = useState<"feed" | "people" | "wiki">(initialView ?? "feed");
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
