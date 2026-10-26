@@ -97,6 +97,9 @@ class GamePortInventoryTests(unittest.TestCase):
             "outside": (59, 696_890_477),
             "tfs": (1_021, 1_136_856_008),
             "tru": (1_056, 1_217_512_058),
+            "geometry-dash-webport": (29, 387_802_365),
+            "doom-wasm": (5, 4_573_731),
+            "openjkdf2": (5, 67_286_014),
         }
         games = {game["id"]: game for game in installer.GAMES}
         for game_id, (files, size) in expected.items():
@@ -110,6 +113,12 @@ class GamePortInventoryTests(unittest.TestCase):
             + installer.RUFFLE_BYTES,
             installer.MAX_TOTAL_BYTES,
         )
+        doom = next(game for game in installer.GAMES if game["id"] == "doom-wasm")
+        self.assertEqual(doom["path"], "examples/browser")
+        self.assertEqual(doom["entry"], "doom.html")
+        openjkdf2 = next(game for game in installer.GAMES if game["id"] == "openjkdf2")
+        self.assertEqual(len(installer.source_tree(openjkdf2)), 5)
+        self.assertTrue(all(file["url"].startswith("https://") for file in installer.source_tree(openjkdf2)))
 
     def test_renpy_ports_disable_service_workers_in_the_sandbox(self):
         game = next(game for game in installer.GAMES if game["id"] == "tfs")
@@ -144,6 +153,34 @@ class GamePortInventoryTests(unittest.TestCase):
         self.assertNotIn(b"navigator.serviceWorker.register", localized)
         self.assertNotIn(b"raw.githubusercontent.com", localized)
         self.assertIn(b'const changelater = "./renpy.wasm";', localized)
+        self.assertEqual(
+            len(localized) - len(source),
+            installer.expected_local_bytes(game) - game["expected_bytes"],
+        )
+
+    def test_geometry_dash_localizes_every_asset_and_disables_root_service_worker(self):
+        game = next(
+            game for game in installer.GAMES if game["id"] == "geometry-dash-webport"
+        )
+        source = (
+            installer.GEOMETRY_DASH_CDN_PREFIX_ORIGINAL
+            * installer.GEOMETRY_DASH_CDN_PREFIX_COUNT
+            + b"\n"
+            + installer.GEOMETRY_DASH_SERVICE_WORKER_ORIGINAL
+        )
+        with tempfile.TemporaryDirectory() as temporary:
+            index_path = Path(temporary) / "index.html"
+            index_path.write_bytes(source)
+            installer.localize_base_href(game, index_path)
+            localized = index_path.read_bytes()
+
+        self.assertNotIn(b"cdn.jsdelivr.net", localized)
+        self.assertEqual(
+            localized.count(installer.GEOMETRY_DASH_CDN_PREFIX_SANDBOX_SAFE),
+            installer.GEOMETRY_DASH_CDN_PREFIX_COUNT,
+        )
+        self.assertNotIn(b"navigator.serviceWorker.register('/sw.js')", localized)
+        self.assertIn(b"Service worker disabled", localized)
         self.assertEqual(
             len(localized) - len(source),
             installer.expected_local_bytes(game) - game["expected_bytes"],

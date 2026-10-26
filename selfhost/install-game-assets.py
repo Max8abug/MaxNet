@@ -321,6 +321,68 @@ GAMES = (
         "expected_bytes": 1_217_512_058,
         "entry": "index.html",
     },
+    {
+        "id": "geometry-dash-webport",
+        "repo": "AlexBoops/geometry-dash-webport",
+        "commit": "c6ac9417ff93ea957425b23ee87f1ed290663ebb",
+        "path": "",
+        "remote_base_href": "",
+        "expected_files": 29,
+        "expected_bytes": 387_802_365,
+        "entry": "index.html",
+    },
+    {
+        "id": "doom-wasm",
+        "repo": "jacobenget/doom.wasm",
+        "commit": "25ea598859a7dba4e2f86ea0354d583e1b3f5ecd",
+        "path": "examples/browser",
+        "remote_base_href": "",
+        "expected_files": 5,
+        "expected_bytes": 4_573_731,
+        "entry": "doom.html",
+    },
+    {
+        "id": "openjkdf2",
+        "repo": "maxthomas.dev/openjkdf2 (demo linked by OpenJKDF2 README)",
+        "commit": "sha256:fa69fcb0d00d5b1b5f07fea5f6622f6840930511ec8ffcff985ec40a90bdb190",
+        "path": "",
+        "remote_base_href": "",
+        "expected_files": 5,
+        "expected_bytes": 67_286_014,
+        "entry": "index.html",
+        "external_files": [
+            {
+                "path": "index.html",
+                "url": "https://maxthomas.dev/openjkdf2/index.html",
+                "bytes": 8_245,
+                "oid": "189dcef0ecb40ec6708feadeb610d54a5c1d9b27",
+            },
+            {
+                "path": "openjkdf2.js",
+                "url": "https://maxthomas.dev/openjkdf2/openjkdf2.js",
+                "bytes": 434_709,
+                "oid": "4adef84afc027a1653b3e1a07f99f30907bf6498",
+            },
+            {
+                "path": "openjkdf2.wasm",
+                "url": "https://maxthomas.dev/openjkdf2/openjkdf2.wasm",
+                "bytes": 2_955_996,
+                "oid": "323f192fe7692c2434c6d1959d995beb8fbe62cc",
+            },
+            {
+                "path": "openjkdf2_data.js",
+                "url": "https://maxthomas.dev/openjkdf2/openjkdf2_data.js",
+                "bytes": 7_751,
+                "oid": "fc6f363452074a3cd52233c097264d0336edea38",
+            },
+            {
+                "path": "openjkdf2_data.data",
+                "url": "https://maxthomas.dev/openjkdf2/openjkdf2_data.data",
+                "bytes": 63_879_313,
+                "oid": "c2b3dbe216e3db7d5be6a345b40be024e2b2ea0c",
+            },
+        ],
+    },
 )
 
 PVZ_CACHE_FUNCTION_ORIGINAL = b"""    async function mergeFiles(fileParts, cacheKey) {
@@ -471,6 +533,19 @@ MILKBAG_WASM_URL_ORIGINAL = {
     "outside": b"https://raw.githubusercontent.com/web-ports/milk-bag-games/refs/heads/main/outside/renpy.wasm",
 }
 MILKBAG_WASM_URL_SANDBOX_SAFE = b"./renpy.wasm"
+GEOMETRY_DASH_CDN_PREFIX_ORIGINAL = b"https://cdn.jsdelivr.net/gh/AlexBoops/geo@main/"
+GEOMETRY_DASH_CDN_PREFIX_SANDBOX_SAFE = b"./"
+GEOMETRY_DASH_CDN_PREFIX_COUNT = 6
+GEOMETRY_DASH_SERVICE_WORKER_ORIGINAL = b"""if ('serviceWorker' in navigator && location.protocol === 'https:' && !location.origin.includes('googleusercontent')) {
+    window.addEventListener('load', function() {
+      try {
+        navigator.serviceWorker.register('/sw.js')
+          .then(function(reg) { console.log('Service Worker registered! Scope:', reg.scope); })
+          .catch(function(err) { console.warn('Service Worker skipped:', err); });
+      } catch (e) {}
+    });
+  }"""
+GEOMETRY_DASH_SERVICE_WORKER_SANDBOX_SAFE = b"// Service worker disabled in the sandboxed game frame."
 
 HILL_CLIMB_JSPI_CHECK_ORIGINAL = b"""const supported = 'Suspending' in WebAssembly;
   if (!supported) status('This browser lacks WebAssembly JavaScript Promise Integration: use Chrome or Edge 137 or newer.');"""
@@ -573,6 +648,28 @@ def run_git(repo_dir: Path, *arguments: str) -> str:
 
 
 def source_tree(game: dict) -> list[dict]:
+    if game.get("external_files"):
+        files = [dict(item) for item in game["external_files"]]
+        paths = set()
+        for item in files:
+            relative_path = PurePosixPath(item["path"])
+            if (
+                relative_path.is_absolute()
+                or ".." in relative_path.parts
+                or item["path"] in paths
+                or not re.fullmatch(r"[0-9a-f]{40}", item["oid"])
+                or not item["url"].startswith("https://")
+                or item["bytes"] <= 0
+            ):
+                raise RuntimeError(f"Invalid pinned external file in {game['id']}")
+            paths.add(item["path"])
+        if (
+            len(files) != game["expected_files"]
+            or sum(item["bytes"] for item in files) != game["expected_bytes"]
+        ):
+            raise RuntimeError(f"External file manifest mismatch for {game['id']}")
+        return files
+
     with tempfile.TemporaryDirectory(prefix="portfolio98-game-tree-") as temporary:
         repo_dir = Path(temporary)
         run_git(repo_dir, "init", "--quiet")
@@ -716,6 +813,21 @@ def expected_local_bytes(game: dict) -> int:
         if game["id"] in MILKBAG_WASM_URL_ORIGINAL
         else 0
     )
+    geometry_dash_cdn_patch_delta = (
+        GEOMETRY_DASH_CDN_PREFIX_COUNT
+        * (
+            len(GEOMETRY_DASH_CDN_PREFIX_SANDBOX_SAFE)
+            - len(GEOMETRY_DASH_CDN_PREFIX_ORIGINAL)
+        )
+        if game["id"] == "geometry-dash-webport"
+        else 0
+    )
+    geometry_dash_service_worker_patch_delta = (
+        len(GEOMETRY_DASH_SERVICE_WORKER_SANDBOX_SAFE)
+        - len(GEOMETRY_DASH_SERVICE_WORKER_ORIGINAL)
+        if game["id"] == "geometry-dash-webport"
+        else 0
+    )
     if game["remote_base_href"]:
         base_href_delta = (
             -len(game["remote_base_href"].encode("utf-8"))
@@ -750,6 +862,8 @@ def expected_local_bytes(game: dict) -> int:
         + renpy_service_worker_patch_delta
         + milkbag_service_worker_patch_delta
         + milkbag_wasm_url_patch_delta
+        + geometry_dash_cdn_patch_delta
+        + geometry_dash_service_worker_patch_delta
     )
 
 
@@ -798,6 +912,7 @@ def localize_base_href(game: dict, index_path: Path) -> None:
         "tru",
         "inside",
         "outside",
+        "geometry-dash-webport",
     }:
         return
     content = index_path.read_bytes()
@@ -896,6 +1011,22 @@ def localize_base_href(game: dict, index_path: Path) -> None:
             MILKBAG_WASM_URL_SANDBOX_SAFE,
             "Milk Bag game external WebAssembly URL",
         )
+    if game["id"] == "geometry-dash-webport":
+        prefix_count = localized.count(GEOMETRY_DASH_CDN_PREFIX_ORIGINAL)
+        if prefix_count == GEOMETRY_DASH_CDN_PREFIX_COUNT:
+            localized = localized.replace(
+                GEOMETRY_DASH_CDN_PREFIX_ORIGINAL,
+                GEOMETRY_DASH_CDN_PREFIX_SANDBOX_SAFE,
+            )
+        elif prefix_count != 0 or localized.count(
+            GEOMETRY_DASH_CDN_PREFIX_SANDBOX_SAFE
+        ) != GEOMETRY_DASH_CDN_PREFIX_COUNT:
+            raise RuntimeError("Expected six pinned Geometry Dash CDN asset URLs")
+        apply_patch(
+            GEOMETRY_DASH_SERVICE_WORKER_ORIGINAL,
+            GEOMETRY_DASH_SERVICE_WORKER_SANDBOX_SAFE,
+            "Geometry Dash service worker registration",
+        )
     if game["id"] == "hill-climb-racing":
         apply_patch(
             HILL_CLIMB_JSPI_CHECK_ORIGINAL,
@@ -950,7 +1081,12 @@ def raw_file_url(game: dict, relative_path: str) -> str:
     )
 
 
-def download_file(url: str, destination: Path, expected_oid: str) -> None:
+def download_file(
+    url: str,
+    destination: Path,
+    expected_oid: str,
+    expected_byte_count: int | None = None,
+) -> None:
     partial = destination.with_name(destination.name + ".part")
     last_error: Exception | None = None
 
@@ -962,7 +1098,16 @@ def download_file(url: str, destination: Path, expected_oid: str) -> None:
                 timeout=120,
             ) as response:
                 size_header = response.headers.get("Content-Length")
-                expected_size = int(size_header) if size_header and size_header.isdigit() else None
+                declared_size = (
+                    int(size_header) if size_header and size_header.isdigit() else None
+                )
+                if (
+                    expected_byte_count is not None
+                    and declared_size is not None
+                    and declared_size != expected_byte_count
+                ):
+                    raise RuntimeError(f"Unexpected size header for {url}")
+                expected_size = expected_byte_count or declared_size
                 digest = hashlib.sha1()
                 if expected_size is not None:
                     digest.update(f"blob {expected_size}\0".encode("ascii"))
@@ -1092,9 +1237,10 @@ def install_game(game: dict, files: list[dict]) -> None:
             destination = staging.joinpath(*relative_path.parts)
             destination.parent.mkdir(parents=True, exist_ok=True)
             download_file(
-                raw_file_url(game, item["path"]),
+                item.get("url") or raw_file_url(game, item["path"]),
                 destination,
                 item["oid"],
+                item.get("bytes"),
             )
 
         print(
