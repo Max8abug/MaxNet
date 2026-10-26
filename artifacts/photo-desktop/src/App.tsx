@@ -32,10 +32,13 @@ function AppLayout() {
     const params = new URLSearchParams(window.location.search);
     const intent = params.get("maxnet-feature");
     const requestedTheme = params.get("maxnet-theme");
-    if (!intent && !requestedTheme) return;
+    const isOsLauncher = params.get("maxnet-os") === "1";
+    if (!intent && !requestedTheme && !isOsLauncher) return;
 
     params.delete("maxnet-feature");
     params.delete("maxnet-theme");
+    params.delete("maxnet-os");
+    if (isOsLauncher) window.localStorage.setItem("maxnet-os-mode", "1");
     const query = params.toString();
     const cleanUrl = window.location.pathname + (query ? "?" + query : "") + window.location.hash;
     window.history.replaceState(window.history.state, "", cleanUrl);
