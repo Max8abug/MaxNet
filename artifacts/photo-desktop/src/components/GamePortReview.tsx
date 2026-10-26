@@ -129,8 +129,8 @@ export function GamePortReview({ page }: { page: string }) {
       </div>
       {error && <p role="alert" className="text-xs text-red-700">{error}</p>}
       <p aria-live="polite" className="min-h-[1em] text-xs text-green-700">{status}</p>
-      <section className="win98-inset shrink-0 bg-[#fffdf4] p-2">
-        <h3 className="font-bold">Game data files</h3>
+      <details className="win98-inset shrink-0 bg-[#fffdf4] p-2">
+        <summary className="cursor-pointer font-bold">Game data files</summary>
         <p className="mb-2 text-[10px] text-gray-700">
           Uploads supply data files, not missing browser engines. They are served at the game&apos;s matching asset path; a compatible engine must request that path. Once approved, files are public to anyone who can open the game. Maximum 8 GB per file and 12 GB per game. Uploads work on the self-hosted site, not the Replit preview.
         </p>
@@ -167,7 +167,7 @@ export function GamePortReview({ page }: { page: string }) {
             </li>
           ))}
         </ul>
-      </section>
+      </details>
       <section className="win98-inset shrink-0 bg-[#fffdf4] p-2">
         <div className="flex items-baseline justify-between gap-2">
           <h3 className="font-bold">Files to find</h3>
@@ -228,8 +228,8 @@ export function GamePortReview({ page }: { page: string }) {
                 Test
               </button>}
               <button type="button" className="win98-button shrink-0 px-2 py-1 text-[10px]"
-                title={!isApproved && !hasFiles ? "Install the game files before approving." : undefined}
-                disabled={loading || busyId !== null || (!isApproved && !hasFiles)} onClick={() => void toggle(port.id, port.title)}>
+                title={!isApproved && !hasFiles ? "Approving lists this port, but it will not launch until its browser files are installed." : undefined}
+                disabled={loading || busyId !== null} onClick={() => void toggle(port.id, port.title)}>
                 {busyId === port.id ? "Saving…" : isApproved ? "Hide" : "Approve"}
               </button>
             </li>
