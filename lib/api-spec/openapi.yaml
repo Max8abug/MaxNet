@@ -24,6 +24,52 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+  /os/setup/request:
+    post:
+      operationId: createMaxOsSetupRequest
+      tags: [maxos]
+      summary: Create a one-time MaxOS settings sync code
+      description: Requires a signed-in MaxNet account. The short-lived code is redeemed by the local MaxOS client.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MaxOsSetupRequestInput"
+      responses:
+        "200":
+          description: One-time sync code created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MaxOsSetupRequestResponse"
+        "400":
+          description: Invalid setup state
+        "401":
+          description: MaxNet sign-in required
+  /os/setup/redeem:
+    post:
+      operationId: redeemMaxOsSetupCode
+      tags: [maxos]
+      summary: Redeem a one-time MaxOS settings sync code
+      description: Returns the approved account settings once; the code is bound to a local state value and expires after three minutes.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MaxOsSetupRedeemInput"
+      responses:
+        "200":
+          description: Account settings snapshot
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MaxOsAccountSettings"
+        "400":
+          description: Invalid code or state
+        "410":
+          description: Code expired or already redeemed
 components:
   schemas:
     HealthStatus:
@@ -33,4 +79,88 @@ components:
           type: string
       required:
         - status
+    MaxOsSetupRequestInput:
+      type: object
+      properties:
+        state:
+          type: string
+          minLength: 43
+          maxLength: 43
+          pattern: "^[A-Za-z0-9_-]{43}$"
+      required: [state]
+    MaxOsSetupRequestResponse:
+      type: object
+      properties:
+        code:
+          type: string
+          minLength: 43
+          maxLength: 43
+          pattern: "^[A-Za-z0-9_-]{43}$"
+        expiresAt:
+          type: string
+          format: date-time
+      required: [code, expiresAt]
+    MaxOsSetupRedeemInput:
+      type: object
+      properties:
+        code:
+          type: string
+          minLength: 43
+          maxLength: 43
+          pattern: "^[A-Za-z0-9_-]{43}$"
+        state:
+          type: string
+          minLength: 43
+          maxLength: 43
+          pattern: "^[A-Za-z0-9_-]{43}$"
+      required: [code, state]
+    MaxOsAccountSettings:
+      type: object
+      properties:
+        version:
+          type: integer
+          enum: [1]
+        username:
+          type: string
+          minLength: 2
+          maxLength: 32
+        rank:
+          type: [string, "null"]
+        isMaxNetAdmin:
+          type: boolean
+        permissions:
+          type: array
+          items:
+            type: string
+        appearance:
+          type: object
+          properties:
+            displayTheme:
+              type: [string, "null"]
+              enum: [classic-light, classic-dark, xp-light, xp-dark, vista, vista-dark, gold, silver, null]
+            backgroundUrl:
+              type: [string, "null"]
+              maxLength: 4000000
+            darkBackgroundUrl:
+              type: [string, "null"]
+              maxLength: 4000000
+            backgroundColor:
+              type: [string, "null"]
+              maxLength: 32
+            timeZone:
+              type: [string, "null"]
+              maxLength: 64
+          required: [displayTheme, backgroundUrl, darkBackgroundUrl, backgroundColor, timeZone]
+        apps:
+          type: array
+          items:
+            type: string
+        archivedFeatures:
+          type: array
+          items:
+            type: string
+        issuedAt:
+          type: string
+          format: date-time
+      required: [version, username, rank, isMaxNetAdmin, permissions, appearance, apps, archivedFeatures, issuedAt]
 
