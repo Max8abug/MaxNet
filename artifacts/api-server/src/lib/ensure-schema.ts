@@ -59,6 +59,16 @@ export async function ensureSchema(): Promise<void> {
     ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar_url text;
     ALTER TABLE users ADD COLUMN IF NOT EXISTS bio text NOT NULL DEFAULT '';
     ALTER TABLE users ADD COLUMN IF NOT EXISTS last_seen timestamp NOT NULL DEFAULT now();
+
+    CREATE TABLE IF NOT EXISTS maxos_sync_codes (
+      code_hash text PRIMARY KEY,
+      state_hash text NOT NULL,
+      payload jsonb NOT NULL,
+      expires_at timestamp NOT NULL,
+      created_at timestamp NOT NULL DEFAULT now()
+    );
+    CREATE INDEX IF NOT EXISTS maxos_sync_codes_expires_at_idx ON maxos_sync_codes(expires_at);
+
     -- NOTE: VAPID columns for site_settings are added further below, AFTER
     -- the CREATE TABLE IF NOT EXISTS site_settings statement. Adding them
     -- here would crash with relation site_settings does not exist on a

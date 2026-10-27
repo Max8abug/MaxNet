@@ -62,6 +62,16 @@ export const ranksTable = pgTable("ranks", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
+export const maxosSyncCodesTable = pgTable("maxos_sync_codes", {
+  codeHash: text("code_hash").primaryKey(),
+  stateHash: text("state_hash").notNull(),
+  payload: jsonb("payload").notNull(),
+  expiresAt: timestamp("expires_at").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => [
+  index("maxos_sync_codes_expires_at_idx").on(table.expiresAt),
+]);
+
 export const tracksTable = pgTable("tracks", {
   id: serial("id").primaryKey(),
   uploader: text("uploader").notNull(),

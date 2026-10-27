@@ -14,6 +14,7 @@ import { MobileShell } from "@/components/MobileShell";
 import { ThemePreferencePrompt } from "@/components/ThemePreferencePrompt";
 import { ProfileDialog } from "@/components/ProfileDialog";
 import { useProfileDialogStore } from "@/lib/profile-dialog-store";
+import { MaxOsSetupSync } from "@/components/MaxOsSetupSync";
 
 const OS_APP_WINDOW_INTENTS: Record<string, Partial<WindowData>> = {
     chat: { type: "chat", title: "MaxNet Chatroom", width: 420, height: 500 },
@@ -176,6 +177,7 @@ const OS_APP_WINDOW_INTENTS: Record<string, Partial<WindowData>> = {
       {!isStandaloneApp && <NotificationPrompt />}
       {!isStandaloneApp && <ThemePreferencePrompt />}
       {!isStandaloneApp && profileOpen && user && <ProfileDialog mobile={isMobile} onClose={() => setProfileOpen(false)} />}
+      {!isStandaloneApp && <MaxOsSetupSync />}
     </div>
   );
 }

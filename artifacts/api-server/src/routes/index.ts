@@ -2,6 +2,7 @@ import { Router, type IRouter } from "express";
 import healthRouter from "./health";
 import socialRouter from "./social";
 import authRouter from "./auth";
+import maxosSyncRouter from "./maxos-sync";
 import forumRouter from "./forum";
 import youtubeRouter from "./youtube";
 import blackjackRouter from "./blackjack";
@@ -31,6 +32,7 @@ const router: IRouter = Router();
 
 router.use(healthRouter);
 router.use(authRouter);
+router.use(maxosSyncRouter);
 router.use(socialRouter);
 router.use(forumRouter);
 router.use(youtubeRouter);
