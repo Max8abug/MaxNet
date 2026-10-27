@@ -63,12 +63,14 @@ export function Window({
   page,
   boundsRef,
   mobile = false,
+  appOnly = false,
   onMobileClose,
 }: {
   window: WindowData;
   page: string;
   boundsRef: React.RefObject<HTMLDivElement | null>;
   mobile?: boolean;
+  appOnly?: boolean;
   onMobileClose?: () => void;
 }) {
   const { updateWindow, removeWindow, bringToFront, isStringMode, stringStartId, setStringStart, addString, toggleWindowState } = useDesktopStore();
@@ -96,7 +98,7 @@ export function Window({
 
   const winState = w.state || 'normal';
   const isMin = winState === 'min';
-  const isMax = winState === 'max';
+  const isMax = appOnly || winState === 'max';
 
   const handleTitleBarPointerDown = (e: React.PointerEvent) => {
     if (isStringMode || isEditing || isMax || mobile) return;
@@ -176,9 +178,11 @@ export function Window({
   // Mobile windows are app screens, not floating desktop windows. The mobile
   // shell gives us a stage whose size already accounts for the top app bar, so
   // never use the persisted desktop dimensions here.
-  const maxStyle = mobile
+  const maxStyle = appOnly
     ? { width: '100%', height: '100%', transform: 'translate3d(0,0,0)' }
-    : isMax && bounds
+    : mobile
+      ? { width: '100%', height: '100%', transform: 'translate3d(0,0,0)' }
+      : isMax && bounds
       ? { width: bounds.clientWidth, height: bounds.clientHeight - 40, transform: 'translate3d(0,0,0)' }
       : { width: w.width, height: w.height, transform: `translate3d(${w.x}px, ${w.y}px, 0)` };
 
@@ -186,11 +190,13 @@ export function Window({
   const shouldPreserveState = [
     'eaglercraft', 'newcp', 'terraria', 'gettingoverit', 'pvz', 'webfishing', 'undertale', 'personalplaylists',
   ].includes(w.type);
-  const windowStyle: React.CSSProperties = isMin && !shouldPreserveState
-    ? { top: 0, left: 0, transform: `translate3d(${w.x}px, ${(boundsRef.current?.clientHeight || 600) - 64}px, 0)`, width: 160, zIndex: w.zIndex }
-    : { ...maxStyle, zIndex: w.zIndex, top: 0, left: 0, willChange: 'transform', touchAction: mobile ? 'auto' : 'none', visibility: isMin && shouldPreserveState ? 'hidden' : 'visible' };
+  const windowStyle: React.CSSProperties = appOnly
+    ? { ...maxStyle, zIndex: w.zIndex, top: 0, left: 0, willChange: 'auto', touchAction: 'auto', visibility: 'visible' }
+    : isMin && !shouldPreserveState
+      ? { top: 0, left: 0, transform: `translate3d(${w.x}px, ${(boundsRef.current?.clientHeight || 600) - 64}px, 0)`, width: 160, zIndex: w.zIndex }
+      : { ...maxStyle, zIndex: w.zIndex, top: 0, left: 0, willChange: 'transform', touchAction: mobile ? 'auto' : 'none', visibility: isMin && shouldPreserveState ? 'hidden' : 'visible' };
 
-  if (isMin && !shouldPreserveState) {
+  if (isMin && !shouldPreserveState && !appOnly) {
     return (
       <div
         className="absolute win98-window flex items-center cursor-pointer"
@@ -207,9 +213,10 @@ export function Window({
       ref={elRef}
       onPointerDown={() => bringToFront(page, w.id)}
       onClick={handleWindowClick}
-      className={`absolute win98-window flex flex-col ${isStringMode ? 'cursor-crosshair' : ''} ${isStringMode && stringStartId === w.id ? 'ring-4 ring-red-500' : ''}`}
+      className={`${appOnly ? 'absolute flex flex-col overflow-hidden' : 'absolute win98-window flex flex-col'} ${isStringMode ? 'cursor-crosshair' : ''} ${isStringMode && stringStartId === w.id ? 'ring-4 ring-red-500' : ''}`}
       style={windowStyle as React.CSSProperties}
     >
+      {!appOnly && (
       <div
         className={`win98-titlebar ${isActive ? '' : 'inactive'} shrink-0 cursor-move select-none`}
         onPointerDown={handleTitleBarPointerDown}
@@ -244,10 +251,11 @@ export function Window({
           )}
         </div>
       </div>
+      )}
 
       <div
-        className="flex-1 overflow-auto win98-inset bg-white p-2 text-black pointer-events-auto flex flex-col relative group"
-        onDoubleClick={w.type === 'flappy' || w.type === 'newcp' ? undefined : () => setIsEditing(true)}
+        className={`flex-1 overflow-auto ${appOnly ? "min-h-0 min-w-0" : "win98-inset bg-white p-2 text-black"} pointer-events-auto flex flex-col relative group`}
+        onDoubleClick={appOnly || w.type === 'flappy' || w.type === 'newcp' ? undefined : () => setIsEditing(true)}
       >
         {isEditing && (
           <div className="absolute inset-0 bg-[#c0c0c0] z-50 p-2 flex flex-col gap-2 overflow-auto text-sm">

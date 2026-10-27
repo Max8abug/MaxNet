@@ -8,7 +8,7 @@ import { useAuth } from '../lib/auth-store';
 import { useThemeMode } from '../lib/theme';
 import { isFeatureHiddenFromLaunchers } from '@workspace/feature-registry';
 
-export function Desktop({ page }: { page: string }) {
+export function Desktop({ page, appOnly = false }: { page: string; appOnly?: boolean }) {
   const savedWindows = useDesktopStore(state => state.windows[page] || []);
   const windows = savedWindows.filter((window) => !isFeatureHiddenFromLaunchers(window.type));
   const setActivePage = useDesktopStore(state => state.setActivePage);
@@ -46,9 +46,9 @@ export function Desktop({ page }: { page: string }) {
       className={`desktop-surface absolute inset-0 overflow-hidden ${darkMode && !backgroundUrl ? "dark-solid-background" : ""}`}
       style={{ minWidth: '100vw', minHeight: '100vh', ...bgStyle }}
     >
-      <RedStrings page={page} />
+      {!appOnly && <RedStrings page={page} />}
       {windows.map(w => (
-        <Window key={w.id} window={w} page={page} boundsRef={boundsRef} />
+        <Window key={w.id} window={w} page={page} boundsRef={boundsRef} appOnly={appOnly} />
       ))}
       <ToastHost />
       <ImageViewerHost />
