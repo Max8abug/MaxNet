@@ -58,7 +58,7 @@ export function MaxOsSetupSync() {
             ) : !user ? (
               <>
                 <p>Sign in to sync your MaxNet display theme, profile background, account rank and site permissions, and the apps currently available on MaxNet.</p>
-                <p className="text-sm text-gray-700">Your MaxNet password and session are not sent to MaxOS. Site permissions do not grant Linux administrator or sudo access.</p>
+                <p className="text-sm text-gray-700">The sync sends no MaxNet password or browser session to the MaxOS helper. Your browser keeps sign-in locally for MaxNet apps. Site permissions do not grant Linux administrator or sudo access.</p>
                 <button
                   type="button"
                   className="win98-button min-h-10 w-full px-3 font-bold"
