@@ -1,0 +1,128 @@
+/* MaxOS app windows: theme-aware, higher-contrast controls without changing the full website desktop. */
+[data-maxnet-app] {
+  --maxnet-app-page: hsl(var(--card));
+  --maxnet-app-panel: hsl(var(--secondary));
+  --maxnet-app-ink: hsl(var(--foreground));
+  color: var(--maxnet-app-ink);
+  background-color: var(--maxnet-app-page) !important;
+  font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  image-rendering: auto;
+}
+
+[data-maxnet-app] .desktop-surface {
+  background-color: var(--maxnet-app-page) !important;
+  background-image: none !important;
+}
+
+[data-maxnet-app] .maxnet-app-window,
+[data-maxnet-app] .maxnet-app-content {
+  color: var(--maxnet-app-ink);
+  background-color: var(--maxnet-app-page);
+}
+
+[data-maxnet-app] .maxnet-app-content {
+  padding: clamp(0.75rem, 2vw, 1.25rem);
+}
+
+[data-maxnet-app="eaglercraft"] .maxnet-app-content {
+  padding: 0;
+}
+
+[data-maxnet-app] .win98-window,
+[data-maxnet-app] .win98-menu {
+  color: var(--maxnet-app-ink) !important;
+  background-color: var(--maxnet-app-panel) !important;
+  border: 1px solid hsl(var(--border)) !important;
+  border-radius: 12px !important;
+  box-shadow: 0 12px 30px rgb(0 0 0 / 16%) !important;
+}
+
+[data-maxnet-app] .win98-titlebar {
+  min-height: 38px;
+  padding: 0.45rem 0.7rem;
+  color: hsl(var(--primary-foreground, 0 0% 100%));
+  background: linear-gradient(110deg, hsl(var(--primary)), color-mix(in srgb, hsl(var(--primary)) 78%, hsl(var(--accent)))) !important;
+  border: 0 !important;
+  border-radius: 10px 10px 0 0 !important;
+  box-shadow: none !important;
+  font-family: inherit;
+}
+
+[data-maxnet-app] .win98-inset {
+  color: var(--maxnet-app-ink) !important;
+  background-color: var(--maxnet-app-panel) !important;
+  border: 1px solid hsl(var(--border)) !important;
+  border-radius: 10px !important;
+  box-shadow: none !important;
+}
+
+[data-maxnet-app] .win98-button {
+  min-height: 32px;
+  border: 1px solid hsl(var(--border)) !important;
+  border-radius: 8px !important;
+  box-shadow: none !important;
+  font-family: inherit;
+  transition: background-color 140ms ease, border-color 140ms ease, transform 140ms ease;
+}
+
+[data-maxnet-app] .win98-button[class*="bg-blue-"],
+[data-maxnet-app] .win98-button[class*="bg-indigo-"] {
+  color: hsl(var(--primary-foreground, 0 0% 100%)) !important;
+  background-color: hsl(var(--primary)) !important;
+  border-color: hsl(var(--primary)) !important;
+}
+
+[data-maxnet-app] .win98-button:focus-visible,
+[data-maxnet-app] input:focus-visible,
+[data-maxnet-app] textarea:focus-visible,
+[data-maxnet-app] select:focus-visible {
+  outline: 2px solid hsl(var(--primary));
+  outline-offset: 2px;
+}
+
+[data-maxnet-app] .win98-button:active {
+  transform: translateY(1px);
+}
+
+[data-maxnet-app] input:not([type="checkbox"]):not([type="radio"]):not([type="color"]),
+[data-maxnet-app] textarea,
+[data-maxnet-app] select {
+  color: var(--maxnet-app-ink) !important;
+  background-color: var(--maxnet-app-panel) !important;
+  border: 1px solid hsl(var(--border)) !important;
+  border-radius: 8px !important;
+  box-shadow: none !important;
+}
+
+[data-maxnet-app] [class~="bg-white"],
+[data-maxnet-app] [class~="bg-gray-50"],
+[data-maxnet-app] [class~="bg-gray-100"],
+[data-maxnet-app] [class~="bg-[#c0c0c0]"] {
+  background-color: var(--maxnet-app-panel) !important;
+}
+
+[data-maxnet-app] .text-black {
+  color: var(--maxnet-app-ink) !important;
+}
+
+[data-maxnet-app] [class~="text-[10px]"] {
+  font-size: 11px !important;
+  line-height: 1.35;
+}
+
+[data-maxnet-app="chat"] .text-xs,
+[data-maxnet-app="forum"] .text-xs {
+  font-size: 0.8125rem;
+  line-height: 1.45;
+}
+
+[data-maxnet-app="forum"] .win98-inset > button:hover {
+  color: var(--maxnet-app-ink) !important;
+  background-color: color-mix(in srgb, hsl(var(--primary)) 10%, var(--maxnet-app-panel)) !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-maxnet-app] .win98-button {
+    transition: none;
+  }
+}
