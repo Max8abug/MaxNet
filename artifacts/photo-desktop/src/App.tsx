@@ -73,15 +73,27 @@ const OS_APP_WINDOW_INTENTS: Record<string, Partial<WindowData>> = {
   const standalonePage = standaloneLaunch ? "maxnet-app-" + standaloneLaunch.feature + "-" + standaloneLaunch.instance : page;
   const addWindow = useDesktopStore((s) => s.addWindow);
   const user = useAuth((s) => s.user);
-  const authLoading = useAuth((s) => s.loading);
+  const refresh = useAuth((s) => s.refresh);
+  const refreshRanks = useAuth((s) => s.refreshRanks);
+  const refreshSiteSettings = useAuth((s) => s.refreshSiteSettings);
   const timeZone = useTimeZone();
   const isMobile = useIsMobile();
   const { profileOpen, setProfileOpen } = useProfileDialogStore();
   const { setTheme } = useThemeMode();
 
+  // Standalone MaxOS windows omit the website taskbar, so shared account and
+  // site settings must initialize from the app shell rather than the taskbar.
+  useEffect(() => {
+    void refresh();
+    void refreshRanks();
+    void refreshSiteSettings();
+    const onFocus = () => void refreshSiteSettings();
+    window.addEventListener("focus", onFocus);
+    return () => window.removeEventListener("focus", onFocus);
+  }, [refresh, refreshRanks, refreshSiteSettings]);
+
   // MaxOS feature windows launch the existing MaxNet app component without the web desktop shell.
     useEffect(() => {
-      if (authLoading) return;
       const params = new URLSearchParams(window.location.search);
       const intent = params.get("maxnet-feature");
       const requestedTheme = params.get("maxnet-theme");
@@ -128,7 +140,7 @@ const OS_APP_WINDOW_INTENTS: Record<string, Partial<WindowData>> = {
           addWindow(targetPage, { ...launchWindow, ...(isStandaloneIntent ? { state: "max" as const } : {}) });
         }
       }
-    }, [addWindow, authLoading, page, setStandaloneLaunch, setTheme]);
+    }, [addWindow, page, setStandaloneLaunch, setTheme]);
 
     useEffect(() => {
       if (!standaloneLaunch) return;

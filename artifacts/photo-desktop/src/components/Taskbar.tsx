@@ -34,21 +34,12 @@ export function Taskbar({ page }: { page: string }) {
   const [overviewOpen, setOverviewOpen] = useState(false);
   const setProfileOpen = useProfileDialogStore(state => state.setProfileOpen);
   const [, setLocation] = useLocation();
-  const { user, ranks, refresh, refreshRanks, logout, siteSettings, refreshSiteSettings, refreshFeatureArchives } = useAuth();
+  const { user, ranks, logout, siteSettings, refreshFeatureArchives } = useAuth();
   const { darkMode } = useThemeMode();
   const serverNow = useServerNow();
   const wins = (windows[page] || []).filter((window) => !isFeatureHiddenFromLaunchers(window.type));
   const [dmUnread, setDmUnread] = useState(0);
   const [chatUnread, setChatUnread] = useState(0);
-  useEffect(() => { void refresh(); void refreshRanks(); }, [refresh, refreshRanks]);
-  // Full branding/settings still load at startup and on focus, independently
-  // of the frequent, archive-only visibility refresh.
-  useEffect(() => {
-    void refreshSiteSettings();
-    const onFocus = () => void refreshSiteSettings();
-    window.addEventListener("focus", onFocus);
-    return () => window.removeEventListener("focus", onFocus);
-  }, [refreshSiteSettings]);
   // Keep launch entries in sync with administrator archiving changes.
   useEffect(() => {
     const timer = setInterval(() => void refreshFeatureArchives(), 15_000);
