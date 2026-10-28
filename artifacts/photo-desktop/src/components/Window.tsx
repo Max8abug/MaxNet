@@ -213,7 +213,7 @@ export function Window({
       ref={elRef}
       onPointerDown={() => bringToFront(page, w.id)}
       onClick={handleWindowClick}
-      className={`${appOnly ? 'absolute flex flex-col overflow-hidden' : 'absolute win98-window flex flex-col'} ${isStringMode ? 'cursor-crosshair' : ''} ${isStringMode && stringStartId === w.id ? 'ring-4 ring-red-500' : ''}`}
+      className={`${appOnly ? 'absolute flex flex-col overflow-hidden maxnet-app-window' : 'absolute win98-window flex flex-col'} ${isStringMode ? 'cursor-crosshair' : ''} ${isStringMode && stringStartId === w.id ? 'ring-4 ring-red-500' : ''}`}
       style={windowStyle as React.CSSProperties}
     >
       {!appOnly && (
@@ -254,7 +254,7 @@ export function Window({
       )}
 
       <div
-        className={`flex-1 overflow-auto ${appOnly ? "min-h-0 min-w-0" : "win98-inset bg-white p-2 text-black"} pointer-events-auto flex flex-col relative group`}
+        className={`flex-1 overflow-auto ${appOnly ? "min-h-0 min-w-0 maxnet-app-content" : "win98-inset bg-white p-2 text-black"} pointer-events-auto flex flex-col relative group`}
         onDoubleClick={appOnly || w.type === 'flappy' || w.type === 'newcp' ? undefined : () => setIsEditing(true)}
       >
         {isEditing && (
