@@ -22,6 +22,127 @@ const GAME_CONTENT_SECURITY_POLICY = [
   "base-uri 'self'",
 ].join("; ");
 
+const GAME_SAVE_BOOTSTRAP = `<script>
+/* ported-game-save-bridge */
+(() => {
+  try {
+    const params = new URLSearchParams(location.hash.slice(1));
+    const raw = params.get("__pd_save");
+    if (!raw) return;
+    const bootstrap = JSON.parse(raw);
+    if (bootstrap.version !== 1 || typeof bootstrap.gameId !== "string") return;
+    const values = new Map(Object.entries(bootstrap.storage || {}).filter(
+      ([key, value]) => typeof key === "string" && typeof value === "string"
+    ));
+    try {
+      const previous = window.localStorage;
+      for (let index = 0; index < previous.length; index += 1) {
+        const key = previous.key(index);
+        if (key !== null && !values.has(key)) values.set(key, previous.getItem(key) || "");
+      }
+    } catch (_) {}
+    const save = () => {
+      try {
+        const storage = Object.fromEntries(values);
+        if (new Blob([JSON.stringify(storage)]).size <= 128 * 1024) {
+          parent.postMessage({ source: "ported-game-save", version: 1, gameId: bootstrap.gameId, storage }, "*");
+        }
+      } catch (_) {}
+    };
+    const makeStorage = (storageValues, persist) => ({
+      get length() { return storageValues.size; },
+      key: index => Array.from(storageValues.keys())[index] ?? null,
+      getItem: key => storageValues.has(String(key)) ? storageValues.get(String(key)) : null,
+      setItem: (key, value) => { storageValues.set(String(key), String(value)); if (persist) save(); },
+      removeItem: key => { storageValues.delete(String(key)); if (persist) save(); },
+      clear: () => { storageValues.clear(); if (persist) save(); }
+    });
+    Object.defineProperty(window, "localStorage", { configurable: true, value: makeStorage(values, true) });
+    try { Object.defineProperty(window, "sessionStorage", { configurable: true, value: makeStorage(new Map(), false) }); } catch (_) {}
+    const saveFiles = new Set(["Saves.tar", "DevicePreferences.tar"]);
+    const memoryFiles = new Map();
+    const pending = new Map();
+    addEventListener("message", event => {
+      const data = event.data;
+      if (event.source !== parent || !data || data.source !== "ported-game-opfs-response") return;
+      const resolve = pending.get(data.requestId);
+      if (!resolve) return;
+      pending.delete(data.requestId);
+      if (data.ok) resolve(data.bytes || null);
+      else {
+        const error = new DOMException(data.error || "Save file unavailable", data.error === "NotFoundError" ? "NotFoundError" : "NotAllowedError");
+        pending.get(data.requestId)?.(null);
+        resolve(Promise.reject(error));
+      }
+    });
+    const requestFile = (operation, name, bytes) => new Promise((resolve, reject) => {
+      const requestId = crypto.randomUUID();
+      pending.set(requestId, result => result instanceof Error ? reject(result) : resolve(result));
+      const message = { source: "ported-game-opfs", version: 1, gameId: bootstrap.gameId, requestId, operation, name, bytes };
+      try {
+        if (bytes instanceof ArrayBuffer) parent.postMessage(message, "*", [bytes]);
+        else parent.postMessage(message, "*");
+      } catch (error) {
+        pending.delete(requestId);
+        reject(error);
+      }
+    });
+    const makeHandle = name => ({
+      getFile: async () => {
+        let bytes = memoryFiles.get(name);
+        if (!bytes && saveFiles.has(name)) bytes = await requestFile("read", name);
+        if (!bytes) throw new DOMException("File not found", "NotFoundError");
+        return new File([bytes], name);
+      },
+      createWritable: async () => {
+        const chunks = [];
+        return {
+          write: async chunk => {
+            if (chunk instanceof Blob) chunks.push(await chunk.arrayBuffer());
+            else if (chunk instanceof ArrayBuffer) chunks.push(chunk);
+            else if (ArrayBuffer.isView(chunk)) chunks.push(chunk.buffer.slice(chunk.byteOffset, chunk.byteOffset + chunk.byteLength));
+            else throw new TypeError("Unsupported save stream chunk");
+          },
+          close: async () => {
+            const bytes = await new Blob(chunks).arrayBuffer();
+            if (saveFiles.has(name)) await requestFile("write", name, bytes.slice(0));
+            memoryFiles.set(name, bytes);
+          },
+          abort: async () => { chunks.length = 0; }
+        };
+      }
+    });
+    const directory = {
+      getFileHandle: async (name, options = {}) => {
+        if (!/^[A-Za-z0-9_.-]{1,128}$/.test(name)) throw new TypeError("Invalid save file name");
+        if (!options.create && !memoryFiles.has(name) && saveFiles.has(name)) {
+          const bytes = await requestFile("read", name);
+          if (bytes) memoryFiles.set(name, bytes);
+        }
+        if (!options.create && !memoryFiles.has(name)) throw new DOMException("File not found", "NotFoundError");
+        return makeHandle(name);
+      },
+      removeEntry: async name => { memoryFiles.delete(name); }
+    };
+    try {
+      const storage = Object.create(navigator.storage);
+      Object.defineProperty(storage, "getDirectory", { value: async () => directory });
+      Object.defineProperty(storage, "persist", { value: async () => true });
+      Object.defineProperty(navigator, "storage", { configurable: true, value: storage });
+    } catch (_) {}
+    const originalHash = params.get("__pd_hash") || "";
+    params.delete("__pd_save");
+    params.delete("__pd_hash");
+    const remaining = params.toString();
+    try {
+      history.replaceState(null, "", location.pathname + location.search + (originalHash || remaining ? "#" + (originalHash || remaining) : ""));
+    } catch (_) {
+      location.hash = originalHash || remaining;
+    }
+  } catch (_) {}
+})();
+</script>`;
+
 const DELTARUNE_CONTENT_SECURITY_POLICY = GAME_CONTENT_SECURITY_POLICY.replace(
   "script-src 'self' 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval' blob:",
   "script-src 'self' 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval' blob: https://cdnjs.cloudflare.com https://mrdoob.github.io",
@@ -141,12 +262,21 @@ const GAME_DIAGNOSTIC_BOOTSTRAP = `<script>
 </script>`;
 
 function instrumentGameHtml(html: string): string {
-  if (html.includes('source: "ported-game-diagnostics"')) return html;
+  let instrumented = html;
   const headOpen = /<head\b[^>]*>/i;
-  if (headOpen.test(html)) return html.replace(headOpen, match => `${match}${GAME_DIAGNOSTIC_BOOTSTRAP}`);
   const bodyOpen = /<body\b[^>]*>/i;
-  if (bodyOpen.test(html)) return html.replace(bodyOpen, match => `${match}${GAME_DIAGNOSTIC_BOOTSTRAP}`);
-  return `${GAME_DIAGNOSTIC_BOOTSTRAP}${html}`;
+  const inject = (source: string) => {
+    if (headOpen.test(instrumented)) instrumented = instrumented.replace(headOpen, match => `${match}${source}`);
+    else if (bodyOpen.test(instrumented)) instrumented = instrumented.replace(bodyOpen, match => `${match}${source}`);
+    else instrumented = `${source}${instrumented}`;
+  };
+  if (!instrumented.includes('source: "ported-game-diagnostics"')) inject(GAME_DIAGNOSTIC_BOOTSTRAP);
+  if (!instrumented.includes("ported-game-save-bridge")) {
+    if (/<\/head>/i.test(instrumented)) {
+      instrumented = instrumented.replace(/<\/head>/i, `${GAME_SAVE_BOOTSTRAP}</head>`);
+    } else inject(GAME_SAVE_BOOTSTRAP);
+  }
+  return instrumented;
 }
 
 export function shouldServePortedGameRequest(

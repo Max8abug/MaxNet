@@ -22,6 +22,7 @@ fi
 # Load env vars
 set -a; source "$ENV_FILE"; set +a
 export GAME_PORT_DATA_DIR="${GAME_PORT_DATA_DIR:-$REPO_DIR/selfhost/data/game-user-files}"
+export GAME_SAVE_DATA_DIR="${GAME_SAVE_DATA_DIR:-$REPO_DIR/selfhost/data/game-saves}"
 
 # Source nvm if needed
 export NVM_DIR="$HOME/.nvm"

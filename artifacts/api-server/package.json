@@ -11,6 +11,7 @@
     "storage:report": "node --enable-source-maps ./dist/storage-report-cli.mjs",
     "backup:scheduled": "node --enable-source-maps ./dist/scheduled-backup-cli.mjs",
     "test:ported-game-assets": "node ./tests/run-ported-game-assets-tests.mjs",
+    "test:game-saves": "node ./tests/run-game-saves-tests.mjs",
     "test:storage-report": "node ./tests/run-storage-report-tests.mjs",
     "test:feature-archives": "node ./tests/run-feature-archives-tests.mjs",
     "test:spotify-import": "node ./tests/run-spotify-import-tests.mjs && node ./tests/run-spotify-route-tests.mjs"

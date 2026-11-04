@@ -289,6 +289,44 @@ export async function uploadGamePortData(
   return result;
 }
 
+export async function fetchGameSave(gameId: string): Promise<{ storage: Record<string, string> }> {
+  return jsonOrThrow(await fetch(`${BASE}/game-saves/${encodeURIComponent(gameId)}`, {
+    ...opts, cache: "no-store",
+  }));
+}
+export async function putGameSave(gameId: string, storage: Record<string, string>): Promise<void> {
+  await jsonOrThrow(await fetch(`${BASE}/game-saves/${encodeURIComponent(gameId)}`, {
+    ...opts,
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ storage }),
+  }));
+}
+export async function fetchGameSaveFile(gameId: string, name: string): Promise<ArrayBuffer | null> {
+  const response = await fetch(
+    `${BASE}/game-saves/${encodeURIComponent(gameId)}/files/${encodeURIComponent(name)}`,
+    { ...opts, cache: "no-store" },
+  );
+  if (response.status === 404) return null;
+  if (!response.ok) await jsonOrThrow(response);
+  return response.arrayBuffer();
+}
+export async function putGameSaveFile(gameId: string, name: string, bytes: ArrayBuffer): Promise<void> {
+  const response = await fetch(
+    `${BASE}/game-saves/${encodeURIComponent(gameId)}/files/${encodeURIComponent(name)}`,
+    {
+      ...opts,
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/octet-stream",
+        "X-Save-File-Size": String(bytes.byteLength),
+      },
+      body: bytes,
+    },
+  );
+  await jsonOrThrow(response);
+}
+
 export async function fetchGameIcons(): Promise<{ gameIcons: Record<string, string> }> {
   return jsonOrThrow(await fetch(`${BASE}/site-settings/game-icons`, { cache: "no-store" }));
 }

@@ -41,7 +41,7 @@ try {
   );
   await writeFile(
     path.join(assetDirectory, "pvz", "index.html"),
-    "<!doctype html><html><head><title>PVZ</title></head><body></body></html>",
+    '<!doctype html><html><head><title>PVZ</title><script id="early-storage">window.localStorage=window.localStorage||{};</script></head><body></body></html>',
   );
   await writeFile(
     path.join(assetDirectory, "deltarune", "index.html"),
@@ -97,6 +97,10 @@ try {
   assert.doesNotMatch(csp, /allow-same-origin/);
   const gameHtml = await response.text();
   assert.match(gameHtml, /source: "ported-game-diagnostics"/);
+  assert.ok(
+    gameHtml.indexOf('id="early-storage"') < gameHtml.indexOf("ported-game-save-bridge"),
+    "save storage bridge runs after any existing game storage shim",
+  );
   assert.match(gameHtml, /unhandledrejection/);
   assert.match(gameHtml, /securitypolicyviolation/);
   assert.match(gameHtml, /Object\.getOwnPropertyDescriptor\(Window\.prototype, key\)/);
@@ -104,6 +108,7 @@ try {
   assert.match(gameHtml, /CacheStorage:/);
   assert.match(gameHtml, /window\.fetch =/);
   assert.match(gameHtml, /XMLHttpRequest\.prototype\.send =/);
+  assert.match(gameHtml, /ported-game-save-bridge/);
   assert.match(gameHtml, /<title>PVZ<\/title>/);
   assert.doesNotMatch(csp, /cdnjs\.cloudflare\.com/);
 

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { ExternalLink, Info } from "lucide-react";
 import { NEW_GAME_PORTS, type NewGamePortId } from "../lib/game-ports";
-import { fetchPortedGameApprovals } from "../lib/api";
+import { fetchGameSave, fetchPortedGameApprovals, putGameSave } from "../lib/api";
 import { useAuth } from "../lib/auth-store";
 
 export type PortedGameId = "gettingoverit" | "pvz" | "webfishing" | "undertale" | NewGamePortId;
@@ -56,6 +56,17 @@ const DIAGNOSTIC_TYPES = new Set<GameDiagnostic["type"]>([
   "runtime-error",
   "async-error",
 ]);
+const GAME_SAVE_MAX_BYTES = 128 * 1024;
+
+function cleanGameSave(value: unknown): Record<string, string> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  const entries = Object.entries(value);
+  if (entries.length > 512 || entries.some(([key, item]) =>
+    key.length > 256 || typeof item !== "string"
+  )) return {};
+  const storage = Object.fromEntries(entries) as Record<string, string>;
+  return new Blob([JSON.stringify(storage)]).size <= GAME_SAVE_MAX_BYTES ? storage : {};
+}
 
 function diagnosticSummary(type: GameDiagnostic["type"]): string {
   if (type === "permission-error" || type === "policy-error") {
@@ -74,13 +85,81 @@ export function PortedGame({ game, adminPreview = false }: { game: PortedGameId;
   const [diagnostic, setDiagnostic] = useState<GameDiagnostic | null>(null);
   const [approvalState, setApprovalState] = useState<{ game: PortedGameId; approved: boolean } | null>(null);
   const [showApprovedErrors, setShowApprovedErrors] = useState(false);
+  const [saveBootstrap, setSaveBootstrap] = useState<{ game: PortedGameId; storage: Record<string, string> } | null>(null);
+  const [saveStatus, setSaveStatus] = useState("Loading save…");
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const port = PORTS[game];
   const approvedPort = approvalState?.game === game && approvalState.approved;
   const showDiagnostic = !!diagnostic && (!approvedPort || (!!user?.isAdmin && showApprovedErrors));
   const gameOrigin = window.location.origin;
   const gameAssetsPath = `${gameOrigin}/ported-games`;
-  const gameUrl = `${gameAssetsPath}/${port.assetId}/${entryFile}`;
+  const baseGameUrl = `${gameAssetsPath}/${port.assetId}/${entryFile}`;
+  const gameUrl = (() => {
+    if (saveBootstrap?.game !== game) return baseGameUrl;
+    const params = new URLSearchParams();
+    params.set("__pd_save", JSON.stringify({ version: 1, gameId: game, storage: saveBootstrap.storage }));
+    params.set("__pd_hash", new URL(baseGameUrl).hash.slice(1));
+    return `${baseGameUrl.split("#", 1)[0]}#${params.toString()}`;
+  })();
+  const saveStorageKey = `photoDesktop:gameSave:v1:${user?.username ?? "guest"}:${game}`;
+
+  useEffect(() => {
+    let active = true;
+    setSaveBootstrap(null);
+    setSaveStatus("Loading save…");
+    let localStorageData: Record<string, string> = {};
+    try {
+      localStorageData = cleanGameSave(JSON.parse(window.localStorage.getItem(saveStorageKey) || "{}"));
+    } catch { /* A blocked or corrupt local save is treated as empty. */ }
+    void (async () => {
+      let storage = localStorageData;
+      let cloudAvailable = false;
+      if (user?.username) {
+        try {
+          const remote = cleanGameSave((await fetchGameSave(game)).storage);
+          cloudAvailable = true;
+          if (Object.keys(remote).length) storage = remote;
+          else if (Object.keys(localStorageData).length) await putGameSave(game, localStorageData);
+        } catch { cloudAvailable = false; }
+      }
+      if (!active) return;
+      try { window.localStorage.setItem(saveStorageKey, JSON.stringify(storage)); } catch { /* Cloud save still works. */ }
+      setSaveStatus(cloudAvailable ? "Account save loaded" : "Browser save loaded");
+      setSaveBootstrap({ game, storage });
+    })();
+    return () => { active = false; };
+  }, [game, saveStorageKey, user?.username]);
+
+  useEffect(() => {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const onSaveMessage = (event: MessageEvent<unknown>) => {
+      if (event.source !== iframeRef.current?.contentWindow || !event.data || typeof event.data !== "object") return;
+      const data = event.data as { source?: unknown; version?: unknown; gameId?: unknown; storage?: unknown };
+      if (data.source !== "ported-game-save" || data.version !== 1 || data.gameId !== game) return;
+      const storage = cleanGameSave(data.storage);
+      if (Object.keys(storage).length === 0 && data.storage && Object.keys(data.storage as object).length > 0) {
+        setSaveStatus("Save is too large to sync");
+        return;
+      }
+      try { window.localStorage.setItem(saveStorageKey, JSON.stringify(storage)); } catch { /* Continue with account storage. */ }
+      if (!user?.username) {
+        setSaveStatus("Saved on this device");
+        return;
+      }
+      setSaveStatus("Saving to account…");
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(() => {
+        void putGameSave(game, storage)
+          .then(() => setSaveStatus("Saved to account"))
+          .catch(() => setSaveStatus("Saved on this device; account sync failed"));
+      }, 600);
+    };
+    window.addEventListener("message", onSaveMessage);
+    return () => {
+      window.removeEventListener("message", onSaveMessage);
+      if (timer) clearTimeout(timer);
+    };
+  }, [game, saveStorageKey, user?.username]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -171,9 +250,9 @@ export function PortedGame({ game, adminPreview = false }: { game: PortedGameId;
       <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-[#38554a] bg-[#1b3028] px-2 py-1.5">
         <Info className="h-4 w-4 shrink-0 text-[#b9d3c3]" aria-hidden="true" />
         <p className="min-w-0 flex-1 text-[10px] leading-snug">
-          {adminPreview && user?.isAdmin ? "Admin preview · not yet approved · sandboxed game port." : "Sandboxed game port · progress may not save in games that require browser storage."}
+          {adminPreview && user?.isAdmin ? "Admin preview · not yet approved · sandboxed game port." : "Save bridge supports localStorage games (128 KB max); sign in to sync. OPFS/IndexedDB games need adapters."} · {saveStatus}
         </p>
-        {assetStatus === "ready" && (
+        {assetStatus === "ready" && saveBootstrap?.game === game && (
           <a
             className="win98-button inline-flex shrink-0 items-center gap-1 px-2 py-1 text-[10px]"
             href={gameUrl}
@@ -203,9 +282,9 @@ export function PortedGame({ game, adminPreview = false }: { game: PortedGameId;
           </button>
         )}
       </div>
-      {assetStatus === "checking" ? (
+      {assetStatus === "checking" || (assetStatus === "ready" && saveBootstrap?.game !== game) ? (
         <div className="flex min-h-0 flex-1 items-center justify-center p-6 text-center text-sm">
-          Checking for installed game files…
+          {assetStatus === "checking" ? "Checking for installed game files…" : "Preparing saved progress…"}
         </div>
       ) : assetStatus === "ready" ? (
         <div className="relative flex min-h-0 flex-1 flex-col bg-black">

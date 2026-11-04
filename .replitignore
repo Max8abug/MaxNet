@@ -4,3 +4,5 @@
 # No need to store the pnpm store twice.
 .local
 /selfhost/data/game-user-files/
+/selfhost/data/game-saves/
+/selfhost/data/game-saves-dev/

@@ -27,6 +27,8 @@ import cafeObjectsRouter from "./cafe-objects";
 import diagnosticsRouter from "./diagnostics";
 import plannerRouter from "./planner";
 import personalPlaylistsRouter from "./personal-playlists";
+import { requireAuth } from "../lib/auth";
+import { createGameSavesRouter } from "./game-saves";
 
 const router: IRouter = Router();
 
@@ -58,5 +60,6 @@ router.use(adminBackupRouter);
 router.use(pushRouter);
 router.use(plannerRouter);
 router.use(personalPlaylistsRouter);
+router.use(createGameSavesRouter(requireAuth));
 
 export default router;
