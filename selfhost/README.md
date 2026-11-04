@@ -122,12 +122,13 @@ served as public game assets. Back up this directory with PostgreSQL. The
 save bridge supports up to 128 KiB per game for localStorage-based ports,
 Stardew Valley's `Saves.tar` / `DevicePreferences.tar` files, and basic
 IndexedDB object stores, key paths, indexes, and compound keys, including the
-patterns used by Undertale and Hill Climb Racing. IndexedDB snapshots and OPFS
-files are capped at 64 MiB each. More advanced IndexedDB transaction and
-cursor behavior may still need adapters. IndexedDB and OPFS saves are cached
-in the browser for guests and synced to the private account directory when the
-player signs in. The Replit development server uses a separate ignored
-`game-saves-dev` directory.
+patterns used by Undertale, Hill Climb Racing, and Emscripten IDBFS-style
+stores. IndexedDB snapshots and OPFS files are capped at 64 MiB each. The
+bridge preserves request-to-transaction completion ordering for common save
+flows; less common IndexedDB behavior may still need adapters. IndexedDB and
+OPFS saves are cached in the browser for guests and synced to the private
+account directory when the player signs in. The Replit development server
+uses a separate ignored `game-saves-dev` directory.
 
 For developers, the opt-in storage regression checks create unique disposable
 users, ranks, pages, and files in the configured database and both storage

@@ -107,6 +107,7 @@ try {
   for (const [gameId, database, storeName] of [
     ["undertale", "emscripten_filesystem", "FILES"],
     ["hillclimb", "hcrwasm", "files"],
+    ["ac-gamecube", "EM_FS", "FILE_DATA"],
     ["another-idb-game", "saveDB", "saves"],
   ]) {
     const savedFiles = new Map<string, Uint8Array>();
@@ -175,16 +176,69 @@ try {
       openRequest.onsuccess = (event: { target: { result: any } }) => resolve(event.target.result);
       openRequest.onerror = (event: { target: { error: unknown } }) => reject(event.target.error);
     });
-    const store = db.transaction(storeName, "readwrite").objectStore(storeName);
+    const transaction = db.transaction(storeName, "readwrite");
+    let writeRequestCompleted = false;
+    const transactionComplete = new Promise<void>((resolve, reject) => {
+      transaction.oncomplete = () => {
+        assert.equal(writeRequestCompleted, true, "IDB transaction completes after its requests");
+        resolve();
+      };
+      transaction.onabort = () => reject(new Error(`${gameId} IndexedDB transaction aborted`));
+    });
+    const store = transaction.objectStore(storeName);
     const testValue = gameId === "another-idb-game"
       ? runInNewContext('({owner:"player-1",slot:2,title:"Save A",payload:new Uint8Array([4,5,6]).buffer})', context)
-      : runInNewContext("new Uint8Array([4, 5, 6]).buffer", context);
+      : gameId === "ac-gamecube"
+        ? runInNewContext('({timestamp:1,mode:33206,contents:new Uint8Array([4,5,6]).buffer})', context)
+        : runInNewContext("new Uint8Array([4, 5, 6]).buffer", context);
     await new Promise<void>((resolve, reject) => {
-      const request = gameId === "another-idb-game" ? store.put(testValue) : store.put(testValue, "save-slot");
-      request.onsuccess = () => resolve();
+      const request = gameId === "another-idb-game" ? store.put(testValue) : store.put(testValue, gameId === "ac-gamecube" ? "/save-000" : "save-slot");
+      request.onsuccess = () => {
+        writeRequestCompleted = true;
+        resolve();
+      };
       request.onerror = (event: { target: { error: unknown } }) => reject(event.target.error);
     });
+    await transactionComplete;
     assert(savedFiles.has(`idb-${database}.json`), `${gameId} IndexedDB writes reach account storage`);
+    if (gameId === "ac-gamecube") {
+      const reloadContext: Record<string, unknown> = {
+        window: { __pdGameSaveBootstrap: { gameId } },
+        parent,
+        addEventListener: (type: string, callback: typeof onMessage) => {
+          if (type === "message") onMessage = callback;
+        },
+        crypto: { randomUUID },
+        TextEncoder,
+        TextDecoder,
+        Uint8Array,
+        ArrayBuffer,
+        Map,
+        Set,
+        Object,
+        JSON,
+        Promise,
+        DOMException,
+        queueMicrotask,
+        structuredClone,
+        btoa,
+        atob,
+      };
+      runInNewContext(indexedDbBridge[1], reloadContext);
+      const reloadWindow = reloadContext.window as typeof windowObject;
+      const reopenedDb = await new Promise<any>((resolve, reject) => {
+        const request = reloadWindow.indexedDB.open(database, 1);
+        request.onsuccess = (event: { target: { result: any } }) => resolve(event.target.result);
+        request.onerror = (event: { target: { error: unknown } }) => reject(event.target.error);
+      });
+      const restoredFile = await new Promise<any>((resolve, reject) => {
+        const request = reopenedDb.transaction(storeName, "readonly").objectStore(storeName).get("/save-000");
+        request.onsuccess = (event: { target: { result: unknown } }) => resolve(event.target.result);
+        request.onerror = (event: { target: { error: unknown } }) => reject(event.target.error);
+      });
+      assert.equal(restoredFile.timestamp, 1, "Emscripten IDBFS records survive a fresh page context");
+      assert.deepEqual(Array.from(new Uint8Array(restoredFile.contents)), [4, 5, 6]);
+    }
     if (gameId === "another-idb-game") {
       const range = windowObject.IDBKeyRange?.only(["player-1", 2]);
       const compoundResult = await new Promise<any>((resolve, reject) => {

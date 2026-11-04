@@ -231,9 +231,13 @@ const GAME_INDEXEDDB_BOOTSTRAP = `<script>
     if (d.ok) p.resolve(d.bytes || null);
     else p.reject(new DOMException(d.error||"Save storage unavailable",d.error==="NotFoundError"?"NotFoundError":"NotAllowedError"));
   });
-  const emit = (request, error) => queueMicrotask(() => {
-    if (error) { request.error=error; request.onerror&&request.onerror({target:request}); }
-    else request.onsuccess&&request.onsuccess({target:request});
+  const emit = (request, error, transaction) => queueMicrotask(() => {
+    try {
+      if (error) { request.error=error; request.onerror&&request.onerror({target:request}); }
+      else request.onsuccess&&request.onsuccess({target:request});
+    } finally {
+      transaction?._requestDone();
+    }
   });
   const persist = db => {
     const file=dbFile(db.name); if(!file) return Promise.reject(new DOMException("Unsupported database name","NotSupportedError"));
@@ -243,14 +247,17 @@ const GAME_INDEXEDDB_BOOTSTRAP = `<script>
       records:[...s.records.values()].map(r=>[encode(r.key),encode(r.value)])
     }]))};
     const bytes=new TextEncoder().encode(JSON.stringify(snapshot)).buffer;
-    return rpc("write",file,bytes);
+    const previous=db.persistQueue||Promise.resolve();
+    db.persistQueue=previous.catch(()=>{}).then(()=>rpc("write",file,bytes));
+    return db.persistQueue;
   };
-  const makeCursor=(db,storeName,entries,request,direction="next",keysOnly=false) => {
+  const makeCursor=(db,storeName,entries,request,direction="next",keysOnly=false,transaction) => {
+    transaction?._requestStart();
     let i=0;
     if(direction.startsWith("prev")) entries.reverse();
     if(direction.endsWith("unique")) entries=entries.filter((row,index)=>index===0||compareKeys(row.key,entries[index-1].key)!==0);
     const show=()=>{
-      if(i>=entries.length){request.result=null;emit(request);return;}
+      if(i>=entries.length){request.result=null;emit(request,null,transaction);return;}
       const row=entries[i];
       request.result={
         key:structuredClone(row.key),primaryKey:structuredClone(row.primaryKey),
@@ -258,14 +265,14 @@ const GAME_INDEXEDDB_BOOTSTRAP = `<script>
         continue:key=>{i++;if(key!==undefined)while(i<entries.length&&(direction.startsWith("prev")?compareKeys(entries[i].key,key)>0:compareKeys(entries[i].key,key)<=0))i++;queueMicrotask(show);},
         advance:count=>{i+=Math.max(1,count|0);queueMicrotask(show);},
         continuePrimaryKey:(key,primaryKey)=>{i++;while(i<entries.length&&(compareKeys(entries[i].key,key)<0||(compareKeys(entries[i].key,key)===0&&compareKeys(entries[i].primaryKey,primaryKey)<0)))i++;queueMicrotask(show);},
-        update:value=>db.stores.get(storeName).keyPath===null?makeStore(db,storeName).put(value,row.primaryKey):makeStore(db,storeName).put(value),
-        delete:()=>makeStore(db,storeName).delete(row.primaryKey)
+        update:value=>db.stores.get(storeName).keyPath===null?makeStore(db,storeName,transaction).put(value,row.primaryKey):makeStore(db,storeName,transaction).put(value),
+        delete:()=>makeStore(db,storeName,transaction).delete(row.primaryKey)
       };
       emit(request);
     };
     queueMicrotask(show);return request;
   };
-  const makeIndex=(db,storeName,indexName)=>{
+  const makeIndex=(db,storeName,indexName,transaction)=>{
     const store=db.stores.get(storeName), meta=store.indexes.get(indexName);
     const rows=range=>[...store.records.values()].flatMap(record=>{
       const key=pathValue(record.value,meta.keyPath);
@@ -273,20 +280,22 @@ const GAME_INDEXEDDB_BOOTSTRAP = `<script>
       return keys.filter(k=>inRange(k,normalizeRange(range))).map(key=>({key,primaryKey:record.key,value:record.value}));
     }).sort((a,b)=>compareKeys(a.key,b.key)||compareKeys(a.primaryKey,b.primaryKey));
     const select=range=>rows(range);
+    const readRequest=request=>{transaction?._requestStart();emit(request,null,transaction);return request;};
     return {
       name:indexName,keyPath:meta.keyPath,unique:meta.unique,multiEntry:meta.multiEntry,
-      get:range=>{const r={result:undefined};r.result=select(range)[0]?.value;emit(r);return r;},
-      getKey:range=>{const r={result:undefined};r.result=select(range)[0]?.primaryKey;emit(r);return r;},
-      getAll:(range,count)=>{const rows=select(range),r={result:(count===undefined?rows:rows.slice(0,count)).map(x=>structuredClone(x.value))};emit(r);return r;},
-      getAllKeys:(range,count)=>{const rows=select(range),r={result:(count===undefined?rows:rows.slice(0,count)).map(x=>structuredClone(x.primaryKey))};emit(r);return r;},
-      count:range=>{const r={result:select(range).length};emit(r);return r;},
-      openCursor:(range,direction)=>makeCursor(db,storeName,select(range),{result:null},direction,false),
-      openKeyCursor:(range,direction)=>makeCursor(db,storeName,select(range),{result:null},direction,true)
+      get:range=>{const r={result:undefined};r.result=select(range)[0]?.value;return readRequest(r);},
+      getKey:range=>{const r={result:undefined};r.result=select(range)[0]?.primaryKey;return readRequest(r);},
+      getAll:(range,count)=>{const rows=select(range),r={result:(count===undefined?rows:rows.slice(0,count)).map(x=>structuredClone(x.value))};return readRequest(r);},
+      getAllKeys:(range,count)=>{const rows=select(range),r={result:(count===undefined?rows:rows.slice(0,count)).map(x=>structuredClone(x.primaryKey))};return readRequest(r);},
+      count:range=>readRequest({result:select(range).length}),
+      openCursor:(range,direction)=>makeCursor(db,storeName,select(range),{result:null},direction,false,transaction),
+      openKeyCursor:(range,direction)=>makeCursor(db,storeName,select(range),{result:null},direction,true,transaction)
     };
   };
-  const makeStore=(db,name)=>{
+  const makeStore=(db,name,transaction)=>{
     const store=db.stores.get(name), records=()=>[...store.records.values()].map(r=>({key:r.key,primaryKey:r.key,value:r.value})).sort((a,b)=>compareKeys(a.key,b.key));
     const query=(range)=>records().filter(r=>inRange(r.key,normalizeRange(range)));
+    const readRequest=request=>{transaction?._requestStart();emit(request,null,transaction);return request;};
     const keyFor=(value,key)=>{
       if(key!==undefined){if(store.keyPath!==null)throw new DOMException("Key supplied to inline-key store","DataError");return key;}
       let found=pathValue(value,store.keyPath);
@@ -294,7 +303,7 @@ const GAME_INDEXEDDB_BOOTSTRAP = `<script>
       if(found===undefined)throw new DOMException("Key is required","DataError");
       return found;
     };
-    const write=(result,change)=>{const r={result,error:null};try{change();persist(db).then(()=>emit(r),e=>emit(r,e));}catch(e){emit(r,e);}return r;};
+    const write=(result,change)=>{const r={result,error:null};transaction?._requestStart();try{if(transaction?.mode==="readonly")throw new DOMException("Read-only transaction","ReadOnlyError");change();persist(db).then(()=>emit(r,null,transaction),e=>emit(r,e,transaction));}catch(e){emit(r,e,transaction);}return r;};
     const validateUnique=(value,key)=>{
       for(const [indexName,index] of store.indexes){
         if(!index.unique)continue;
@@ -305,24 +314,24 @@ const GAME_INDEXEDDB_BOOTSTRAP = `<script>
         }
       }
     };
-    const cursor=(range,direction,keysOnly)=>makeCursor(db,name,query(range),{result:null},direction,keysOnly);
+    const cursor=(range,direction,keysOnly)=>makeCursor(db,name,query(range),{result:null},direction,keysOnly,transaction);
     const indexes={
       contains:n=>store.indexes.has(n),[Symbol.iterator]:function*(){yield* store.indexes.keys();}
     };
     return {
       name,keyPath:store.keyPath,autoIncrement:store.autoIncrement,indexNames:indexes,
-      createIndex(indexName,keyPath,options={}){if(store.indexes.has(indexName))throw new DOMException("Index exists","ConstraintError");if(options.multiEntry&&Array.isArray(keyPath))throw new DOMException("multiEntry cannot use compound keys","InvalidAccessError");store.indexes.set(indexName,{name:indexName,keyPath,unique:!!options.unique,multiEntry:!!options.multiEntry});return makeIndex(db,name,indexName);},
-      index:indexName=>{if(!store.indexes.has(indexName))throw new DOMException("Missing index","NotFoundError");return makeIndex(db,name,indexName);},
+      createIndex(indexName,keyPath,options={}){if(store.indexes.has(indexName))throw new DOMException("Index exists","ConstraintError");if(options.multiEntry&&Array.isArray(keyPath))throw new DOMException("multiEntry cannot use compound keys","InvalidAccessError");store.indexes.set(indexName,{name:indexName,keyPath,unique:!!options.unique,multiEntry:!!options.multiEntry});return makeIndex(db,name,indexName,transaction);},
+      index:indexName=>{if(!store.indexes.has(indexName))throw new DOMException("Missing index","NotFoundError");return makeIndex(db,name,indexName,transaction);},
       deleteIndex:indexName=>store.indexes.delete(indexName),
       put(value,key){const r={result:undefined};return write(r,()=>{const cloned=structuredClone(value),actual=keyFor(cloned,key);validateUnique(cloned,actual);r.result=actual;store.records.set(keyToken(actual),{key:actual,value:cloned});});},
       add(value,key){const r={result:undefined};return write(r,()=>{const cloned=structuredClone(value),actual=keyFor(cloned,key),token=keyToken(actual);if(store.records.has(token))throw new DOMException("Key already exists","ConstraintError");validateUnique(cloned,actual);r.result=actual;store.records.set(token,{key:actual,value:cloned});});},
       delete(key){return write({result:undefined},()=>{if(key instanceof SaveKeyRange){for(const record of query(key))store.records.delete(keyToken(record.key));}else store.records.delete(keyToken(key));});},
       clear(){return write({result:undefined},()=>store.records.clear());},
-      get(key){const r={result:undefined};r.result=structuredClone(key instanceof SaveKeyRange?query(key)[0]?.value:store.records.get(keyToken(key))?.value);emit(r);return r;},
-      getKey(key){const r={result:undefined};r.result=key instanceof SaveKeyRange?query(key)[0]?.key:store.records.get(keyToken(key))?.key;emit(r);return r;},
-      count(range){const r={result:query(range).length};emit(r);return r;},
-      getAll(range,count){const rows=query(range),r={result:(count===undefined?rows:rows.slice(0,count)).map(x=>structuredClone(x.value))};emit(r);return r;},
-      getAllKeys(range,count){const rows=query(range),r={result:(count===undefined?rows:rows.slice(0,count)).map(x=>structuredClone(x.key))};emit(r);return r;},
+      get(key){const r={result:undefined};r.result=structuredClone(key instanceof SaveKeyRange?query(key)[0]?.value:store.records.get(keyToken(key))?.value);return readRequest(r);},
+      getKey(key){const r={result:undefined};r.result=key instanceof SaveKeyRange?query(key)[0]?.key:store.records.get(keyToken(key))?.key;return readRequest(r);},
+      count(range){return readRequest({result:query(range).length});},
+      getAll(range,count){const rows=query(range),r={result:(count===undefined?rows:rows.slice(0,count)).map(x=>structuredClone(x.value))};return readRequest(r);},
+      getAllKeys(range,count){const rows=query(range),r={result:(count===undefined?rows:rows.slice(0,count)).map(x=>structuredClone(x.key))};return readRequest(r);},
       openCursor:cursor,openKeyCursor:(range,direction)=>cursor(range,direction,true)
     };
   };
@@ -356,8 +365,13 @@ const GAME_INDEXEDDB_BOOTSTRAP = `<script>
         db.transaction=(names,mode="readonly")=>{
           const list=Array.isArray(names)?names:[names];
           if(list.some(n=>!db.stores.has(n)))throw new DOMException("Missing store","NotFoundError");
-          const tx={mode,objectStoreNames:{contains:n=>list.includes(n),[Symbol.iterator]:function*(){yield* list;}},objectStore:n=>{if(!list.includes(n))throw new DOMException("Store not in transaction","NotFoundError");return makeStore(db,n);},abort(){tx.onabort&&tx.onabort({target:tx});}};
-          queueMicrotask(()=>tx.oncomplete&&tx.oncomplete({target:tx}));
+          const tx={mode,_pending:0,_active:true,_scheduled:false,objectStoreNames:{contains:n=>list.includes(n),[Symbol.iterator]:function*(){yield* list;}},
+            _requestStart(){if(!tx._active)return;tx._pending++;tx._scheduled=false;},
+            _requestDone(){tx._pending=Math.max(0,tx._pending-1);tx._scheduleComplete();},
+            _scheduleComplete(){if(tx._scheduled||!tx._active)return;tx._scheduled=true;queueMicrotask(()=>{tx._scheduled=false;if(tx._pending===0&&tx._active){tx._active=false;tx.oncomplete&&tx.oncomplete({target:tx});}});},
+            objectStore:n=>{if(!list.includes(n))throw new DOMException("Store not in transaction","NotFoundError");return makeStore(db,n,tx);},
+            abort(){if(!tx._active)return;tx._active=false;tx.onabort&&tx.onabort({target:tx});}};
+          queueMicrotask(()=>tx._scheduleComplete());
           return tx;
         };
         dbs.set(name,db);
@@ -369,7 +383,17 @@ const GAME_INDEXEDDB_BOOTSTRAP = `<script>
     return req;
   };
   try {
-    const factory={open,databases:async()=>[...dbs.keys()].map(name=>({name,version:dbs.get(name).version})),deleteDatabase:name=>{dbs.delete(name);const r={result:undefined,onsuccess:null};queueMicrotask(()=>r.onsuccess&&r.onsuccess({target:r}));return r;}};
+    const factory={
+      open,
+      databases:async()=>[...dbs.keys()].map(name=>({name,version:dbs.get(name).version})),
+      deleteDatabase:name=>{
+        const db=dbs.get(name)||{name,version:0,stores:new Map()};
+        db.version=0;db.stores.clear();
+        const r={result:undefined,error:null,onsuccess:null,onerror:null};
+        persist(db).then(()=>{dbs.delete(name);queueMicrotask(()=>r.onsuccess&&r.onsuccess({target:r}));},error=>{r.error=error;queueMicrotask(()=>r.onerror&&r.onerror({target:r}));});
+        return r;
+      }
+    };
     Object.defineProperty(window,"indexedDB",{configurable:true,value:factory});
     Object.defineProperty(window,"IDBKeyRange",{configurable:true,value:SaveKeyRange});
   } catch (_) {}
