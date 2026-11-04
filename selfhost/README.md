@@ -119,9 +119,10 @@ be used.
 Per-account browser `localStorage` game saves are stored privately under
 `selfhost/data/game-saves` (override with `GAME_SAVE_DATA_DIR`) and are not
 served as public game assets. Back up this directory with PostgreSQL. The
-save bridge supports up to 128 KiB per game for localStorage-based ports.
-The Replit development server uses a separate ignored `game-saves-dev`
-directory. Ports that use OPFS or IndexedDB still need game-specific adapters.
+save bridge supports up to 128 KiB per game for localStorage-based ports and
+Stardew Valley's `Saves.tar` / `DevicePreferences.tar` files. The Replit
+development server uses a separate ignored `game-saves-dev` directory. Other
+ports that use OPFS or IndexedDB still need game-specific adapters.
 
 For developers, the opt-in storage regression checks create unique disposable
 users, ranks, pages, and files in the configured database and both storage

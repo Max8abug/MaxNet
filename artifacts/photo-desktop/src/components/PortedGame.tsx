@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { ExternalLink, Info } from "lucide-react";
 import { NEW_GAME_PORTS, type NewGamePortId } from "../lib/game-ports";
-import { fetchGameSave, fetchPortedGameApprovals, putGameSave } from "../lib/api";
+import { fetchGameSave, fetchGameSaveFile, fetchPortedGameApprovals, putGameSave, putGameSaveFile } from "../lib/api";
 import { useAuth } from "../lib/auth-store";
 
 export type PortedGameId = "gettingoverit" | "pvz" | "webfishing" | "undertale" | NewGamePortId;
@@ -162,6 +162,46 @@ export function PortedGame({ game, adminPreview = false }: { game: PortedGameId;
   }, [game, saveStorageKey, user?.username]);
 
   useEffect(() => {
+    const onOpfsMessage = async (event: MessageEvent<unknown>) => {
+      if (event.source !== iframeRef.current?.contentWindow || !event.data || typeof event.data !== "object") return;
+      const data = event.data as {
+        source?: unknown; version?: unknown; gameId?: unknown; requestId?: unknown;
+        operation?: unknown; name?: unknown; bytes?: unknown;
+      };
+      if (
+        data.source !== "ported-game-opfs" || data.version !== 1 || data.gameId !== game ||
+        typeof data.requestId !== "string" || !/^[A-Za-z0-9-]{1,64}$/.test(data.requestId) ||
+        !["Saves.tar", "DevicePreferences.tar"].includes(String(data.name))
+      ) return;
+      const target = event.source as Window;
+      const respond = (ok: boolean, bytes?: ArrayBuffer, error?: string) => {
+        const message = { source: "ported-game-opfs-response", requestId: data.requestId, ok, bytes, error };
+        if (bytes) target.postMessage(message, "*", [bytes]);
+        else target.postMessage(message, "*");
+      };
+      try {
+        if (!user?.username) throw new Error("Sign in to save this game's files.");
+        if (data.operation === "read") {
+          const bytes = await fetchGameSaveFile(game, String(data.name));
+          if (!bytes) return respond(false, undefined, "NotFoundError");
+          respond(true, bytes);
+        } else if (data.operation === "write" && data.bytes instanceof ArrayBuffer && data.bytes.byteLength <= 64 * 1024 * 1024) {
+          await putGameSaveFile(game, String(data.name), data.bytes);
+          setSaveStatus("Saved game files to account");
+          respond(true, new ArrayBuffer(0));
+        } else {
+          respond(false, undefined, "Invalid save file request");
+        }
+      } catch (error) {
+        setSaveStatus(user?.username ? "Game file save failed" : "Sign in for this game's saves");
+        respond(false, undefined, error instanceof Error ? error.message : "Save file request failed");
+      }
+    };
+    window.addEventListener("message", onOpfsMessage);
+    return () => window.removeEventListener("message", onOpfsMessage);
+  }, [game, user?.username]);
+
+  useEffect(() => {
     const controller = new AbortController();
     const isNewPort = NEW_GAME_PORTS.some(port => port.id === game);
     setApprovalState({ game, approved: false });
@@ -250,7 +290,7 @@ export function PortedGame({ game, adminPreview = false }: { game: PortedGameId;
       <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-[#38554a] bg-[#1b3028] px-2 py-1.5">
         <Info className="h-4 w-4 shrink-0 text-[#b9d3c3]" aria-hidden="true" />
         <p className="min-w-0 flex-1 text-[10px] leading-snug">
-          {adminPreview && user?.isAdmin ? "Admin preview · not yet approved · sandboxed game port." : "Save bridge supports localStorage games (128 KB max); sign in to sync. OPFS/IndexedDB games need adapters."} · {saveStatus}
+          {adminPreview && user?.isAdmin ? "Admin preview · not yet approved · sandboxed game port." : "localStorage saves sync when signed in (128 KB max); Stardew save files also sync. Other OPFS/IndexedDB games need adapters."} · {saveStatus}
         </p>
         {assetStatus === "ready" && saveBootstrap?.game === game && (
           <a

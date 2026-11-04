@@ -43,13 +43,31 @@ try {
   response = await fetch(`${url}/game-saves/pvz`, { headers: { "x-test-user": "18" } });
   assert.deepEqual(await response.json(), { storage: {} }, "accounts cannot read each other's saves");
 
+  const saveFile = new Uint8Array([0, 1, 2, 255]).buffer;
+  response = await fetch(`${url}/game-saves/stardewwasm/files/Saves.tar`, {
+    method: "PUT",
+    headers: {
+      "content-type": "application/octet-stream",
+      "x-save-file-size": String(saveFile.byteLength),
+      "x-test-user": "17",
+    },
+    body: saveFile,
+  });
+  assert.equal(response.status, 200, "OPFS save archives can be stored");
+
+  response = await fetch(`${url}/game-saves/stardewwasm/files/Saves.tar`, { headers: { "x-test-user": "17" } });
+  assert.deepEqual([...new Uint8Array(await response.arrayBuffer())], [0, 1, 2, 255]);
+
+  response = await fetch(`${url}/game-saves/stardewwasm/files/Saves.tar`, { headers: { "x-test-user": "18" } });
+  assert.equal(response.status, 404, "accounts cannot read another user's OPFS files");
+
   response = await fetch(`${url}/game-saves/pvz`, {
     method: "PUT",
     headers: { "content-type": "application/json", "x-test-user": "17" },
     body: JSON.stringify({ storage: { tooLarge: "x".repeat(128 * 1024 + 1) } }),
   });
   assert.equal(response.status, 400, "oversized saves are rejected");
-  console.log("PASS: account-only access, per-user isolation, save round-trip, and size limits");
+  console.log("PASS: account-only localStorage and OPFS saves, per-user isolation, round-trips, and size limits");
 } finally {
   server.close();
   await once(server, "close");

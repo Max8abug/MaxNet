@@ -59,8 +59,8 @@ export function createGameSavesRouter(requireAuth: RequestHandler) {
     if (!file || !req.is("application/octet-stream")) return res.status(400).json({ error: "Invalid save file upload." });
     const expectedBytes = Number(req.get("x-save-file-size") ?? req.get("content-length") ?? 0);
     const maxBytes = 64 * 1024 * 1024;
-    if (!Number.isFinite(expectedBytes) || expectedBytes <= 0 || expectedBytes > maxBytes) {
-      return res.status(413).json({ error: "Save files must be between 1 byte and 64 MiB." });
+    if (!Number.isFinite(expectedBytes) || expectedBytes < 0 || expectedBytes > maxBytes) {
+      return res.status(413).json({ error: "Save files must be between 0 and 64 MiB." });
     }
     const temporary = `${file}.${randomUUID()}.tmp`;
     let bytes = 0;

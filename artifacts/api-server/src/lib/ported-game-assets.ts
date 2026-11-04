@@ -59,25 +59,22 @@ const GAME_SAVE_BOOTSTRAP = `<script>
     });
     Object.defineProperty(window, "localStorage", { configurable: true, value: makeStorage(values, true) });
     try { Object.defineProperty(window, "sessionStorage", { configurable: true, value: makeStorage(new Map(), false) }); } catch (_) {}
+    if (bootstrap.gameId === "stardewwasm") {
     const saveFiles = new Set(["Saves.tar", "DevicePreferences.tar"]);
     const memoryFiles = new Map();
     const pending = new Map();
     addEventListener("message", event => {
       const data = event.data;
       if (event.source !== parent || !data || data.source !== "ported-game-opfs-response") return;
-      const resolve = pending.get(data.requestId);
-      if (!resolve) return;
+      const callbacks = pending.get(data.requestId);
+      if (!callbacks) return;
       pending.delete(data.requestId);
-      if (data.ok) resolve(data.bytes || null);
-      else {
-        const error = new DOMException(data.error || "Save file unavailable", data.error === "NotFoundError" ? "NotFoundError" : "NotAllowedError");
-        pending.get(data.requestId)?.(null);
-        resolve(Promise.reject(error));
-      }
+      if (data.ok) callbacks.resolve(data.bytes || null);
+      else callbacks.reject(new DOMException(data.error || "Save file unavailable", data.error === "NotFoundError" ? "NotFoundError" : "NotAllowedError"));
     });
     const requestFile = (operation, name, bytes) => new Promise((resolve, reject) => {
       const requestId = crypto.randomUUID();
-      pending.set(requestId, result => result instanceof Error ? reject(result) : resolve(result));
+      pending.set(requestId, { resolve, reject });
       const message = { source: "ported-game-opfs", version: 1, gameId: bootstrap.gameId, requestId, operation, name, bytes };
       try {
         if (bytes instanceof ArrayBuffer) parent.postMessage(message, "*", [bytes]);
@@ -130,6 +127,7 @@ const GAME_SAVE_BOOTSTRAP = `<script>
       Object.defineProperty(storage, "persist", { value: async () => true });
       Object.defineProperty(navigator, "storage", { configurable: true, value: storage });
     } catch (_) {}
+    }
     const originalHash = params.get("__pd_hash") || "";
     params.delete("__pd_save");
     params.delete("__pd_hash");
