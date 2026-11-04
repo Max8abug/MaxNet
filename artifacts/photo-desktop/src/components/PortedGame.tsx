@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { ExternalLink, Info } from "lucide-react";
 import { NEW_GAME_PORTS, type NewGamePortId } from "../lib/game-ports";
 import { fetchGameSave, fetchGameSaveFile, fetchPortedGameApprovals, putGameSave, putGameSaveFile } from "../lib/api";
+import { readLocalGameSaveFile, writeLocalGameSaveFile } from "../lib/game-save-cache";
 import { useAuth } from "../lib/auth-store";
 
 export type PortedGameId = "gettingoverit" | "pvz" | "webfishing" | "undertale" | NewGamePortId;
@@ -57,6 +58,48 @@ const DIAGNOSTIC_TYPES = new Set<GameDiagnostic["type"]>([
   "async-error",
 ]);
 const GAME_SAVE_MAX_BYTES = 128 * 1024;
+
+function gameSaveFileKey(username: string, gameId: string, name: string) {
+  return `${username}:${gameId}:${name}`;
+}
+
+async function readGameSaveFile(gameId: string, name: string, username?: string): Promise<ArrayBuffer | null> {
+  const accountKey = username ? gameSaveFileKey(username, gameId, name) : "";
+  const guestKey = gameSaveFileKey("guest", gameId, name);
+  let local: ArrayBuffer | null = null;
+  if (username) local = await readLocalGameSaveFile(accountKey).catch(() => null);
+  if (!local) local = await readLocalGameSaveFile(guestKey).catch(() => null);
+  if (!username) return local;
+  try {
+    const remote = await fetchGameSaveFile(gameId, name);
+    if (remote) {
+      await writeLocalGameSaveFile(accountKey, remote).catch(() => {});
+      return remote;
+    }
+    if (local) await putGameSaveFile(gameId, name, local).catch(() => {});
+  } catch { /* Keep using a local copy when account storage is temporarily unavailable. */ }
+  return local;
+}
+
+async function writeGameSaveFile(gameId: string, name: string, bytes: ArrayBuffer, username?: string) {
+  const localKey = gameSaveFileKey(username || "guest", gameId, name);
+  let localSaved = false;
+  try {
+    await writeLocalGameSaveFile(localKey, bytes);
+    localSaved = true;
+  } catch { /* A successful account write can still preserve the save. */ }
+  if (username) {
+    try {
+      await putGameSaveFile(gameId, name, bytes);
+      return { localSaved, accountSaved: true };
+    } catch {
+      if (localSaved) return { localSaved, accountSaved: false };
+      throw new Error("Could not save this game file locally or to the account.");
+    }
+  }
+  if (!localSaved) throw new Error("Could not save this game file in browser storage.");
+  return { localSaved: true, accountSaved: false };
+}
 
 function cleanGameSave(value: unknown): Record<string, string> {
   if (!value || typeof value !== "object" || Array.isArray(value)) return {};
@@ -180,20 +223,19 @@ export function PortedGame({ game, adminPreview = false }: { game: PortedGameId;
         else target.postMessage(message, "*");
       };
       try {
-        if (!user?.username) throw new Error("Sign in to save this game's files.");
         if (data.operation === "read") {
-          const bytes = await fetchGameSaveFile(game, String(data.name));
+          const bytes = await readGameSaveFile(game, String(data.name), user?.username);
           if (!bytes) return respond(false, undefined, "NotFoundError");
           respond(true, bytes);
         } else if (data.operation === "write" && data.bytes instanceof ArrayBuffer && data.bytes.byteLength <= 64 * 1024 * 1024) {
-          await putGameSaveFile(game, String(data.name), data.bytes);
-          setSaveStatus("Saved game files to account");
+          const result = await writeGameSaveFile(game, String(data.name), data.bytes, user?.username);
+          setSaveStatus(result.accountSaved ? "Game files synced to account" : "Game files saved on this device");
           respond(true, new ArrayBuffer(0));
         } else {
           respond(false, undefined, "Invalid save file request");
         }
       } catch (error) {
-        setSaveStatus(user?.username ? "Game file save failed" : "Sign in for this game's saves");
+        setSaveStatus("Game file save failed");
         respond(false, undefined, error instanceof Error ? error.message : "Save file request failed");
       }
     };
@@ -220,20 +262,19 @@ export function PortedGame({ game, adminPreview = false }: { game: PortedGameId;
         else target.postMessage(message, "*");
       };
       try {
-        if (!user?.username) throw new Error("Sign in to sync this game's save database.");
         if (data.operation === "read") {
-          const bytes = await fetchGameSaveFile(game, String(data.name));
+          const bytes = await readGameSaveFile(game, String(data.name), user?.username);
           if (!bytes) return respond(false, undefined, "NotFoundError");
           respond(true, bytes);
         } else if (data.operation === "write" && data.bytes instanceof ArrayBuffer && data.bytes.byteLength <= 64 * 1024 * 1024) {
-          await putGameSaveFile(game, String(data.name), data.bytes);
-          setSaveStatus("IndexedDB save synced to account");
+          const result = await writeGameSaveFile(game, String(data.name), data.bytes, user?.username);
+          setSaveStatus(result.accountSaved ? "IndexedDB save synced to account" : "IndexedDB save stored on this device");
           respond(true, new ArrayBuffer(0));
         } else {
           respond(false, undefined, "Invalid IndexedDB save request");
         }
       } catch (error) {
-        setSaveStatus(user?.username ? "IndexedDB save sync failed" : "Sign in to sync this game's saves");
+        setSaveStatus("IndexedDB save failed");
         respond(false, undefined, error instanceof Error ? error.message : "IndexedDB save request failed");
       }
     };
@@ -330,7 +371,7 @@ export function PortedGame({ game, adminPreview = false }: { game: PortedGameId;
       <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-[#38554a] bg-[#1b3028] px-2 py-1.5">
         <Info className="h-4 w-4 shrink-0 text-[#b9d3c3]" aria-hidden="true" />
         <p className="min-w-0 flex-1 text-[10px] leading-snug">
-          {adminPreview && user?.isAdmin ? "Admin preview · not yet approved · sandboxed game port." : "Signed-in saves: localStorage (128 KB), Stardew files, and IndexedDB key paths, indexes, and compound keys. Some advanced IDB behavior may need adapters."} · {saveStatus}
+          {adminPreview && user?.isAdmin ? "Admin preview · not yet approved · sandboxed game port." : "Saves stay on this device; sign in to sync localStorage, IndexedDB, and supported OPFS games."} · {saveStatus}
         </p>
         {assetStatus === "ready" && saveBootstrap?.game === game && (
           <a
