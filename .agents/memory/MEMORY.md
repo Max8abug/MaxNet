@@ -18,7 +18,7 @@
 - [NewCP hosted game](newcp-hosted-game.md) — GitHub hosts desktop wrappers, not full game source; browser embedding and account gameplay require separate verification.
 - [Spotify import scope](spotify-playlist-import.md) — public playlists only; launcher API keys stay local and survive setup rewrites and updates.
 - [Notification email delivery](notification-delivery.md) — self-hosted notification email uses Resend configured through launcher settings, with verified recipients.
-- [Path-based game hosting](ported-game-path-sandbox.md) — keep frames opaque; bridge localStorage saves privately and adapt OPFS/IndexedDB per game.
+- [Path-based game hosting](ported-game-path-sandbox.md) — keep frames opaque; bridge saves narrowly and add per-game adapters for specialized browser storage.
 - [Game port hosting permission](game-port-permission.md) — user says repository creators explicitly permitted self-hosting the supplied port files.
 - [Approved game data visibility](approved-game-data-visibility.md) — admin-supplied game files are public to visitors only after that game is approved.
 - [Social feed migration scope](social-feed-migration.md) — keep the standalone Drawpad and its drawings; migrate only legacy My Page artwork into the owner's first post.

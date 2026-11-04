@@ -208,15 +208,10 @@ export function PortedGame({ game, adminPreview = false }: { game: PortedGameId;
         source?: unknown; version?: unknown; gameId?: unknown; requestId?: unknown;
         operation?: unknown; name?: unknown; bytes?: unknown;
       };
-      const allowedFiles = game === "undertale"
-        ? ["idb-emscripten_filesystem.json"]
-        : game === "hillclimb"
-          ? ["idb-hcrwasm.json", "idb-sawasm.json"]
-          : [];
       if (
         data.source !== "ported-game-indexeddb" || data.version !== 1 || data.gameId !== game ||
         typeof data.requestId !== "string" || !/^[A-Za-z0-9-]{1,64}$/.test(data.requestId) ||
-        !allowedFiles.includes(String(data.name))
+        typeof data.name !== "string" || !/^idb-[A-Za-z0-9_-]{1,64}\.json$/.test(data.name)
       ) return;
       const target = event.source as Window;
       const respond = (ok: boolean, bytes?: ArrayBuffer, error?: string) => {
@@ -335,7 +330,7 @@ export function PortedGame({ game, adminPreview = false }: { game: PortedGameId;
       <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-[#38554a] bg-[#1b3028] px-2 py-1.5">
         <Info className="h-4 w-4 shrink-0 text-[#b9d3c3]" aria-hidden="true" />
         <p className="min-w-0 flex-1 text-[10px] leading-snug">
-          {adminPreview && user?.isAdmin ? "Admin preview · not yet approved · sandboxed game port." : "localStorage saves sync when signed in (128 KB max); Stardew save files also sync. Other OPFS/IndexedDB games need adapters."} · {saveStatus}
+          {adminPreview && user?.isAdmin ? "Admin preview · not yet approved · sandboxed game port." : "Signed-in saves: localStorage (128 KB), Stardew files, and basic IndexedDB stores, including Undertale and Hill Climb. Advanced database features may need adapters."} · {saveStatus}
         </p>
         {assetStatus === "ready" && saveBootstrap?.game === game && (
           <a

@@ -1,8 +1,10 @@
 import assert from "node:assert/strict";
+import { randomUUID } from "node:crypto";
 import express from "express";
 import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import { once } from "node:events";
 import path from "node:path";
+import { runInNewContext } from "node:vm";
 import { tmpdir } from "node:os";
 import {
   createPortedGameAssetsRouter,
@@ -97,6 +99,79 @@ try {
   assert.doesNotMatch(csp, /allow-same-origin/);
   const gameHtml = await response.text();
   assert.match(gameHtml, /source: "ported-game-diagnostics"/);
+  assert.match(gameHtml, /ported-game-indexeddb-save-bridge/);
+  assert.match(gameHtml, /createObjectStore/);
+  const indexedDbBridge = gameHtml.match(/\/\* ported-game-indexeddb-save-bridge \*\/([\s\S]*?)<\/script>/);
+  assert(indexedDbBridge, "IndexedDB bridge script is present");
+  assert.doesNotThrow(() => new Function(indexedDbBridge[1]), "IndexedDB bridge script parses");
+  for (const [gameId, database, storeName] of [
+    ["undertale", "emscripten_filesystem", "FILES"],
+    ["hillclimb", "hcrwasm", "files"],
+    ["another-idb-game", "saveDB", "saves"],
+  ]) {
+    const savedFiles = new Map<string, Uint8Array>();
+    let onMessage: ((event: { source: unknown; data: Record<string, unknown> }) => void) | undefined;
+    const parent = {
+      postMessage(message: Record<string, unknown>) {
+        queueMicrotask(() => {
+          const name = String(message.name);
+          if (message.operation === "read") {
+            const saved = savedFiles.get(name);
+            onMessage?.({
+              source: parent,
+              data: saved
+                ? { source: "ported-game-indexeddb-response", requestId: message.requestId, ok: true, bytes: saved.slice().buffer }
+                : { source: "ported-game-indexeddb-response", requestId: message.requestId, ok: false, error: "NotFoundError" },
+            });
+          } else {
+            savedFiles.set(name, new Uint8Array(message.bytes as ArrayBuffer).slice());
+            onMessage?.({
+              source: parent,
+              data: { source: "ported-game-indexeddb-response", requestId: message.requestId, ok: true, bytes: new ArrayBuffer(0) },
+            });
+          }
+        });
+      },
+    };
+    const context: Record<string, unknown> = {
+      window: { __pdGameSaveBootstrap: { gameId } },
+      parent,
+      addEventListener: (type: string, callback: typeof onMessage) => {
+        if (type === "message") onMessage = callback;
+      },
+      crypto: { randomUUID },
+      TextEncoder,
+      TextDecoder,
+      Uint8Array,
+      ArrayBuffer,
+      Map,
+      Set,
+      Object,
+      JSON,
+      Promise,
+      DOMException,
+      queueMicrotask,
+      structuredClone,
+      btoa,
+      atob,
+    };
+    runInNewContext(indexedDbBridge[1], context);
+    const windowObject = context.window as { indexedDB: { open: (name: string, version: number) => Record<string, any> } };
+    const openRequest = windowObject.indexedDB.open(database, 1);
+    const db = await new Promise<any>((resolve, reject) => {
+      openRequest.onupgradeneeded = (event: { target: { result: any } }) => event.target.result.createObjectStore(storeName);
+      openRequest.onsuccess = (event: { target: { result: any } }) => resolve(event.target.result);
+      openRequest.onerror = (event: { target: { error: unknown } }) => reject(event.target.error);
+    });
+    const store = db.transaction(storeName, "readwrite").objectStore(storeName);
+    const bytes = runInNewContext("new Uint8Array([4, 5, 6]).buffer", context);
+    await new Promise<void>((resolve, reject) => {
+      const request = store.put(bytes, "save-slot");
+      request.onsuccess = () => resolve();
+      request.onerror = (event: { target: { error: unknown } }) => reject(event.target.error);
+    });
+    assert(savedFiles.has(`idb-${database}.json`), `${gameId} IndexedDB writes reach account storage`);
+  }
   assert.ok(
     gameHtml.indexOf('id="early-storage"') < gameHtml.indexOf("ported-game-save-bridge"),
     "save storage bridge runs after any existing game storage shim",

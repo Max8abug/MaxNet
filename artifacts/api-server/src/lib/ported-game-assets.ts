@@ -146,10 +146,8 @@ const GAME_INDEXEDDB_BOOTSTRAP = `<script>
 /* ported-game-indexeddb-save-bridge */
 (() => {
   const boot = window.__pdGameSaveBootstrap;
-  if (!boot || !["undertale", "hillclimb"].includes(boot.gameId)) return;
-  const config = boot.gameId === "undertale"
-    ? { emscripten_filesystem: "FILES" }
-    : { hcrwasm: "files", sawasm: "files" };
+  if (!boot) return;
+  const dbFile = name => /^[A-Za-z0-9_-]{1,64}$/.test(name) ? "idb-"+name+".json" : null;
   const dbs = new Map(), pending = new Map();
   const b64 = bytes => { let s = ""; const a = new Uint8Array(bytes); for (let i=0;i<a.length;i+=0x8000) s += String.fromCharCode(...a.subarray(i,i+0x8000)); return btoa(s); };
   const un64 = s => Uint8Array.from(atob(s), c => c.charCodeAt(0)).buffer;
@@ -189,9 +187,10 @@ const GAME_INDEXEDDB_BOOTSTRAP = `<script>
     else request.onsuccess&&request.onsuccess({target:request});
   });
   const persist = db => {
+    const file=dbFile(db.name); if(!file) return Promise.reject(new DOMException("Unsupported database name","NotSupportedError"));
     const snapshot={version:db.version,stores:Object.fromEntries([...db.stores].map(([n,m])=>[n,[...m].map(([k,v])=>[k,encode(v)])]))};
     const bytes=new TextEncoder().encode(JSON.stringify(snapshot)).buffer;
-    return rpc("write","idb-"+db.name+".json",bytes);
+    return rpc("write",file,bytes);
   };
   const makeStore=(db,name)=>({
     name,
@@ -200,24 +199,24 @@ const GAME_INDEXEDDB_BOOTSTRAP = `<script>
     clear() { const r={result:undefined}; db.stores.get(name).clear(); persist(db).then(()=>emit(r),e=>emit(r,e)); return r; },
     get(key) { const r={result:undefined}; r.result=structuredClone(db.stores.get(name).get(String(key))); emit(r); return r; },
     count() { const r={result:db.stores.get(name).size}; emit(r); return r; },
-    getAll() { const r={result:[...db.stores.get(name).values()].map(structuredClone)}; emit(r); return r; },
+    getAll() { const r={result:[...db.stores.get(name).values()].map(v=>structuredClone(v))}; emit(r); return r; },
     getAllKeys() { const r={result:[...db.stores.get(name).keys()]}; emit(r); return r; },
     openCursor() {
       const r={result:null}, entries=[...db.stores.get(name)];
       let i=0;
-      const next=()=>{ r.result=i<entries.length?{key:entries[i][0],primaryKey:entries[i][0],value:structuredClone(entries[i][1]),continue:()=>{i++;emit(r);next();}}:null; emit(r); };
+      const next=()=>{ r.result=i<entries.length?{key:entries[i][0],primaryKey:entries[i][0],value:structuredClone(entries[i][1]),continue:()=>{i++;queueMicrotask(next);}}:null; emit(r); };
       queueMicrotask(next); return r;
     }
   });
   const open = (name, version) => {
     const req={result:null,error:null,onupgradeneeded:null,onsuccess:null,onerror:null};
     (async()=>{
-      if (!config[name]) throw new DOMException("Unsupported game database","NotSupportedError");
+      const file=dbFile(name); if (!file) throw new DOMException("Unsupported game database","NotSupportedError");
       let db=dbs.get(name);
       if (!db) {
         db={name,version:0,stores:new Map(),close(){}};
         try {
-          const bytes=await rpc("read","idb-"+name+".json");
+          const bytes=await rpc("read",file);
           if (bytes) {
             const saved=JSON.parse(new TextDecoder().decode(bytes));
             db.version=saved.version||0;
@@ -237,7 +236,7 @@ const GAME_INDEXEDDB_BOOTSTRAP = `<script>
     return req;
   };
   try {
-    const factory={open,databases:async()=>[],deleteDatabase:name=>{dbs.delete(name);return {onsuccess:null};}};
+    const factory={open,databases:async()=>[...dbs.keys()].map(name=>({name,version:dbs.get(name).version})),deleteDatabase:name=>{dbs.delete(name);return {onsuccess:null};}};
     Object.defineProperty(window,"indexedDB",{configurable:true,value:factory});
   } catch (_) {}
 })();

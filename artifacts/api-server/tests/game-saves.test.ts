@@ -61,13 +61,29 @@ try {
   response = await fetch(`${url}/game-saves/stardewwasm/files/Saves.tar`, { headers: { "x-test-user": "18" } });
   assert.equal(response.status, 404, "accounts cannot read another user's OPFS files");
 
+  const indexedDbSnapshot = new TextEncoder().encode('{"stores":{"FILES":[["save",{"__pdType":"ArrayBuffer","data":"AQID"}]]}}').buffer;
+  response = await fetch(`${url}/game-saves/undertale/files/idb-emscripten_filesystem.json`, {
+    method: "PUT",
+    headers: {
+      "content-type": "application/octet-stream",
+      "x-save-file-size": String(indexedDbSnapshot.byteLength),
+      "x-test-user": "17",
+    },
+    body: indexedDbSnapshot,
+  });
+  assert.equal(response.status, 200, "IndexedDB snapshots can be stored");
+  response = await fetch(`${url}/game-saves/undertale/files/idb-emscripten_filesystem.json`, { headers: { "x-test-user": "17" } });
+  assert.equal(await response.text(), new TextDecoder().decode(indexedDbSnapshot));
+  response = await fetch(`${url}/game-saves/undertale/files/idb-emscripten_filesystem.json`, { headers: { "x-test-user": "18" } });
+  assert.equal(response.status, 404, "accounts cannot read another user's IndexedDB snapshot");
+
   response = await fetch(`${url}/game-saves/pvz`, {
     method: "PUT",
     headers: { "content-type": "application/json", "x-test-user": "17" },
     body: JSON.stringify({ storage: { tooLarge: "x".repeat(128 * 1024 + 1) } }),
   });
   assert.equal(response.status, 400, "oversized saves are rejected");
-  console.log("PASS: account-only localStorage and OPFS saves, per-user isolation, round-trips, and size limits");
+  console.log("PASS: account-only localStorage, OPFS, and IndexedDB saves; isolation, round-trips, and limits");
 } finally {
   server.close();
   await once(server, "close");

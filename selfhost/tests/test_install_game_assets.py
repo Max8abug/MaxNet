@@ -318,7 +318,7 @@ class GamePortInventoryTests(unittest.TestCase):
             localized.count(b"safeLocalStorage.getItem('setting')"),
             installer.HILL_CLIMB_STORAGE_REF_COUNT,
         )
-        self.assertIn(b"storage.getItem(key)", localized)
+        self.assertIn(b"storage().getItem(key)", localized)
         self.assertEqual(
             len(localized) - len(source),
             installer.expected_local_bytes(game) - game["expected_bytes"],
