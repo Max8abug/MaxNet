@@ -18,7 +18,14 @@ function saveFile(userId: number, gameId: string) {
 }
 
 function saveBlobFile(userId: number, gameId: string, name: string) {
-  if (!/^[a-z0-9-]{1,64}$/.test(gameId) || !["Saves.tar", "DevicePreferences.tar"].includes(name)) return null;
+  const allowedFiles = new Set([
+    "Saves.tar",
+    "DevicePreferences.tar",
+    "idb-emscripten_filesystem.json",
+    "idb-hcrwasm.json",
+    "idb-sawasm.json",
+  ]);
+  if (!/^[a-z0-9-]{1,64}$/.test(gameId) || !allowedFiles.has(name)) return null;
   return path.join(saveRoot, String(userId), gameId, "files", name);
 }
 

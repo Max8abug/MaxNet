@@ -590,16 +590,12 @@ HILL_CLIMB_JSPI_CHECK_SANDBOX_SAFE = b"""const supported = 'Suspending' in WebAs
   }"""
 HILL_CLIMB_STORAGE_SHIM_ORIGINAL = b"  // settings saved before the port's rename (saVsync, saProgs) carry over once"
 HILL_CLIMB_STORAGE_SHIM_SANDBOX_SAFE = b"""      const safeLocalStorage = (() => {
-        try {
-          const storage = window.localStorage;
-          return {
-            getItem: key => { try { return storage.getItem(key); } catch (_) { return null; } },
-            setItem: (key, value) => { try { storage.setItem(key, value); } catch (_) {} },
-            removeItem: key => { try { storage.removeItem(key); } catch (_) {} }
-          };
-        } catch (_) {
-          return { getItem: () => null, setItem: () => {}, removeItem: () => {} };
-        }
+        const storage = () => window.localStorage;
+        return {
+          getItem: key => { try { return storage().getItem(key); } catch (_) { return null; } },
+          setItem: (key, value) => { try { storage().setItem(key, value); } catch (_) {} },
+          removeItem: key => { try { storage().removeItem(key); } catch (_) {} }
+        };
       })();
   // settings saved before the port's rename (saVsync, saProgs) carry over once"""
 HILL_CLIMB_STORAGE_REF_COUNT = 11

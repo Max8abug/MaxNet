@@ -31,6 +31,7 @@ const GAME_SAVE_BOOTSTRAP = `<script>
     if (!raw) return;
     const bootstrap = JSON.parse(raw);
     if (bootstrap.version !== 1 || typeof bootstrap.gameId !== "string") return;
+    window.__pdGameSaveBootstrap = bootstrap;
     const values = new Map(Object.entries(bootstrap.storage || {}).filter(
       ([key, value]) => typeof key === "string" && typeof value === "string"
     ));
@@ -137,6 +138,107 @@ const GAME_SAVE_BOOTSTRAP = `<script>
     } catch (_) {
       location.hash = originalHash || remaining;
     }
+  } catch (_) {}
+})();
+</script>`;
+
+const GAME_INDEXEDDB_BOOTSTRAP = `<script>
+/* ported-game-indexeddb-save-bridge */
+(() => {
+  const boot = window.__pdGameSaveBootstrap;
+  if (!boot || !["undertale", "hillclimb"].includes(boot.gameId)) return;
+  const config = boot.gameId === "undertale"
+    ? { emscripten_filesystem: "FILES" }
+    : { hcrwasm: "files", sawasm: "files" };
+  const dbs = new Map(), pending = new Map();
+  const b64 = bytes => { let s = ""; const a = new Uint8Array(bytes); for (let i=0;i<a.length;i+=0x8000) s += String.fromCharCode(...a.subarray(i,i+0x8000)); return btoa(s); };
+  const un64 = s => Uint8Array.from(atob(s), c => c.charCodeAt(0)).buffer;
+  const encode = value => {
+    if (value instanceof ArrayBuffer) return { __pdType: "ArrayBuffer", data: b64(value) };
+    if (ArrayBuffer.isView(value)) return { __pdType: value.constructor.name, data: b64(value.buffer.slice(value.byteOffset,value.byteOffset+value.byteLength)) };
+    if (Array.isArray(value)) return value.map(encode);
+    if (value && typeof value === "object") return Object.fromEntries(Object.entries(value).map(([k,v])=>[k,encode(v)]));
+    return value;
+  };
+  const decode = value => {
+    if (value && value.__pdType === "ArrayBuffer") return un64(value.data);
+    if (value && value.__pdType && value.data) {
+      const bytes = new Uint8Array(un64(value.data)), C = window[value.__pdType];
+      return typeof C === "function" ? new C(bytes.buffer) : bytes;
+    }
+    if (Array.isArray(value)) return value.map(decode);
+    if (value && typeof value === "object") return Object.fromEntries(Object.entries(value).map(([k,v])=>[k,decode(v)]));
+    return value;
+  };
+  const rpc = (operation, name, bytes) => new Promise((resolve,reject) => {
+    const requestId = crypto.randomUUID();
+    pending.set(requestId,{resolve,reject});
+    const message = {source:"ported-game-indexeddb",version:1,gameId:boot.gameId,requestId,operation,name,bytes};
+    try { if (bytes instanceof ArrayBuffer) parent.postMessage(message,"*",[bytes]); else parent.postMessage(message,"*"); }
+    catch (error) { pending.delete(requestId); reject(error); }
+  });
+  addEventListener("message", event => {
+    const d=event.data, p=d&&pending.get(d.requestId);
+    if (event.source!==parent || !p || d.source!=="ported-game-indexeddb-response") return;
+    pending.delete(d.requestId);
+    if (d.ok) p.resolve(d.bytes || null);
+    else p.reject(new DOMException(d.error||"Save storage unavailable",d.error==="NotFoundError"?"NotFoundError":"NotAllowedError"));
+  });
+  const emit = (request, error) => queueMicrotask(() => {
+    if (error) { request.error=error; request.onerror&&request.onerror({target:request}); }
+    else request.onsuccess&&request.onsuccess({target:request});
+  });
+  const persist = db => {
+    const snapshot={version:db.version,stores:Object.fromEntries([...db.stores].map(([n,m])=>[n,[...m].map(([k,v])=>[k,encode(v)])]))};
+    const bytes=new TextEncoder().encode(JSON.stringify(snapshot)).buffer;
+    return rpc("write","idb-"+db.name+".json",bytes);
+  };
+  const makeStore=(db,name)=>({
+    name,
+    put(value,key) { const r={result:key}; const m=db.stores.get(name); m.set(String(key),structuredClone(value)); persist(db).then(()=>emit(r),e=>emit(r,e)); return r; },
+    delete(key) { const r={result:undefined}; db.stores.get(name).delete(String(key)); persist(db).then(()=>emit(r),e=>emit(r,e)); return r; },
+    clear() { const r={result:undefined}; db.stores.get(name).clear(); persist(db).then(()=>emit(r),e=>emit(r,e)); return r; },
+    get(key) { const r={result:undefined}; r.result=structuredClone(db.stores.get(name).get(String(key))); emit(r); return r; },
+    count() { const r={result:db.stores.get(name).size}; emit(r); return r; },
+    getAll() { const r={result:[...db.stores.get(name).values()].map(structuredClone)}; emit(r); return r; },
+    getAllKeys() { const r={result:[...db.stores.get(name).keys()]}; emit(r); return r; },
+    openCursor() {
+      const r={result:null}, entries=[...db.stores.get(name)];
+      let i=0;
+      const next=()=>{ r.result=i<entries.length?{key:entries[i][0],primaryKey:entries[i][0],value:structuredClone(entries[i][1]),continue:()=>{i++;emit(r);next();}}:null; emit(r); };
+      queueMicrotask(next); return r;
+    }
+  });
+  const open = (name, version) => {
+    const req={result:null,error:null,onupgradeneeded:null,onsuccess:null,onerror:null};
+    (async()=>{
+      if (!config[name]) throw new DOMException("Unsupported game database","NotSupportedError");
+      let db=dbs.get(name);
+      if (!db) {
+        db={name,version:0,stores:new Map(),close(){}};
+        try {
+          const bytes=await rpc("read","idb-"+name+".json");
+          if (bytes) {
+            const saved=JSON.parse(new TextDecoder().decode(bytes));
+            db.version=saved.version||0;
+            for(const [store,rows] of Object.entries(saved.stores||{})) db.stores.set(store,new Map(rows.map(([k,v])=>[k,decode(v)])));
+          }
+        } catch(e) { if(e.name!=="NotFoundError") throw e; }
+        db.objectStoreNames={contains:n=>db.stores.has(n),[Symbol.iterator]:function*(){yield* db.stores.keys();}};
+        db.createObjectStore=n=>{if(db.stores.has(n)) throw new DOMException("Store exists","ConstraintError");db.stores.set(n,new Map());return makeStore(db,n);};
+        db.deleteObjectStore=n=>db.stores.delete(n);
+        db.transaction=(names)=>({objectStore:n=>{const key=typeof n==="string"?n:names[0];if(!db.stores.has(key))throw new DOMException("Missing store","NotFoundError");return makeStore(db,key);}});
+        dbs.set(name,db);
+      }
+      const nextVersion=version||db.version||1;
+      if(nextVersion>db.version){db.version=nextVersion;req.result=db;req.onupgradeneeded&&req.onupgradeneeded({target:req});await persist(db);}
+      req.result=db; emit(req);
+    })().catch(e=>emit(req,e));
+    return req;
+  };
+  try {
+    const factory={open,databases:async()=>[],deleteDatabase:name=>{dbs.delete(name);return {onsuccess:null};}};
+    Object.defineProperty(window,"indexedDB",{configurable:true,value:factory});
   } catch (_) {}
 })();
 </script>`;
@@ -273,6 +375,11 @@ function instrumentGameHtml(html: string): string {
     if (/<\/head>/i.test(instrumented)) {
       instrumented = instrumented.replace(/<\/head>/i, `${GAME_SAVE_BOOTSTRAP}</head>`);
     } else inject(GAME_SAVE_BOOTSTRAP);
+  }
+  if (!instrumented.includes("ported-game-indexeddb-save-bridge")) {
+    if (/<\/head>/i.test(instrumented)) {
+      instrumented = instrumented.replace(/<\/head>/i, `${GAME_INDEXEDDB_BOOTSTRAP}</head>`);
+    } else inject(GAME_INDEXEDDB_BOOTSTRAP);
   }
   return instrumented;
 }

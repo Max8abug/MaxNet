@@ -202,6 +202,51 @@ export function PortedGame({ game, adminPreview = false }: { game: PortedGameId;
   }, [game, user?.username]);
 
   useEffect(() => {
+    const onIndexedDbMessage = async (event: MessageEvent<unknown>) => {
+      if (event.source !== iframeRef.current?.contentWindow || !event.data || typeof event.data !== "object") return;
+      const data = event.data as {
+        source?: unknown; version?: unknown; gameId?: unknown; requestId?: unknown;
+        operation?: unknown; name?: unknown; bytes?: unknown;
+      };
+      const allowedFiles = game === "undertale"
+        ? ["idb-emscripten_filesystem.json"]
+        : game === "hillclimb"
+          ? ["idb-hcrwasm.json", "idb-sawasm.json"]
+          : [];
+      if (
+        data.source !== "ported-game-indexeddb" || data.version !== 1 || data.gameId !== game ||
+        typeof data.requestId !== "string" || !/^[A-Za-z0-9-]{1,64}$/.test(data.requestId) ||
+        !allowedFiles.includes(String(data.name))
+      ) return;
+      const target = event.source as Window;
+      const respond = (ok: boolean, bytes?: ArrayBuffer, error?: string) => {
+        const message = { source: "ported-game-indexeddb-response", requestId: data.requestId, ok, bytes, error };
+        if (bytes) target.postMessage(message, "*", [bytes]);
+        else target.postMessage(message, "*");
+      };
+      try {
+        if (!user?.username) throw new Error("Sign in to sync this game's save database.");
+        if (data.operation === "read") {
+          const bytes = await fetchGameSaveFile(game, String(data.name));
+          if (!bytes) return respond(false, undefined, "NotFoundError");
+          respond(true, bytes);
+        } else if (data.operation === "write" && data.bytes instanceof ArrayBuffer && data.bytes.byteLength <= 64 * 1024 * 1024) {
+          await putGameSaveFile(game, String(data.name), data.bytes);
+          setSaveStatus("IndexedDB save synced to account");
+          respond(true, new ArrayBuffer(0));
+        } else {
+          respond(false, undefined, "Invalid IndexedDB save request");
+        }
+      } catch (error) {
+        setSaveStatus(user?.username ? "IndexedDB save sync failed" : "Sign in to sync this game's saves");
+        respond(false, undefined, error instanceof Error ? error.message : "IndexedDB save request failed");
+      }
+    };
+    window.addEventListener("message", onIndexedDbMessage);
+    return () => window.removeEventListener("message", onIndexedDbMessage);
+  }, [game, user?.username]);
+
+  useEffect(() => {
     const controller = new AbortController();
     const isNewPort = NEW_GAME_PORTS.some(port => port.id === game);
     setApprovalState({ game, approved: false });
