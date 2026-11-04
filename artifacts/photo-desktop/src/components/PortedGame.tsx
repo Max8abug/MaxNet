@@ -330,7 +330,7 @@ export function PortedGame({ game, adminPreview = false }: { game: PortedGameId;
       <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-[#38554a] bg-[#1b3028] px-2 py-1.5">
         <Info className="h-4 w-4 shrink-0 text-[#b9d3c3]" aria-hidden="true" />
         <p className="min-w-0 flex-1 text-[10px] leading-snug">
-          {adminPreview && user?.isAdmin ? "Admin preview · not yet approved · sandboxed game port." : "Signed-in saves: localStorage (128 KB), Stardew files, and basic IndexedDB stores, including Undertale and Hill Climb. Advanced database features may need adapters."} · {saveStatus}
+          {adminPreview && user?.isAdmin ? "Admin preview · not yet approved · sandboxed game port." : "Signed-in saves: localStorage (128 KB), Stardew files, and IndexedDB key paths, indexes, and compound keys. Some advanced IDB behavior may need adapters."} · {saveStatus}
         </p>
         {assetStatus === "ready" && saveBootstrap?.game === game && (
           <a

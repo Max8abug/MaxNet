@@ -121,11 +121,11 @@ Per-account browser `localStorage` game saves are stored privately under
 served as public game assets. Back up this directory with PostgreSQL. The
 save bridge supports up to 128 KiB per game for localStorage-based ports,
 Stardew Valley's `Saves.tar` / `DevicePreferences.tar` files, and basic
-IndexedDB key-value object stores, including the patterns used by Undertale
-and Hill Climb Racing. IndexedDB snapshots and OPFS files are capped at 64 MiB
-each. Advanced IndexedDB features such as indexes and compound keys may need
-adapters. The Replit development server uses a separate ignored
-`game-saves-dev` directory.
+IndexedDB object stores, key paths, indexes, and compound keys, including the
+patterns used by Undertale and Hill Climb Racing. IndexedDB snapshots and OPFS
+files are capped at 64 MiB each. More advanced IndexedDB transaction and
+cursor behavior may still need adapters. The Replit development server uses a
+separate ignored `game-saves-dev` directory.
 
 For developers, the opt-in storage regression checks create unique disposable
 users, ranks, pages, and files in the configured database and both storage

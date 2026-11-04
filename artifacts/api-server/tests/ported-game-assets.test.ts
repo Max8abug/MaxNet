@@ -156,21 +156,63 @@ try {
       atob,
     };
     runInNewContext(indexedDbBridge[1], context);
-    const windowObject = context.window as { indexedDB: { open: (name: string, version: number) => Record<string, any> } };
+    const windowObject = context.window as {
+      indexedDB: { open: (name: string, version: number) => Record<string, any> };
+      IDBKeyRange?: { only: (value: unknown) => unknown };
+    };
     const openRequest = windowObject.indexedDB.open(database, 1);
     const db = await new Promise<any>((resolve, reject) => {
-      openRequest.onupgradeneeded = (event: { target: { result: any } }) => event.target.result.createObjectStore(storeName);
+      openRequest.onupgradeneeded = (event: { target: { result: any } }) => {
+        const store = event.target.result.createObjectStore(
+          storeName,
+          gameId === "another-idb-game" ? { keyPath: ["owner", "slot"] } : undefined,
+        );
+        if (gameId === "another-idb-game") {
+          store.createIndex("by-title", "title", { unique: true });
+          store.createIndex("by-owner-slot", ["owner", "slot"]);
+        }
+      };
       openRequest.onsuccess = (event: { target: { result: any } }) => resolve(event.target.result);
       openRequest.onerror = (event: { target: { error: unknown } }) => reject(event.target.error);
     });
     const store = db.transaction(storeName, "readwrite").objectStore(storeName);
-    const bytes = runInNewContext("new Uint8Array([4, 5, 6]).buffer", context);
+    const testValue = gameId === "another-idb-game"
+      ? runInNewContext('({owner:"player-1",slot:2,title:"Save A",payload:new Uint8Array([4,5,6]).buffer})', context)
+      : runInNewContext("new Uint8Array([4, 5, 6]).buffer", context);
     await new Promise<void>((resolve, reject) => {
-      const request = store.put(bytes, "save-slot");
+      const request = gameId === "another-idb-game" ? store.put(testValue) : store.put(testValue, "save-slot");
       request.onsuccess = () => resolve();
       request.onerror = (event: { target: { error: unknown } }) => reject(event.target.error);
     });
     assert(savedFiles.has(`idb-${database}.json`), `${gameId} IndexedDB writes reach account storage`);
+    if (gameId === "another-idb-game") {
+      const range = windowObject.IDBKeyRange?.only(["player-1", 2]);
+      const compoundResult = await new Promise<any>((resolve, reject) => {
+        const request = store.get(range);
+        request.onsuccess = (event: { target: { result: unknown } }) => resolve(event.target.result);
+        request.onerror = (event: { target: { error: unknown } }) => reject(event.target.error);
+      });
+      assert.equal(compoundResult.title, "Save A", "compound primary keys can be queried");
+      const indexedResult = await new Promise<any>((resolve, reject) => {
+        const request = store.index("by-title").get("Save A");
+        request.onsuccess = (event: { target: { result: unknown } }) => resolve(event.target.result);
+        request.onerror = (event: { target: { error: unknown } }) => reject(event.target.error);
+      });
+      assert.equal(indexedResult.owner, "player-1", "secondary indexes can retrieve values");
+      const compoundIndexResult = await new Promise<any>((resolve, reject) => {
+        const request = store.index("by-owner-slot").get(["player-1", 2]);
+        request.onsuccess = (event: { target: { result: unknown } }) => resolve(event.target.result);
+        request.onerror = (event: { target: { error: unknown } }) => reject(event.target.error);
+      });
+      assert.equal(compoundIndexResult.title, "Save A", "compound secondary indexes can retrieve values");
+      const indexedRange = windowObject.IDBKeyRange?.bound("A", "Z");
+      const indexedCount = await new Promise<number>((resolve, reject) => {
+        const request = store.index("by-title").count(indexedRange);
+        request.onsuccess = (event: { target: { result: number } }) => resolve(event.target.result);
+        request.onerror = (event: { target: { error: unknown } }) => reject(event.target.error);
+      });
+      assert.equal(indexedCount, 1, "indexed key ranges are respected");
+    }
   }
   assert.ok(
     gameHtml.indexOf('id="early-storage"') < gameHtml.indexOf("ported-game-save-bridge"),
