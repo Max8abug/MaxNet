@@ -144,6 +144,7 @@ mergeFiles(getParts("game.unx", 1, 5)).then(async url => {
     ["another-idb-game", "saveDB", "saves"],
   ]) {
     const savedFiles = new Map<string, Uint8Array>();
+    let failNextWrite = false;
     let onMessage: ((event: { source: unknown; data: Record<string, unknown> }) => void) | undefined;
     const parent = {
       postMessage(message: Record<string, unknown>) {
@@ -156,6 +157,12 @@ mergeFiles(getParts("game.unx", 1, 5)).then(async url => {
               data: saved
                 ? { source: "ported-game-indexeddb-response", requestId: message.requestId, ok: true, bytes: saved.slice().buffer }
                 : { source: "ported-game-indexeddb-response", requestId: message.requestId, ok: false, error: "NotFoundError" },
+            });
+          } else if (failNextWrite) {
+            failNextWrite = false;
+            onMessage?.({
+              source: parent,
+              data: { source: "ported-game-indexeddb-response", requestId: message.requestId, ok: false, error: "QuotaExceededError" },
             });
           } else {
             savedFiles.set(name, new Uint8Array(message.bytes as ArrayBuffer).slice());
@@ -299,6 +306,22 @@ mergeFiles(getParts("game.unx", 1, 5)).then(async url => {
         request.onerror = (event: { target: { error: unknown } }) => reject(event.target.error);
       });
       assert.equal(indexedCount, 1, "indexed key ranges are respected");
+      failNextWrite = true;
+      const failingTransaction = db.transaction(storeName, "readwrite");
+      await new Promise<void>((resolve, reject) => {
+        const request = failingTransaction.objectStore(storeName).put(testValue);
+        request.onsuccess = () => reject(new Error("Expected the simulated save write to fail"));
+        request.onerror = (event: { preventDefault?: () => void; defaultPrevented?: boolean }) => {
+          try {
+            assert.equal(typeof event.preventDefault, "function", "IndexedDB error events expose preventDefault");
+            event.preventDefault?.();
+            assert.equal(event.defaultPrevented, true, "preventDefault marks the IndexedDB error event");
+            resolve();
+          } catch (error) {
+            reject(error);
+          }
+        };
+      });
     }
   }
   assert.ok(

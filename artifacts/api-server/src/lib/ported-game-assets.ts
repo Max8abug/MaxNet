@@ -231,10 +231,15 @@ const GAME_INDEXEDDB_BOOTSTRAP = `<script>
     if (d.ok) p.resolve(d.bytes || null);
     else p.reject(new DOMException(d.error||"Save storage unavailable",d.error==="NotFoundError"?"NotFoundError":"NotAllowedError"));
   });
+  const makeEvent = target => ({
+    target,currentTarget:target,defaultPrevented:false,
+    preventDefault(){this.defaultPrevented=true;},
+    stopPropagation(){},stopImmediatePropagation(){}
+  });
   const emit = (request, error, transaction) => queueMicrotask(() => {
     try {
-      if (error) { request.error=error; request.onerror&&request.onerror({target:request}); }
-      else request.onsuccess&&request.onsuccess({target:request});
+      if (error) { request.error=error; request.onerror&&request.onerror(makeEvent(request)); }
+      else request.onsuccess&&request.onsuccess(makeEvent(request));
     } finally {
       transaction?._requestDone();
     }
@@ -368,16 +373,16 @@ const GAME_INDEXEDDB_BOOTSTRAP = `<script>
           const tx={mode,_pending:0,_active:true,_scheduled:false,objectStoreNames:{contains:n=>list.includes(n),[Symbol.iterator]:function*(){yield* list;}},
             _requestStart(){if(!tx._active)return;tx._pending++;tx._scheduled=false;},
             _requestDone(){tx._pending=Math.max(0,tx._pending-1);tx._scheduleComplete();},
-            _scheduleComplete(){if(tx._scheduled||!tx._active)return;tx._scheduled=true;queueMicrotask(()=>{tx._scheduled=false;if(tx._pending===0&&tx._active){tx._active=false;tx.oncomplete&&tx.oncomplete({target:tx});}});},
+             _scheduleComplete(){if(tx._scheduled||!tx._active)return;tx._scheduled=true;queueMicrotask(()=>{tx._scheduled=false;if(tx._pending===0&&tx._active){tx._active=false;tx.oncomplete&&tx.oncomplete(makeEvent(tx));}});},
             objectStore:n=>{if(!list.includes(n))throw new DOMException("Store not in transaction","NotFoundError");return makeStore(db,n,tx);},
-            abort(){if(!tx._active)return;tx._active=false;tx.onabort&&tx.onabort({target:tx});}};
+             abort(){if(!tx._active)return;tx._active=false;tx.onabort&&tx.onabort(makeEvent(tx));}};
           queueMicrotask(()=>tx._scheduleComplete());
           return tx;
         };
         dbs.set(name,db);
       }
       const nextVersion=version||db.version||1;
-      if(nextVersion>db.version){db.version=nextVersion;req.result=db;req.onupgradeneeded&&req.onupgradeneeded({target:req});await persist(db);}
+      if(nextVersion>db.version){db.version=nextVersion;req.result=db;req.onupgradeneeded&&req.onupgradeneeded(makeEvent(req));await persist(db);}
       req.result=db; emit(req);
     })().catch(e=>emit(req,e));
     return req;
@@ -390,7 +395,7 @@ const GAME_INDEXEDDB_BOOTSTRAP = `<script>
         const db=dbs.get(name)||{name,version:0,stores:new Map()};
         db.version=0;db.stores.clear();
         const r={result:undefined,error:null,onsuccess:null,onerror:null};
-        persist(db).then(()=>{dbs.delete(name);queueMicrotask(()=>r.onsuccess&&r.onsuccess({target:r}));},error=>{r.error=error;queueMicrotask(()=>r.onerror&&r.onerror({target:r}));});
+        persist(db).then(()=>{dbs.delete(name);queueMicrotask(()=>r.onsuccess&&r.onsuccess(makeEvent(r)));},error=>{r.error=error;queueMicrotask(()=>r.onerror&&r.onerror(makeEvent(r)));});
         return r;
       }
     };
