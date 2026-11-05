@@ -241,6 +241,52 @@ mergeFiles(getParts("game.unx", 1, 5)).then(async url => {
     });
     await transactionComplete;
     assert(savedFiles.has(`idb-${database}.json`), `${gameId} IndexedDB writes reach account storage`);
+    if (gameId === "undertale") {
+      const upgradedDb = await new Promise<any>((resolve, reject) => {
+        const request = windowObject.indexedDB.open(database, 21);
+        request.onupgradeneeded = (event: { target: { result: any } }) => {
+          const fileStore = event.target.result.createObjectStore("FILE_DATA");
+          fileStore.createIndex("timestamp", "timestamp", { unique: false });
+        };
+        request.onsuccess = (event: { target: { result: any } }) => resolve(event.target.result);
+        request.onerror = (event: { target: { error: unknown } }) => reject(event.target.error);
+      });
+      const fileRecord = runInNewContext(
+        '({timestamp:new Date("2026-11-05T12:00:00.000Z"),mode:33206,contents:new Uint8Array([7,8,9]).buffer})',
+        context,
+      );
+      await new Promise<void>((resolve, reject) => {
+        const request = upgradedDb
+          .transaction("FILE_DATA", "readwrite")
+          .objectStore("FILE_DATA")
+          .put(fileRecord, "/_savedata/undertale.ini");
+        request.onsuccess = () => resolve();
+        request.onerror = (event: { target: { error: unknown } }) => reject(event.target.error);
+      });
+      const persistedDb = JSON.parse(new TextDecoder().decode(savedFiles.get(`idb-${database}.json`)));
+      assert.deepEqual(Object.keys(persistedDb.stores).sort(), ["FILE_DATA", "FILES"]);
+      console.log("Undertale IDB snapshot:", JSON.stringify({ version: persistedDb.version, stores: Object.fromEntries(Object.entries(persistedDb.stores).map(([name, store]: [string, any]) => [name, { keyPath: store.keyPath, records: store.records?.length }])) }));
+
+      const reloadContext = { ...context, window: { __pdGameSaveBootstrap: { gameId } } };
+      runInNewContext(indexedDbBridge[1], reloadContext);
+      const reloadWindow = reloadContext.window as typeof windowObject;
+      const reopenedDb = await new Promise<any>((resolve, reject) => {
+        const request = reloadWindow.indexedDB.open(database, 21);
+        request.onsuccess = (event: { target: { result: any } }) => resolve(event.target.result);
+        request.onerror = (event: { target: { error: unknown } }) => reject(event.target.error);
+      });
+      console.log("Undertale reloaded stores:", [...reopenedDb.objectStoreNames]);
+      const savedFile = await new Promise<any>((resolve, reject) => {
+        const request = reopenedDb
+          .transaction("FILE_DATA", "readonly")
+          .objectStore("FILE_DATA")
+          .get("/_savedata/undertale.ini");
+        request.onsuccess = (event: { target: { result: unknown } }) => resolve(event.target.result);
+        request.onerror = (event: { target: { error: unknown } }) => reject(event.target.error);
+      });
+      assert.equal(savedFile.timestamp.toISOString(), "2026-11-05T12:00:00.000Z");
+      assert.deepEqual(Array.from(new Uint8Array(savedFile.contents)), [7, 8, 9]);
+    }
     if (gameId === "ac-gamecube") {
       const reloadContext: Record<string, unknown> = {
         window: { __pdGameSaveBootstrap: { gameId } },
