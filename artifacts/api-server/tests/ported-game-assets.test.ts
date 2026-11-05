@@ -265,6 +265,26 @@ mergeFiles(getParts("game.unx", 1, 5)).then(async url => {
       });
       const persistedDb = JSON.parse(new TextDecoder().decode(savedFiles.get(`idb-${database}.json`)));
       assert.deepEqual(Object.keys(persistedDb.stores).sort(), ["FILES", "FILE_DATA"]);
+      const completeSnapshot = savedFiles.get(`idb-${database}.json`)!.slice();
+      const legacySnapshot = new TextEncoder().encode(JSON.stringify({
+        version: 21,
+        stores: { FILES: persistedDb.stores.FILES },
+      }));
+      savedFiles.set(`idb-${database}.json`, legacySnapshot);
+      const repairContext = { ...context, window: { __pdGameSaveBootstrap: { gameId } } };
+      runInNewContext(indexedDbBridge[1], repairContext);
+      const repairWindow = repairContext.window as typeof windowObject;
+      const repairedDb = await new Promise<any>((resolve, reject) => {
+        const request = repairWindow.indexedDB.open(database, 21);
+        request.onsuccess = (event: { target: { result: any } }) => resolve(event.target.result);
+        request.onerror = (event: { target: { error: unknown } }) => reject(event.target.error);
+      });
+      assert(repairedDb.objectStoreNames.contains("FILE_DATA"), "legacy version-21 Undertale saves regain their IDBFS store");
+      assert(repairedDb.transaction("FILE_DATA").objectStore("FILE_DATA").indexNames.contains("timestamp"));
+      const repairedSnapshot = JSON.parse(new TextDecoder().decode(savedFiles.get(`idb-${database}.json`)));
+      assert(repairedSnapshot.stores.FILE_DATA, "the repaired store is written back to account storage");
+      savedFiles.set(`idb-${database}.json`, completeSnapshot);
+
       const reloadContext = { ...context, window: { __pdGameSaveBootstrap: { gameId } } };
       runInNewContext(indexedDbBridge[1], reloadContext);
       const reloadWindow = reloadContext.window as typeof windowObject;

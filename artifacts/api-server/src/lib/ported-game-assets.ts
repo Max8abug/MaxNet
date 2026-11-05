@@ -386,6 +386,20 @@ const GAME_INDEXEDDB_BOOTSTRAP = `<script>
         };
         dbs.set(name,db);
       }
+      if (boot.gameId === "undertale" && name === "emscripten_filesystem" && db.version >= 21) {
+        let repaired = false;
+        let fileStore = db.stores.get("FILE_DATA");
+        if (!fileStore) {
+          fileStore = {keyPath:null,autoIncrement:false,nextKey:1,indexes:new Map(),records:new Map()};
+          db.stores.set("FILE_DATA",fileStore);
+          repaired = true;
+        }
+        if (!fileStore.indexes.has("timestamp")) {
+          fileStore.indexes.set("timestamp",{name:"timestamp",keyPath:"timestamp",unique:false,multiEntry:false});
+          repaired = true;
+        }
+        if (repaired) await persist(db);
+      }
       const nextVersion=version||db.version||1;
       if(nextVersion>db.version){db.version=nextVersion;req.result=db;req.onupgradeneeded&&req.onupgradeneeded(makeEvent(req));await persist(db);}
       req.result=db; emit(req);
