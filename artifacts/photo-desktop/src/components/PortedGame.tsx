@@ -137,6 +137,15 @@ export function PortedGame({ game, adminPreview = false }: { game: PortedGameId;
   const gameOrigin = window.location.origin;
   const gameAssetsPath = `${gameOrigin}/ported-games`;
   const baseGameUrl = `${gameAssetsPath}/${port.assetId}/${entryFile}`;
+  const standaloneGameUrl = (() => {
+    const params = new URLSearchParams({
+      "maxnet-view": "app",
+      "maxnet-feature": "game",
+      "maxnet-game-id": game,
+      "maxnet-launch-id": `ported-game-${game}`,
+    });
+    return `${gameOrigin}/?${params.toString()}`;
+  })();
   const gameUrl = (() => {
     if (saveBootstrap?.game !== game) return baseGameUrl;
     const params = new URLSearchParams();
@@ -421,7 +430,7 @@ export function PortedGame({ game, adminPreview = false }: { game: PortedGameId;
         {assetStatus === "ready" && saveBootstrap?.game === game && (
           <a
             className="win98-button inline-flex shrink-0 items-center gap-1 px-2 py-1 text-[10px]"
-            href={gameUrl}
+            href={standaloneGameUrl}
             target="_blank"
             rel="noopener noreferrer"
           >

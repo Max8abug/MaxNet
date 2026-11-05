@@ -15,8 +15,10 @@ import { ThemePreferencePrompt } from "@/components/ThemePreferencePrompt";
 import { ProfileDialog } from "@/components/ProfileDialog";
 import { useProfileDialogStore } from "@/lib/profile-dialog-store";
 import { MaxOsSetupSync } from "@/components/MaxOsSetupSync";
+import { NEW_GAME_PORTS } from "@/lib/game-ports";
 
 const OS_APP_WINDOW_INTENTS: Record<string, Partial<WindowData>> = {
+    game: { type: "portedgame", title: "Game", width: 960, height: 640 },
     chat: { type: "chat", title: "MaxNet Chatroom", width: 420, height: 500 },
     forum: { type: "forum", title: "MaxNet Forums", width: 600, height: 520 },
     dms: { type: "dms", title: "Direct Messages", width: 460, height: 380 },
@@ -40,26 +42,35 @@ const OS_APP_WINDOW_INTENTS: Record<string, Partial<WindowData>> = {
     settings: { type: "settings", title: "MaxNet Display Settings", width: 480, height: 520 },
     };
     const APP_ONLY_FEATURES = new Set(Object.keys(OS_APP_WINDOW_INTENTS));
-    type AppOnlyLaunch = { feature: string; instance: string };
+    type AppOnlyLaunch = { feature: string; instance: string; gameId?: string };
 
-    function parseAppOnlyLaunch(feature: unknown, instance: unknown): AppOnlyLaunch | null {
+    const PORTED_GAME_IDS = new Set([
+      "gettingoverit",
+      "pvz",
+      "webfishing",
+      "undertale",
+      ...NEW_GAME_PORTS.map((port) => port.id),
+    ]);
+
+    function parseAppOnlyLaunch(feature: unknown, instance: unknown, gameId?: unknown): AppOnlyLaunch | null {
     if (typeof feature !== "string" || !APP_ONLY_FEATURES.has(feature)) return null;
+    if (feature === "game" && (typeof gameId !== "string" || !PORTED_GAME_IDS.has(gameId))) return null;
     const safeInstance = typeof instance === "string" && /^[A-Za-z0-9._-]{1,96}$/.test(instance) ? instance : feature;
-    return { feature, instance: safeInstance };
+    return { feature, instance: safeInstance, ...(feature === "game" ? { gameId: gameId as string } : {}) };
     }
 
     function loadAppOnlyLaunch(): AppOnlyLaunch | null {
     if (typeof window === "undefined") return null;
     const params = new URLSearchParams(window.location.search);
     if (params.get("maxnet-view") === "app") {
-      const fromUrl = parseAppOnlyLaunch(params.get("maxnet-feature"), params.get("maxnet-launch-id"));
+      const fromUrl = parseAppOnlyLaunch(params.get("maxnet-feature"), params.get("maxnet-launch-id"), params.get("maxnet-game-id"));
       if (fromUrl) return fromUrl;
     }
     try {
       const stored = window.sessionStorage.getItem("maxnet-os-app-window");
       if (stored) {
-        const value = JSON.parse(stored) as { feature?: unknown; instance?: unknown };
-        return parseAppOnlyLaunch(value.feature, value.instance);
+        const value = JSON.parse(stored) as { feature?: unknown; instance?: unknown; gameId?: unknown };
+        return parseAppOnlyLaunch(value.feature, value.instance, value.gameId);
       }
     } catch {}
     return null;
@@ -99,7 +110,7 @@ const OS_APP_WINDOW_INTENTS: Record<string, Partial<WindowData>> = {
       const requestedTheme = params.get("maxnet-theme");
       const isOsLauncher = params.get("maxnet-os") === "1";
       const appView = params.get("maxnet-view") === "app";
-      const requestedLaunch = parseAppOnlyLaunch(intent, params.get("maxnet-launch-id"));
+      const requestedLaunch = parseAppOnlyLaunch(intent, params.get("maxnet-launch-id"), params.get("maxnet-game-id"));
       const isStandaloneIntent = appView && requestedLaunch !== null;
       if (!intent && !requestedTheme && !isOsLauncher && !appView) return;
 
@@ -112,6 +123,7 @@ const OS_APP_WINDOW_INTENTS: Record<string, Partial<WindowData>> = {
       params.delete("maxnet-os");
       params.delete("maxnet-view");
       params.delete("maxnet-launch-id");
+      params.delete("maxnet-game-id");
       const query = params.toString();
       const cleanUrl = window.location.pathname + (query ? "?" + query : "") + window.location.hash;
       window.history.replaceState(window.history.state, "", cleanUrl);
@@ -137,7 +149,11 @@ const OS_APP_WINDOW_INTENTS: Record<string, Partial<WindowData>> = {
           : page;
         const existingWindows = useDesktopStore.getState().windows[targetPage] || [];
         if (!isStandaloneIntent || !existingWindows.some((savedWindow) => savedWindow.type === launchWindow.type)) {
-          addWindow(targetPage, { ...launchWindow, ...(isStandaloneIntent ? { state: "max" as const } : {}) });
+          addWindow(targetPage, {
+            ...launchWindow,
+            ...(isStandaloneIntent ? { state: "max" as const } : {}),
+            ...(requestedLaunch?.feature === "game" ? { gameId: requestedLaunch.gameId as WindowData["gameId"] } : {}),
+          });
         }
       }
     }, [addWindow, page, setStandaloneLaunch, setTheme]);
