@@ -95,10 +95,10 @@ export function createGameSavesRouter(requireAuth: RequestHandler) {
   if (!file) return res.status(400).json({ error: "Invalid game ID." });
   try {
     const storage = cleanStorage(JSON.parse(await readFile(file, "utf8")));
-    return res.set("Cache-Control", "no-store").json({ storage: storage ?? {} });
+    return res.set("Cache-Control", "no-store").json({ storage: storage ?? {}, exists: true });
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") {
-      return res.set("Cache-Control", "no-store").json({ storage: {} });
+      return res.set("Cache-Control", "no-store").json({ storage: {}, exists: false });
     }
     throw error;
   }

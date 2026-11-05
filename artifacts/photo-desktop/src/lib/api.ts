@@ -289,7 +289,7 @@ export async function uploadGamePortData(
   return result;
 }
 
-export async function fetchGameSave(gameId: string): Promise<{ storage: Record<string, string> }> {
+export async function fetchGameSave(gameId: string): Promise<{ storage: Record<string, string>; exists: boolean }> {
   return jsonOrThrow(await fetch(`${BASE}/game-saves/${encodeURIComponent(gameId)}`, {
     ...opts, cache: "no-store",
   }));

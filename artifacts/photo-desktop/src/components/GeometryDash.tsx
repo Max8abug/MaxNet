@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { fetchGameSave, putGameSave } from "../lib/api";
+import { useAuth } from "../lib/auth-store";
 
 const WIDTH = 520;
 const HEIGHT = 220;
@@ -20,11 +22,28 @@ function freshState(): GameState {
 }
 
 export function GeometryDash() {
+  const username = useAuth(state => state.user?.username);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const stateRef = useRef<GameState>(freshState());
   const [running, setRunning] = useState(false);
   const [score, setScore] = useState(0);
   const [best, setBest] = useState(() => Number(localStorage.getItem("geometry-dash-best") || 0));
+
+  useEffect(() => {
+    if (!username) return;
+    let active = true;
+    void fetchGameSave("geometrydash").then(({ storage }) => {
+      const accountBest = Number(storage.bestScore);
+      if (!active || !Number.isFinite(accountBest) || accountBest < 0) return;
+      setBest(current => {
+        const merged = Math.max(current, accountBest);
+        localStorage.setItem("geometry-dash-best", String(merged));
+        if (merged > accountBest) void putGameSave("geometrydash", { bestScore: String(merged) }).catch(() => {});
+        return merged;
+      });
+    }).catch(() => {});
+    return () => { active = false; };
+  }, [username]);
 
   const draw = useCallback((state: GameState) => {
     const canvas = canvasRef.current;
@@ -125,6 +144,7 @@ export function GeometryDash() {
         const newBest = Math.max(best, state.score);
         setBest(newBest);
         localStorage.setItem("geometry-dash-best", String(newBest));
+        if (username) void putGameSave("geometrydash", { bestScore: String(newBest) }).catch(() => {});
         draw(state);
         return;
       }
@@ -133,7 +153,7 @@ export function GeometryDash() {
     };
     frame = requestAnimationFrame(loop);
     return () => cancelAnimationFrame(frame);
-  }, [best, draw, running]);
+  }, [best, draw, running, username]);
 
   const start = useCallback(() => {
     const state = freshState();

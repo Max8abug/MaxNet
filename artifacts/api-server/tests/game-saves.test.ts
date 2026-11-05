@@ -30,6 +30,9 @@ try {
   let response = await fetch(`${url}/game-saves/pvz`);
   assert.equal(response.status, 401, "saves require an account");
 
+  response = await fetch(`${url}/game-saves/pvz`, { headers: { "x-test-user": "17" } });
+  assert.deepEqual(await response.json(), { storage: {}, exists: false }, "missing account saves are distinguishable");
+
   response = await fetch(`${url}/game-saves/pvz`, {
     method: "PUT",
     headers: { "content-type": "application/json", "x-test-user": "17" },
@@ -38,10 +41,10 @@ try {
   assert.equal(response.status, 200);
 
   response = await fetch(`${url}/game-saves/pvz`, { headers: { "x-test-user": "17" } });
-  assert.deepEqual(await response.json(), { storage: { progress: "level-4", score: "900" } });
+  assert.deepEqual(await response.json(), { storage: { progress: "level-4", score: "900" }, exists: true });
 
   response = await fetch(`${url}/game-saves/pvz`, { headers: { "x-test-user": "18" } });
-  assert.deepEqual(await response.json(), { storage: {} }, "accounts cannot read each other's saves");
+  assert.deepEqual(await response.json(), { storage: {}, exists: false }, "accounts cannot read each other's saves");
 
   const saveFile = new Uint8Array([0, 1, 2, 255]).buffer;
   response = await fetch(`${url}/game-saves/stardewwasm/files/Saves.tar`, {

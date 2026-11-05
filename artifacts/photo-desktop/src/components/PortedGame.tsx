@@ -145,6 +145,8 @@ export function PortedGame({ game, adminPreview = false }: { game: PortedGameId;
     return `${baseGameUrl.split("#", 1)[0]}#${params.toString()}`;
   })();
   const saveStorageKey = `photoDesktop:gameSave:v1:${user?.username ?? "guest"}:${game}`;
+  const pendingSaveKey = `${saveStorageKey}:pending`;
+  const guestSaveStorageKey = `photoDesktop:gameSave:v1:guest:${game}`;
 
   useEffect(() => {
     let active = true;
@@ -154,15 +156,33 @@ export function PortedGame({ game, adminPreview = false }: { game: PortedGameId;
     try {
       localStorageData = cleanGameSave(JSON.parse(window.localStorage.getItem(saveStorageKey) || "{}"));
     } catch { /* A blocked or corrupt local save is treated as empty. */ }
+    let guestStorageData: Record<string, string> = {};
+    if (user?.username) {
+      try {
+        guestStorageData = cleanGameSave(JSON.parse(window.localStorage.getItem(guestSaveStorageKey) || "{}"));
+      } catch { /* A blocked or corrupt guest save is treated as empty. */ }
+    }
     void (async () => {
       let storage = localStorageData;
       let cloudAvailable = false;
       if (user?.username) {
         try {
-          const remote = cleanGameSave((await fetchGameSave(game)).storage);
+          const accountSave = await fetchGameSave(game);
+          const remote = cleanGameSave(accountSave.storage);
           cloudAvailable = true;
-          if (Object.keys(remote).length) storage = remote;
-          else if (Object.keys(localStorageData).length) await putGameSave(game, localStorageData);
+          const hasPendingLocalSave = window.localStorage.getItem(pendingSaveKey) === "1";
+          if (hasPendingLocalSave) {
+            await putGameSave(game, localStorageData);
+            window.localStorage.removeItem(pendingSaveKey);
+          } else if (accountSave.exists) {
+            storage = remote;
+          } else {
+            const migrationSave = Object.keys(localStorageData).length ? localStorageData : guestStorageData;
+            if (Object.keys(migrationSave).length) {
+              storage = migrationSave;
+              await putGameSave(game, migrationSave);
+            }
+          }
         } catch { cloudAvailable = false; }
       }
       if (!active) return;
@@ -171,10 +191,27 @@ export function PortedGame({ game, adminPreview = false }: { game: PortedGameId;
       setSaveBootstrap({ game, storage });
     })();
     return () => { active = false; };
-  }, [game, saveStorageKey, user?.username]);
+  }, [game, saveStorageKey, pendingSaveKey, guestSaveStorageKey, user?.username]);
 
   useEffect(() => {
     let timer: ReturnType<typeof setTimeout> | undefined;
+    const syncPendingSave = () => {
+      if (!user?.username || window.localStorage.getItem(pendingSaveKey) !== "1") return;
+      let storage: Record<string, string>;
+      try {
+        storage = cleanGameSave(JSON.parse(window.localStorage.getItem(saveStorageKey) || "{}"));
+      } catch {
+        return;
+      }
+      void putGameSave(game, storage)
+        .then(() => {
+          if (window.localStorage.getItem(saveStorageKey) === JSON.stringify(storage)) {
+            window.localStorage.removeItem(pendingSaveKey);
+          }
+          setSaveStatus("Saved to account");
+        })
+        .catch(() => setSaveStatus("Saved on this device; account sync failed"));
+    };
     const onSaveMessage = (event: MessageEvent<unknown>) => {
       if (event.source !== iframeRef.current?.contentWindow || !event.data || typeof event.data !== "object") return;
       const data = event.data as { source?: unknown; version?: unknown; gameId?: unknown; storage?: unknown };
@@ -189,20 +226,28 @@ export function PortedGame({ game, adminPreview = false }: { game: PortedGameId;
         setSaveStatus("Saved on this device");
         return;
       }
+      try { window.localStorage.setItem(pendingSaveKey, "1"); } catch { /* The immediate account sync can still succeed. */ }
       setSaveStatus("Saving to account…");
       if (timer) clearTimeout(timer);
       timer = setTimeout(() => {
-        void putGameSave(game, storage)
-          .then(() => setSaveStatus("Saved to account"))
-          .catch(() => setSaveStatus("Saved on this device; account sync failed"));
+        syncPendingSave();
       }, 600);
     };
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "hidden") syncPendingSave();
+    };
+    window.addEventListener("online", syncPendingSave);
+    window.addEventListener("focus", syncPendingSave);
+    document.addEventListener("visibilitychange", onVisibilityChange);
     window.addEventListener("message", onSaveMessage);
     return () => {
       window.removeEventListener("message", onSaveMessage);
+      window.removeEventListener("online", syncPendingSave);
+      window.removeEventListener("focus", syncPendingSave);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
       if (timer) clearTimeout(timer);
     };
-  }, [game, saveStorageKey, user?.username]);
+  }, [game, saveStorageKey, pendingSaveKey, user?.username]);
 
   useEffect(() => {
     const onOpfsMessage = async (event: MessageEvent<unknown>) => {
@@ -371,7 +416,7 @@ export function PortedGame({ game, adminPreview = false }: { game: PortedGameId;
       <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-[#38554a] bg-[#1b3028] px-2 py-1.5">
         <Info className="h-4 w-4 shrink-0 text-[#b9d3c3]" aria-hidden="true" />
         <p className="min-w-0 flex-1 text-[10px] leading-snug">
-          {adminPreview && user?.isAdmin ? "Admin preview · not yet approved · sandboxed game port." : "Saves stay on this device; sign in to sync localStorage, IndexedDB, and supported OPFS games."} · {saveStatus}
+          {adminPreview && user?.isAdmin ? "Admin preview · not yet approved · sandboxed game port." : user?.username ? "Game progress syncs to your account; saves can be used on other devices when signed in." : "Sign in to sync game progress across devices; guest saves stay on this device."} · {saveStatus}
         </p>
         {assetStatus === "ready" && saveBootstrap?.game === game && (
           <a

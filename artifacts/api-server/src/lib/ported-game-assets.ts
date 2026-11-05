@@ -472,7 +472,9 @@ const GAME_DIAGNOSTIC_BOOTSTRAP = `<script>
       };
     } catch (_) {}
   }
-  const originalCacheOpen = window.caches?.open;
+  let originalCacheOpen;
+  try { originalCacheOpen = window.caches?.open; }
+  catch (error) { report("permission-error", "CacheStorage: " + (error?.message || error)); }
   if (typeof originalCacheOpen === "function") {
     try {
       window.caches.open = function(...args) {
@@ -520,6 +522,30 @@ const GAME_DIAGNOSTIC_BOOTSTRAP = `<script>
 
 function instrumentGameHtml(html: string): string {
   let instrumented = html;
+  if (html.includes("document.querySelector('#tick-worker').textContent")) {
+    instrumented = instrumented.replace(
+      /const blob = new Blob\(\[document\.querySelector\('#tick-worker'\)\.textContent\]\);\s*const worker = new Worker\(window\.URL\.createObjectURL\(blob\)\);\s*worker\.onmessage = function \(\) \{\s*GM_tick\(performance\.now\(\)\);\s*\}/,
+      `const tickWorkerScript = document.querySelector('#tick-worker');
+let worker = null;
+if (tickWorkerScript) {
+  const blob = new Blob([tickWorkerScript.textContent]);
+  worker = new Worker(window.URL.createObjectURL(blob));
+  worker.onmessage = function () { GM_tick(performance.now()); };
+} else {
+  // This Undertale build references a worker script that is absent from its HTML.
+  // Keep the game tick running in the sandbox instead of aborting startup.
+  const fallbackTick = () => {
+    if (typeof GM_tick === "function") GM_tick(performance.now());
+    window.requestAnimationFrame(fallbackTick);
+  };
+  window.requestAnimationFrame(fallbackTick);
+}`,
+    );
+    instrumented = instrumented.replace(
+      /worker\.postMessage\((\{run: (?:true, fps: 60|false)\})\);/g,
+      "worker?.postMessage($1);",
+    );
+  }
   const headOpen = /<head\b[^>]*>/i;
   const bodyOpen = /<body\b[^>]*>/i;
   const inject = (source: string) => {

@@ -32,6 +32,7 @@ const baseUrl = `http://127.0.0.1:${address.port}`;
 
 try {
   await mkdir(path.join(assetDirectory, "pvz"), { recursive: true });
+  await mkdir(path.join(assetDirectory, "undertale"), { recursive: true });
   await mkdir(path.join(assetDirectory, "deltarune"), { recursive: true });
   await mkdir(path.join(assetDirectory, "hill-climb-racing"), { recursive: true });
   await mkdir(path.join(assetDirectory, "quake3"), { recursive: true });
@@ -44,6 +45,10 @@ try {
   await writeFile(
     path.join(assetDirectory, "pvz", "index.html"),
     '<!doctype html><html><head><title>PVZ</title><script id="early-storage">window.localStorage=window.localStorage||{};</script></head><body></body></html>',
+  );
+  await writeFile(
+    path.join(assetDirectory, "undertale", "index.html"),
+    "<!doctype html><html><head></head><body><script>const blob = new Blob([document.querySelector('#tick-worker').textContent]);\nconst worker = new Worker(window.URL.createObjectURL(blob));\n\nworker.onmessage = function () {\n  GM_tick(performance.now());\n};</script><script>worker.postMessage({run: false});</script></body></html>",
   );
   await writeFile(
     path.join(assetDirectory, "deltarune", "index.html"),
@@ -104,6 +109,18 @@ try {
   const indexedDbBridge = gameHtml.match(/\/\* ported-game-indexeddb-save-bridge \*\/([\s\S]*?)<\/script>/);
   assert(indexedDbBridge, "IndexedDB bridge script is present");
   assert.doesNotThrow(() => new Function(indexedDbBridge[1]), "IndexedDB bridge script parses");
+  response = await fetch(`${baseUrl}/ported-games/undertale/index.html`);
+  assert.equal(response.status, 200);
+  const undertaleHtml = await response.text();
+  assert.match(undertaleHtml, /tickWorkerScript/);
+  assert.match(undertaleHtml, /requestAnimationFrame\(fallbackTick\)/);
+  assert.match(undertaleHtml, /worker\?\.postMessage/);
+  const fallbackStart = undertaleHtml.indexOf("const tickWorkerScript");
+  const fallbackScript = undertaleHtml.slice(
+    undertaleHtml.lastIndexOf("<script>", fallbackStart) + "<script>".length,
+    undertaleHtml.indexOf("</script>", fallbackStart),
+  );
+  assert.doesNotThrow(() => new Function(fallbackScript), "Undertale worker fallback script parses");
   for (const [gameId, database, storeName] of [
     ["undertale", "emscripten_filesystem", "FILES"],
     ["hillclimb", "hcrwasm", "files"],
