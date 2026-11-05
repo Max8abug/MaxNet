@@ -264,9 +264,7 @@ mergeFiles(getParts("game.unx", 1, 5)).then(async url => {
         request.onerror = (event: { target: { error: unknown } }) => reject(event.target.error);
       });
       const persistedDb = JSON.parse(new TextDecoder().decode(savedFiles.get(`idb-${database}.json`)));
-      assert.deepEqual(Object.keys(persistedDb.stores).sort(), ["FILE_DATA", "FILES"]);
-      console.log("Undertale IDB snapshot:", JSON.stringify({ version: persistedDb.version, stores: Object.fromEntries(Object.entries(persistedDb.stores).map(([name, store]: [string, any]) => [name, { keyPath: store.keyPath, records: store.records?.length }])) }));
-
+      assert.deepEqual(Object.keys(persistedDb.stores).sort(), ["FILES", "FILE_DATA"]);
       const reloadContext = { ...context, window: { __pdGameSaveBootstrap: { gameId } } };
       runInNewContext(indexedDbBridge[1], reloadContext);
       const reloadWindow = reloadContext.window as typeof windowObject;
@@ -275,7 +273,6 @@ mergeFiles(getParts("game.unx", 1, 5)).then(async url => {
         request.onsuccess = (event: { target: { result: any } }) => resolve(event.target.result);
         request.onerror = (event: { target: { error: unknown } }) => reject(event.target.error);
       });
-      console.log("Undertale reloaded stores:", [...reopenedDb.objectStoreNames]);
       const savedFile = await new Promise<any>((resolve, reject) => {
         const request = reopenedDb
           .transaction("FILE_DATA", "readonly")

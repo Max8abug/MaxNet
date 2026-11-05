@@ -152,7 +152,9 @@ const GAME_INDEXEDDB_BOOTSTRAP = `<script>
   const b64 = bytes => { let s = ""; const a = new Uint8Array(bytes); for (let i=0;i<a.length;i+=0x8000) s += String.fromCharCode(...a.subarray(i,i+0x8000)); return btoa(s); };
   const un64 = s => Uint8Array.from(atob(s), c => c.charCodeAt(0)).buffer;
   const encode = value => {
-    if (value instanceof Date) return { __pdType: "Date", data: value.toISOString() };
+    if (value instanceof Date || Object.prototype.toString.call(value) === "[object Date]") {
+      return { __pdType: "Date", data: value.toISOString() };
+    }
     if (value instanceof ArrayBuffer) return { __pdType: "ArrayBuffer", data: b64(value) };
     if (ArrayBuffer.isView(value)) return { __pdType: value.constructor.name, data: b64(value.buffer.slice(value.byteOffset,value.byteOffset+value.byteLength)) };
     if (Array.isArray(value)) return value.map(encode);
@@ -343,6 +345,9 @@ const GAME_INDEXEDDB_BOOTSTRAP = `<script>
   const open = (name, version) => {
     const req={result:null,error:null,onupgradeneeded:null,onsuccess:null,onerror:null};
     (async()=>{
+      // IndexedDB dispatches open/upgrade events asynchronously; callers must
+      // have a chance to attach their handlers before a cached database opens.
+      await Promise.resolve();
       const file=dbFile(name); if (!file) throw new DOMException("Unsupported game database","NotSupportedError");
       let db=dbs.get(name);
       if (!db) {
