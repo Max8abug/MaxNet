@@ -275,7 +275,9 @@ const GAME_INDEXEDDB_BOOTSTRAP = `<script>
         update:value=>db.stores.get(storeName).keyPath===null?makeStore(db,storeName,transaction).put(value,row.primaryKey):makeStore(db,storeName,transaction).put(value),
         delete:()=>makeStore(db,storeName,transaction).delete(row.primaryKey)
       };
-      emit(request);
+      // A cursor request remains active across each continue() result. Only
+      // release the transaction when the cursor reaches its final null result.
+      emit(request,null);
     };
     queueMicrotask(show);return request;
   };
@@ -470,6 +472,10 @@ const GAME_DIAGNOSTIC_BOOTSTRAP = `<script>
   const originalConsoleError = console.error.bind(console);
   console.error = (...args) => {
     const detail = args.map(value => value instanceof Error ? value.stack || value.message : String(value)).join(" ");
+    if (/warning:\s*FS\.syncfs operations in flight at once, probably just doing extra work/i.test(detail)) {
+      originalConsoleError(...args);
+      return;
+    }
     report("runtime-error", "Console: " + detail);
     originalConsoleError(...args);
   };

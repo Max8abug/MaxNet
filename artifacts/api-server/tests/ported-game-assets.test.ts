@@ -263,6 +263,26 @@ mergeFiles(getParts("game.unx", 1, 5)).then(async url => {
         request.onsuccess = () => resolve();
         request.onerror = (event: { target: { error: unknown } }) => reject(event.target.error);
       });
+      const cursorTransaction = upgradedDb.transaction("FILE_DATA", "readonly");
+      let cursorTransactionComplete = false;
+      const cursorTransactionDone = new Promise<void>(resolve => {
+        cursorTransaction.oncomplete = () => {
+          cursorTransactionComplete = true;
+          resolve();
+        };
+      });
+      await new Promise<void>((resolve, reject) => {
+        const request = cursorTransaction.objectStore("FILE_DATA").openCursor();
+        request.onsuccess = (event: { target: { result: { continue: () => void } | null } }) => {
+          if (event.target.result) event.target.result.continue();
+          else {
+            assert.equal(cursorTransactionComplete, false, "cursor transaction stays active until iteration ends");
+            resolve();
+          }
+        };
+        request.onerror = (event: { target: { error: unknown } }) => reject(event.target.error);
+      });
+      await cursorTransactionDone;
       const persistedDb = JSON.parse(new TextDecoder().decode(savedFiles.get(`idb-${database}.json`)));
       assert.deepEqual(Object.keys(persistedDb.stores).sort(), ["FILES", "FILE_DATA"]);
       const completeSnapshot = savedFiles.get(`idb-${database}.json`)!.slice();
