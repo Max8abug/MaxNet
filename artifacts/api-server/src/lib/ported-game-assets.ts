@@ -432,8 +432,9 @@ const GAME_DIAGNOSTIC_BOOTSTRAP = `<script>
       report("resource-error", resource + (event.message ? ": " + event.message : ""));
       return;
     }
-    const message = event.message || "Game script failed";
-    report(isSecurityError(event.error || message) ? "permission-error" : "runtime-error", message);
+    const location = event.filename ? " (" + event.filename + ":" + (event.lineno || 0) + ":" + (event.colno || 0) + ")" : "";
+    const message = event.error?.stack || event.message || "Game script failed";
+    report(isSecurityError(event.error || message) ? "permission-error" : "runtime-error", message + location);
   }, true);
   addEventListener("unhandledrejection", event => {
     const error = event.reason;
@@ -442,6 +443,12 @@ const GAME_DIAGNOSTIC_BOOTSTRAP = `<script>
   addEventListener("securitypolicyviolation", event => {
     report("policy-error", event.violatedDirective + " blocked " + (event.blockedURI || "a resource"));
   });
+  const originalConsoleError = console.error.bind(console);
+  console.error = (...args) => {
+    const detail = args.map(value => value instanceof Error ? value.stack || value.message : String(value)).join(" ");
+    report("runtime-error", "Console: " + detail);
+    originalConsoleError(...args);
+  };
   for (const key of ["localStorage", "sessionStorage"]) {
     const getter = Object.getOwnPropertyDescriptor(Window.prototype, key)?.get;
     if (!getter) continue;
@@ -522,6 +529,20 @@ const GAME_DIAGNOSTIC_BOOTSTRAP = `<script>
 
 function instrumentGameHtml(html: string): string {
   let instrumented = html;
+  if (html.includes('mergeFiles(getParts("game.unx"')) {
+    // The response's sandbox gives the game an opaque origin. Opt its own
+    // dynamically loaded scripts into CORS so the browser exposes real errors
+    // instead of reducing them to the unhelpful "Script error." message.
+    instrumented = instrumented
+      .replace(
+        /let index = document\.createElement\("script"\);\s*index\.src = "index\.js";/,
+        'let index = document.createElement("script");\n          index.crossOrigin = "anonymous";\n          index.src = "index.js";',
+      )
+      .replace(
+        /let runner = document\.createElement\("script"\);\s*runner\.src = "runner\.js";/,
+        'let runner = document.createElement("script");\n          runner.crossOrigin = "anonymous";\n          runner.src = "runner.js";',
+      );
+  }
   if (html.includes("document.querySelector('#tick-worker').textContent")) {
     instrumented = instrumented.replace(
       /const blob = new Blob\(\[document\.querySelector\('#tick-worker'\)\.textContent\]\);\s*const worker = new Worker\(window\.URL\.createObjectURL\(blob\)\);\s*worker\.onmessage = function \(\) \{\s*GM_tick\(performance\.now\(\)\);\s*\}/,

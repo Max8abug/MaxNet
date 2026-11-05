@@ -48,7 +48,21 @@ try {
   );
   await writeFile(
     path.join(assetDirectory, "undertale", "index.html"),
-    "<!doctype html><html><head></head><body><script>const blob = new Blob([document.querySelector('#tick-worker').textContent]);\nconst worker = new Worker(window.URL.createObjectURL(blob));\n\nworker.onmessage = function () {\n  GM_tick(performance.now());\n};</script><script>worker.postMessage({run: false});</script></body></html>",
+    `<!doctype html><html><head></head><body><script>const blob = new Blob([document.querySelector('#tick-worker').textContent]);
+const worker = new Worker(window.URL.createObjectURL(blob));
+
+worker.onmessage = function () {
+  GM_tick(performance.now());
+};</script><script>worker.postMessage({run: false});</script><script>
+mergeFiles(getParts("game.unx", 1, 5)).then(async url => {
+  let index = document.createElement("script");
+  index.src = "index.js";
+  document.body.appendChild(index);
+  let runner = document.createElement("script");
+  runner.src = "runner.js";
+  document.body.appendChild(runner);
+});
+</script></body></html>`,
   );
   await writeFile(
     path.join(assetDirectory, "deltarune", "index.html"),
@@ -115,6 +129,8 @@ try {
   assert.match(undertaleHtml, /tickWorkerScript/);
   assert.match(undertaleHtml, /requestAnimationFrame\(fallbackTick\)/);
   assert.match(undertaleHtml, /worker\?\.postMessage/);
+  assert.match(undertaleHtml, /index\.crossOrigin = "anonymous"/);
+  assert.match(undertaleHtml, /runner\.crossOrigin = "anonymous"/);
   const fallbackStart = undertaleHtml.indexOf("const tickWorkerScript");
   const fallbackScript = undertaleHtml.slice(
     undertaleHtml.lastIndexOf("<script>", fallbackStart) + "<script>".length,
@@ -294,6 +310,8 @@ try {
   assert.match(gameHtml, /Object\.getOwnPropertyDescriptor\(Window\.prototype, key\)/);
   assert.match(gameHtml, /Gamepad access:/);
   assert.match(gameHtml, /CacheStorage:/);
+  assert.match(gameHtml, /event\.filename/);
+  assert.match(gameHtml, /Console: /);
   assert.match(gameHtml, /window\.fetch =/);
   assert.match(gameHtml, /XMLHttpRequest\.prototype\.send =/);
   assert.match(gameHtml, /ported-game-save-bridge/);
