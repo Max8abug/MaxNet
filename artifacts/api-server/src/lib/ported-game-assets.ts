@@ -472,7 +472,7 @@ const GAME_DIAGNOSTIC_BOOTSTRAP = `<script>
   const originalConsoleError = console.error.bind(console);
   console.error = (...args) => {
     const detail = args.map(value => value instanceof Error ? value.stack || value.message : String(value)).join(" ");
-    if (/warning:\s*FS\.syncfs operations in flight at once, probably just doing extra work/i.test(detail)) {
+    if (/warning:\\s*FS\\.syncfs operations in flight at once, probably just doing extra work/i.test(detail)) {
       originalConsoleError(...args);
       return;
     }

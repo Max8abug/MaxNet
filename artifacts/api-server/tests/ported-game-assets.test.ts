@@ -126,6 +126,11 @@ mergeFiles(getParts("game.unx", 1, 5)).then(async url => {
   response = await fetch(`${baseUrl}/ported-games/undertale/index.html`);
   assert.equal(response.status, 200);
   const undertaleHtml = await response.text();
+  assert.match(
+    undertaleHtml,
+    /warning:\\s\*FS\\\.syncfs operations in flight at once/,
+    "the non-fatal IDBFS overlap warning is not promoted to a game error",
+  );
   assert.match(undertaleHtml, /tickWorkerScript/);
   assert.match(undertaleHtml, /requestAnimationFrame\(fallbackTick\)/);
   assert.match(undertaleHtml, /worker\?\.postMessage/);
